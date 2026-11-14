@@ -14,8 +14,9 @@
  *                                                            -> 4 of 8 in both arms, two rows, means 6.0
  *      then: the CSV text, the guarded Clear, "Next participant", and what was NOT written
  *      (no review cards, no decks, no familiarized layout)
- *   3  an abandoned run stores nothing (Escape, the dialog, Abandon); a reload in the middle of a
- *      run returns to the introduction with the same notice; the title link and Escape
+ *   3  an abandoned run stores nothing (Escape, the dialog, Abandon); the browser's Back button
+ *      opens the same dialog; a reload in the middle of a run returns to the introduction with
+ *      the same notice; the title link and Escape
  *
  * The swapped lists need the `fixture-krebs` deck and `CARPALS_AS_LIST` in src/ai/fixtures. In a
  * build without them participant two runs with the carpal bones in the palace, a note says so,
@@ -386,7 +387,7 @@ async function main() {
   let rows = await stored(page, 'memoria.ab.v1');
   assert(Array.isArray(rows) && rows.length === 1, `expected one stored row, got ${JSON.stringify(rows)}`);
   assert(rows[0].order === 'list-first' && rows[0].list.score === 8 && rows[0].palace.score === 8, `row 1: ${JSON.stringify(rows[0])}`);
-  assert(JSON.stringify(Object.keys(rows[0])) === JSON.stringify(['id', 'at', 'order', 'palaceList', 'list', 'palace']), `row shape: ${Object.keys(rows[0])}`);
+  assert(JSON.stringify(Object.keys(rows[0])) === JSON.stringify(['id', 'at', 'order', 'palaceList', 'list', 'palace', 'listStudyS', 'palaceStudyS']), `row shape: ${Object.keys(rows[0])}`);
   // Which list went where is recorded, shown for this participant and in the table.
   assert(rows[0].palaceList === 'carpals', `row 1 should record the carpal bones in the palace: ${rows[0].palaceList}`);
   assert((await page.getByTestId('ab-material').getAttribute('data-palace')) === 'carpals', 'the result does not say which list was in the palace');
@@ -400,6 +401,11 @@ async function main() {
   const study = page.getByTestId('ab-study');
   const encodeMs = Number(await study.getAttribute('data-palace-ms'));
   assert(Number(await study.getAttribute('data-list-ms')) === LIST_STUDY_SECONDS * 1000, 'the list study time shown is not the constant');
+  // Both study times are kept with the row, in seconds to one decimal, and shown in the table.
+  const walkStudyS = Math.round(encodeMs / 100) / 10;
+  assert(rows[0].listStudyS === LIST_STUDY_SECONDS && rows[0].palaceStudyS === walkStudyS, `row 1 study times: ${rows[0].listStudyS} and ${rows[0].palaceStudyS} (expected ${LIST_STUDY_SECONDS} and ${walkStudyS})`);
+  const studyCells = [await text(page.getByTestId('ab-row-study-list').first()), await text(page.getByTestId('ab-row-study-palace').first())];
+  assert(studyCells[0] === `${LIST_STUDY_SECONDS.toFixed(1)} s` && studyCells[1] === `${walkStudyS.toFixed(1)} s`, `the table's study times read ${studyCells}`);
   assert(requests.every((u) => u.startsWith(base)), `the test made outside requests: ${requests.filter((u) => !u.startsWith(base))}`);
   await shot(page, 'p1-results');
   lines.push(
@@ -411,8 +417,9 @@ async function main() {
 
   // 2. Half wrong in each arm, palace first, after a reload (the stored row must survive it).
   // A row stored before the lists could be swapped has no `palaceList`: it counts as the carpal bones.
+  // An older row has no study times either: the table shows a dash and the CSV leaves them blank.
   await page.evaluate(() => {
-    const kept = JSON.parse(localStorage.getItem('memoria.ab.v1')).map(({ palaceList: _later, ...row }) => row);
+    const kept = JSON.parse(localStorage.getItem('memoria.ab.v1')).map(({ palaceList: _later, listStudyS: _a, palaceStudyS: _b, ...row }) => row);
     localStorage.setItem('memoria.ab.v1', JSON.stringify(kept));
   });
   const walked = canSwap ? 'krebs' : 'carpals';
@@ -430,6 +437,11 @@ async function main() {
   const split = canSwap ? 'so far 1 had the carpal bones in the palace and 1 the citric acid cycle' : 'Everyone so far had the citric acid cycle as a plain list and the carpal bones in the palace';
   assert((await text(page.getByTestId('ab-caveat'))).includes(split), `the caveat does not say how the lists were divided: ${await text(page.getByTestId('ab-caveat'))}`);
   assert((await page.getByTestId('ab-row').count()) === 2, 'the table should have two rows');
+  const studyShown = [...(await page.getByTestId('ab-row-study-list').allTextContents()), ...(await page.getByTestId('ab-row-study-palace').allTextContents())];
+  assert(
+    studyShown[0] === '–' && studyShown[2] === '–' && studyShown[1] === `${rows[1].listStudyS.toFixed(1)} s` && studyShown[3] === `${rows[1].palaceStudyS.toFixed(1)} s`,
+    `study times in the table (older row, new row): ${studyShown}`,
+  );
   const meanList = await text(page.getByTestId('ab-mean-list'));
   const meanPalace = await text(page.getByTestId('ab-mean-palace'));
   assert(meanList === '6.0 of 8' && meanPalace === '6.0 of 8', `means: list "${meanList}", palace "${meanPalace}"`);
@@ -449,13 +461,17 @@ async function main() {
   await csvBox.waitFor();
   const csv = await csvBox.inputValue();
   const expectedCsv = [
-    'participant,id,at,order,palace_list,list_score,list_ms,palace_score,palace_ms',
-    ...rows.map((r, i) => [i + 1, r.id, new Date(r.at).toISOString(), r.order, r.palaceList ?? 'carpals', r.list.score, r.list.ms, r.palace.score, r.palace.ms].join(',')),
+    'participant,id,at,order,palace_list,list_score,list_ms,palace_score,palace_ms,list_study_s,palace_study_s',
+    ...rows.map((r, i) =>
+      [i + 1, r.id, new Date(r.at).toISOString(), r.order, r.palaceList ?? 'carpals', r.list.score, r.list.ms, r.palace.score, r.palace.ms, r.listStudyS?.toFixed(1) ?? '', r.palaceStudyS?.toFixed(1) ?? ''].join(','),
+    ),
   ].join('\n');
   assert(csv === expectedCsv, `CSV text:\n${csv}\nexpected:\n${expectedCsv}`);
+  // Row 1 is the older one (no study times: blank); row 2 carries both, the list's being the constant.
   assert(
-    /^1,[^,]+,[^,]+,list-first,carpals,8,\d+,8,\d+$/m.test(csv) && new RegExp(`^2,[^,]+,[^,]+,palace-first,${walked},4,\\d+,4,\\d+$`, 'm').test(csv),
-    'CSV rows do not carry the scores and the list that was in the palace',
+    /^1,[^,]+,[^,]+,list-first,carpals,8,\d+,8,\d+,,$/m.test(csv) &&
+      new RegExp(`^2,[^,]+,[^,]+,palace-first,${walked},4,\\d+,4,\\d+,${LIST_STUDY_SECONDS}\\.0,\\d+\\.\\d$`, 'm').test(csv),
+    `CSV rows do not carry the scores, the list that was in the palace and the study times:\n${csv}`,
   );
   const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => null);
   assert(clip === csv, 'the clipboard does not hold the CSV');
@@ -540,6 +556,15 @@ async function abandoned() {
     assert((await page.getByTestId('ab-list-item').count()) === 8, 'the list did not come back');
   }
 
+  // The browser's Back button asks the same question instead of leaving the site.
+  const url = page.url();
+  await page.evaluate(() => history.back());
+  await page.getByTestId('ab-abandon').waitFor();
+  assert(page.url() === url && (await page.getByTestId('ab-panel').count()) === 1 && (await page.getByTestId('ab-intro').count()) === 0, 'Back left the run');
+  await page.getByTestId('ab-abandon-stay').click();
+  await page.getByTestId('ab-abandon').waitFor({ state: 'detached' });
+  if (arm === 'list') assert((await page.getByTestId('ab-list-item').count()) === 8, 'the list did not come back after Back and Keep going');
+
   // Escape, Tab to Abandon, Enter: back on the intro, nothing stored.
   await page.keyboard.press('Escape');
   await page.getByTestId('ab-abandon').waitFor();
@@ -572,6 +597,12 @@ async function abandoned() {
   await page.keyboard.press('Enter');
   await page.getByTestId('ab-encode').waitFor();
   await page.getByTestId('ab-encode-term').waitFor({ timeout: 30000 });
+  // Back during the palace walk asks the test's question, not the walk's "Leave this walk?".
+  await page.evaluate(() => history.back());
+  await page.getByTestId('ab-abandon').waitFor();
+  assert((await page.getByTestId('leave-confirm').count()) === 0 && (await page.getByTestId('ab-encode').count()) === 1, "Back during the palace arm opened the walk's Leave dialog or left the walk");
+  await page.getByTestId('ab-abandon-stay').click();
+  await page.getByTestId('ab-abandon').waitFor({ state: 'detached' });
   await page.reload({ waitUntil: 'load' });
   await page.getByTestId('ab-intro').waitFor();
   assert((await page.getByTestId('ab-abandoned').count()) === 1, 'a reload in the middle of a run gives no notice');
@@ -588,7 +619,7 @@ async function abandoned() {
   await context.close();
   lines.push(
     `ok   3  abandoned run (${arm} arm): ${arm === 'list' ? 'the clock stops while the dialog is open, ' : ''}nothing is stored, the title comes back; ` +
-      'a reload mid-run returns to the introduction with the notice',
+      'Back opens the Abandon dialog in both arms; a reload mid-run returns to the introduction with the notice',
   );
 }
 

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { answerOf, buildChoices, typedMatches } from '@/flows/answers';
-import { advanceRecall, answerRecall, itemAt, judgeTiming, markRight, useFlow } from '@/flows/flow';
-import { useCountdown, useWalkKeys } from '@/flows/hooks';
+import { advanceRecall, answerRecall, itemAt, judgeTiming, markRight } from '@/flows/flow';
+import { termLength } from '@/flows/format';
+import { useTimedStop, useWalkKeys } from '@/flows/hooks';
 import { ADVANCE_KEYS, ProgressBar } from './Walk';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
@@ -51,10 +52,18 @@ export function Recall() {
 
   // Judge Mode keeps moving: the feedback is shown, then the walk goes on by itself. A miss is
   // held longer, because that is the moment to look at the image again.
-  const paused = useFlow((s) => s.confirmLeave);
   const timing = judgeTiming();
   const feedbackSeconds = result && !result.correct ? timing.missFeedbackSeconds : timing.feedbackSeconds;
-  const moveOn = useCountdown(judge && answered && !paused, feedbackSeconds, step, advanceRecall);
+  // Like a timed encode stop, the feedback can be paused (the button or P). The pause belongs
+  // to the stop it was set at; the clock also stops while the "leave?" question is open.
+  const canHold = judge && answered;
+  const { progress: moveOn, held, toggle } = useTimedStop('recall', step, feedbackSeconds, canHold, advanceRecall);
+  const pauseRef = useRef<HTMLButtonElement>(null);
+  const toggleHold = () => {
+    // Paused, the focus is on the control, so that Space resumes; resumed, it is back on
+    // "Next place", so that Space moves on as it does on a stop that was never paused.
+    (toggle() ? pauseRef : nextRef).current?.focus({ preventScroll: true });
+  };
   const spot = judge && deck !== undefined && stops.length < deck.items.length;
 
   let choices: string[] = [];
@@ -74,6 +83,8 @@ export function Recall() {
     pick: input === 'choice' && arrived && !result ? (i) => choices[i] !== undefined && commit(choices[i]) : undefined,
     next: result ? advanceRecall : undefined,
     back: step > 0 ? () => useSession.getState().prev() : undefined,
+    pause: canHold ? toggleHold : undefined,
+    resume: held ? toggleHold : undefined,
   });
 
   if (!deck || !locus || !item) return null;
@@ -152,6 +163,14 @@ export function Recall() {
           <button type="button" className="btn btn--primary" ref={nextRef} onClick={advanceRecall} data-testid="recall-next">
             {last ? 'See the results' : 'Next place'}
           </button>
+          {judge && (
+            <button type="button" className="btn" ref={pauseRef} aria-pressed={held} onClick={toggleHold} data-testid="recall-pause">
+              {held ? 'Resume' : 'Pause'}
+              <span className="key" aria-hidden="true">
+                P
+              </span>
+            </button>
+          )}
           {canOverrule && (
             <button type="button" className="btn" onClick={() => markRight(item.id)} data-testid="recall-overrule">
               I was right
@@ -168,17 +187,21 @@ export function Recall() {
               {result.selfMarked ? 'Marked right by you.' : result.correct ? 'Correct.' : 'Not this time.'}
             </p>
             {input === 'typed' && result.given && (result.selfMarked || !result.correct) && <p className="muted">You wrote: {result.given}</p>}
-            <p className="term term--small">{item.term}</p>
+            <p className="term term--small" data-length={termLength(item.term)}>
+              {item.term}
+            </p>
             {item.meaning && <p className="body">{item.meaning}</p>}
             <p className="scene">{item.imago.scene}</p>
           </div>
         )}
       </div>
 
-      <p className="hint">
+      <p className="hint" data-testid="recall-hint">
         {result
           ? judge
-            ? `It moves on by itself; ${ADVANCE_KEYS} moves on sooner.`
+            ? held
+              ? 'Paused. Space or P resumes.'
+              : `It moves on by itself; ${ADVANCE_KEYS} moves on sooner. P pauses.`
             : `${ADVANCE_KEYS}: next.`
           : input === 'choice'
             ? `Keys 1 to ${Math.max(choices.length, 1)} pick an answer.`

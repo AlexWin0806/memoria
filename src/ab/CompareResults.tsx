@@ -6,6 +6,8 @@ const ORDER_TEXT: Record<Order, string> = { 'list-first': 'list first', 'palace-
 /** Table cell: which list was walked in the palace. */
 const PALACE_TEXT: Record<PalaceList, string> = { carpals: 'carpal bones', krebs: 'citric acid cycle' };
 const otherList = (p: PalaceList): PalaceList => (p === 'carpals' ? 'krebs' : 'carpals');
+/** Table cell: a study time in seconds, or a dash for a row stored before the times were kept. */
+const studyText = (seconds: number | undefined) => (seconds === undefined ? '–' : `${seconds.toFixed(1)} s`);
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -113,6 +115,12 @@ export function CompareResults() {
               <th scope="col" className="ab-table__num">
                 Palace
               </th>
+              <th scope="col" className="ab-table__num">
+                List study
+              </th>
+              <th scope="col" className="ab-table__num">
+                Walk study
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -123,6 +131,12 @@ export function CompareResults() {
                 <td data-testid="ab-row-palace">{PALACE_TEXT[palaceListOf(r)]}</td>
                 <td className="ab-table__num">{r.list.score} of 8</td>
                 <td className="ab-table__num">{r.palace.score} of 8</td>
+                <td className="ab-table__num" data-testid="ab-row-study-list" aria-label={r.listStudyS === undefined ? 'not recorded' : undefined}>
+                  {studyText(r.listStudyS)}
+                </td>
+                <td className="ab-table__num" data-testid="ab-row-study-palace" aria-label={r.palaceStudyS === undefined ? 'not recorded' : undefined}>
+                  {studyText(r.palaceStudyS)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -137,6 +151,7 @@ export function CompareResults() {
               <td className="ab-table__num" data-testid="ab-mean-palace">
                 {palaceMean.toFixed(1)} of 8
               </td>
+              <td colSpan={2} />
             </tr>
           </tfoot>
         </table>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { itemAt } from '@/flows/flow';
-import { plural } from '@/flows/format';
+import { plural, termLength } from '@/flows/format';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { isLastStop, useSession } from '@/state/session';
@@ -198,7 +198,7 @@ export function PalaceEncode() {
       <div aria-live="polite">
         {arrived ? (
           <>
-            <h2 className="term" data-testid="ab-encode-term">
+            <h2 className="term" data-length={termLength(item.term)} data-testid="ab-encode-term">
               {item.term}
             </h2>
             {item.meaning && <p className="body">{item.meaning}</p>}

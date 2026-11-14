@@ -316,6 +316,19 @@ let wasWalking = false;
 let lastSaved = '';
 let ignoreNextPop = false;
 
+/**
+ * The comparison test borrows the walk for its palace arm and owns a history entry of its own
+ * under the walk's. It registers here and is handed every popstate first: `walkPop` is true
+ * when the event is only a walk's entry being given back. When it answers true the event is
+ * dealt with, and the walk does not ask "Leave this walk?" as well. (One listener, so that
+ * nothing depends on the order in which two would run.)
+ */
+type PopDelegate = (walkPop: boolean) => boolean;
+let popDelegate: PopDelegate | null = null;
+export function setPopDelegate(delegate: PopDelegate | null): void {
+  popDelegate = delegate;
+}
+
 function followWalk(): void {
   const s = useSession.getState();
   const f = useFlow.getState();
@@ -365,10 +378,9 @@ if (typeof window !== 'undefined') {
   useSession.subscribe(followWalk);
   useFlow.subscribe(followWalk);
   window.addEventListener('popstate', () => {
-    if (ignoreNextPop) {
-      ignoreNextPop = false;
-      return;
-    }
+    const walkPop = ignoreNextPop;
+    ignoreNextPop = false;
+    if (popDelegate?.(walkPop) || walkPop) return;
     if (!isWalking(useSession.getState().mode)) return;
     try {
       history.pushState({ [HISTORY_MARK]: true }, '');

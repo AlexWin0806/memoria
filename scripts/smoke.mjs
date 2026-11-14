@@ -13,13 +13,14 @@
  *      a returning learner's review card and edited copy of the carpal deck are left untouched
  *   b  Judge Mode, first two answers wrong       -> "6 of 8", two Strengthen buttons;
  *      Strengthen with the Architect unreachable, and with it never answering; no review card is
- *      written, and the image kept goes to the learner's own copy, not into the next Judge run
+ *      written, and the image kept goes to the learner's own copy, not into the next Judge run;
+ *      the feedback after an answer can be paused (P) and resumed (Space) like an encode stop
  *   c  Compose a 5-line list, place it, walk encode and recall with the keyboard only
  *   d  (continues c) reload: the new deck is still listed; new versus due; reviews; the Leave dialog
  *   e  Judge Mode with the browser offline       -> "7 of 8", no requests at all, Strengthen at once
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
  *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay;
- *      a timed encode stop can be paused (P) and resumed (Space)
+ *      a timed encode stop can be paused (P) and resumed (Space), whichever stop the key lands on
  *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of three -> "3 of 3";
  *      the learner's saved state survives it too
  *   r  Compose: the draft survives a reload at both steps; dropped lines, the three-fact minimum,
@@ -28,8 +29,9 @@
  *      "I was right" overrules a miss; results say "self-marked", and right and missed are scheduled apart
  *   w  A recall walk survives a reload ("Resume your walk"), its answers are already recorded,
  *      and the browser's Back button opens the Leave dialog
- *   s  Saved data of the wrong shape (four cases, the first the value from QA review 2) is set
- *      aside: the title loads with one quiet line, the original is kept, Judge Mode still starts
+ *   s  Saved data of the wrong shape (five cases, the first the value from QA review 2; the last
+ *      a deck with two items on one place and one on a missing place) is set aside: the title
+ *      loads with one quiet line, the original is kept, Judge Mode still starts
  *   x  A render error shows the error page, not a blank one: Reload, and the guarded Reset
  *   l  Theme Lab (?lab): its buttons take a real click on the title and during a walk; Copy JSON
  *      holds a change made in the Lab, Reset clears it; keys pressed in the Lab do not reach the walk
@@ -210,13 +212,61 @@ const clickIfStillAt = (page, testid, label) =>
   );
 
 /**
+ * A paused timed stop (`screen` is 'encode' or 'recall') stays paused: it does not move on, its
+ * clock stands still, it says how to resume, and Space resumes it without moving on. `pausedAt`
+ * is the walk label of the stop the pause was set at; `seconds` is how long that stop lasts.
+ * Returns once the resumed stop has run out by itself.
+ */
+async function checkPausedStop(page, screen, pausedAt, seconds) {
+  const label = () => text(page.locator(`[data-testid=${screen}] [data-testid=walk-label]`));
+  const clock = () => page.locator(`[data-testid=${screen}] [role=progressbar]`).getAttribute('aria-valuenow');
+  const stoppedAt = await clock();
+  await shot(page, `${screen}-paused`);
+  // Longer than the stop itself would have lasted.
+  await page.waitForTimeout(5500);
+  assert((await label()) === pausedAt, `a paused ${screen} stop moved on by itself (paused at "${pausedAt}", now at "${await label()}")`);
+  assert((await clock()) === stoppedAt, `the clock ran during the pause (${stoppedAt} -> ${await clock()})`);
+  assert((await text(page.getByTestId(`${screen}-hint`))) === 'Paused. Space or P resumes.', `a paused ${screen} stop does not say how to resume`);
+  // The page itself notes when the pause ended and when the stop changed, so that a slow
+  // harness cannot mistake the stop running out for Space moving on (or the other way round).
+  await page.evaluate(
+    ([scr, at]) => {
+      const seen = (window.__resume = { resumed: 0, moved: 0, focus: '' });
+      const observer = new MutationObserver(() => {
+        const pressed = document.querySelector(`[data-testid=${scr}-pause]`)?.getAttribute('aria-pressed');
+        const now = document.querySelector(`[data-testid=${scr}] [data-testid=walk-label]`)?.textContent ?? '';
+        if (!seen.resumed && pressed !== 'true') {
+          seen.resumed = performance.now();
+          seen.focus = document.activeElement?.getAttribute('data-testid') ?? '';
+        }
+        if (!seen.moved && now !== at) {
+          seen.moved = performance.now();
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    },
+    [screen, pausedAt],
+  );
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.__resume.moved > 0, null, { timeout: 30000 });
+  const { resumed, moved, focus } = await page.evaluate(() => window.__resume);
+  const left = (1 - Number(stoppedAt) / 100) * seconds * 1000;
+  assert(resumed > 0, 'Space did not resume the paused stop');
+  assert(left < 1000 || moved - resumed > left / 2, `Space moved on instead of resuming (the stop changed ${Math.round(moved - resumed)} ms after the pause ended, with ${Math.round(left)} ms left)`);
+  // After a resumed feedback stop Space is "next" again: the focus is back on that button.
+  if (screen === 'recall') assert(focus === 'recall-next', `after resuming, the focus is on "${focus}", not on the Next button`);
+}
+
+/**
  * Judge Mode from the title to the results screen.
- *   passive  press nothing but the answers, as a judge who just watches would
- *   think    ms of thought before each answer
- *   pitch    the ?judge=pitch variant: no preview, spot check of three places
+ *   passive     press nothing but the answers, as a judge who just watches would
+ *   think       ms of thought before each answer
+ *   pitch       the ?judge=pitch variant: no preview, spot check of three places
+ *   pauseCheck  pause the feedback after an answer with P and check that it holds (once)
  * Returns the score text, how long the run took, and the places recalled.
  */
-async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 0, pitch = false } = {}) {
+async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 0, pitch = false, pauseCheck = false } = {}) {
   const LONG = { timeout: 240000 };
   const quietShot = (name) => (shots ? shot(page, `${shots}-${name}`).catch(() => {}) : undefined);
   await page.evaluate(installWalkLog);
@@ -275,6 +325,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   const label = (i) => (pitch ? `Spot check ${i} of ${SPOT}` : `Place ${i} of 8`);
   const visited = [];
   const expected = [];
+  let pauseChecked = false;
   for (let i = 1; i <= stops; i++) {
     await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("${label(i)}")`).waitFor();
     const question = page.getByTestId('recall-question');
@@ -293,6 +344,16 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     await page.getByTestId('choice').nth(pick).click();
     expected.push({ state: i <= wrong ? 'wrong' : 'right', answer });
     if (i === 3 || i === 1) await quietShot(`recall-feedback-${i}`);
+    if (pauseCheck && !pauseChecked) {
+      // The feedback is a timed stop too. If the key lands after it has moved on (a busy machine), P does nothing there: try the next one.
+      await page.keyboard.press('p');
+      const paused = await page.locator('[data-testid=recall-pause][aria-pressed=true]').waitFor({ timeout: 1500 }).then(() => true, () => false);
+      const at = paused ? await text(page.locator('[data-testid=recall] [data-testid=walk-label]')) : '';
+      if (at.includes(label(i))) {
+        await checkPausedStop(page, 'recall', at, i <= wrong ? 3.5 : 2);
+        pauseChecked = true;
+      }
+    }
     // The walk moves on by itself after a moment; when clicking through, never click a later stop's button.
     if (!passive) await clickIfStillAt(page, 'recall-next', label(i));
   }
@@ -300,6 +361,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   await page.getByTestId('results').waitFor();
   const ms = Date.now() - started;
   mark('results');
+  if (pauseCheck) assert(pauseChecked, 'P never paused the feedback after an answer');
   const reveals = await page.evaluate(() => window.__walkLog.reveal);
   assert(reveals.length === stops, `expected feedback at ${stops} stops, saw ${reveals.length}`);
   reveals.forEach((r, i) => {
@@ -461,7 +523,7 @@ const cases = {
     await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
     await page.getByTestId('title').waitFor();
     await page.waitForFunction(() => window.__memoria?.session);
-    const { score } = await judgeRun(page, { wrong: 2 });
+    const { score } = await judgeRun(page, { wrong: 2, pauseCheck: true });
     assert(score === '6 of 8', `expected 6 of 8, got "${score}"`);
     const n = await page.getByTestId('strengthen').count();
     assert(n === 2, `expected two Strengthen buttons, got ${n}`);
@@ -1032,6 +1094,17 @@ const cases = {
         1,
         { 'memoria.walk.v1': '{"mode":"recall","deckId":"deck-ok","stops":"all","results":[]}' },
       ],
+      // QA review 3, issue 7: well formed, but two items share a place and one sits on a place the palace does not have.
+      [
+        'two items on one place, and one on a place that does not exist',
+        {
+          'memoria.decks.v1': JSON.stringify({
+            state: { decks: { 'deck-ok': { ...good, items: [good.items[0], { ...good.items[0], id: 'k2', term: 'Second on the same place' }, { ...good.items[0], id: 'k3', term: 'Nowhere', locusId: 'domus-99' }] } } },
+            version: 0,
+          }),
+        },
+        1,
+      ],
     ];
     for (const [name, local, kept, session = {}] of shapes) {
       await page.evaluate(
@@ -1055,6 +1128,16 @@ const cases = {
         assert(aside.some((e) => e.key === k && e.raw === v), `${name}: the original of ${k} was not kept`);
       }
       if (name === shapes[0][0]) await shot(page, 'title-set-aside');
+      if (name.startsWith('two items on one place')) {
+        // The count on the title ("1 place", above) is what the walk has: the first item on the place, and no other.
+        const keptItems = await page.evaluate(() => JSON.parse(localStorage.getItem('memoria.decks.v1')).state.decks['deck-ok'].items.map((it) => it.id));
+        assert(JSON.stringify(keptItems) === '["k1"]', `${name}: the repaired deck holds ${keptItems}`);
+        await page.getByRole('button', { name: 'Recall A kept palace' }).click();
+        await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 1")').waitFor();
+        await page.keyboard.press('Escape');
+        await page.getByTestId('leave-yes').click();
+        await page.getByTestId('title').waitFor();
+      }
       // Judge Mode still starts; then back to the title, so that the walk is not saved over the next case.
       await page.getByTestId('title-judge').click();
       await page.getByTestId('familiarize').waitFor();
@@ -1192,27 +1275,23 @@ const cases = {
     }
 
     // A timed encode stop can be paused: P stops the clock where it is, Space starts it again.
+    // On a busy machine the key can land a stop later than the image that was waited for, or
+    // during a glide (where P does nothing). So the stop under test is the one the pause was
+    // set at, whichever that is: the test used to assume the first, and failed under load.
     await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
     await page.getByTestId('title-judge').click();
-    const firstStop = page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 1 of 8")');
-    await page.getByTestId('encode-term').waitFor();
-    await page.keyboard.press('p');
-    await page.locator('[data-testid=encode-pause][aria-pressed=true]').waitFor();
-    const clock = () => page.locator('[data-testid=encode] [role=progressbar]').getAttribute('aria-valuenow');
-    const stoppedAt = await clock();
-    await shot(page, 'encode-paused');
-    // Longer than the stop itself would have lasted.
-    await page.waitForTimeout(5500);
-    assert((await firstStop.count()) === 1, 'a paused stop moved on by itself');
-    assert((await clock()) === stoppedAt, `the clock ran during the pause (${stoppedAt} -> ${await clock()})`);
-    assert((await text(page.getByTestId('encode-hint'))) === 'Paused. Space or P resumes.', 'a paused stop does not say how to resume');
-    await page.keyboard.press('Space');
-    await page.locator('[data-testid=encode-pause][aria-pressed=false]').waitFor();
-    assert((await firstStop.count()) === 1, 'Space moved on instead of resuming');
-    await page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 2 of 8")').waitFor({ timeout: 30000 });
+    let pausedAt = '';
+    for (let attempt = 0; attempt < 4 && !pausedAt; attempt++) {
+      await page.getByTestId('encode-term').waitFor();
+      await page.keyboard.press('p');
+      const paused = await page.locator('[data-testid=encode-pause][aria-pressed=true]').waitFor({ timeout: 4000 }).then(() => true, () => false);
+      if (paused) pausedAt = await text(page.locator('[data-testid=encode] [data-testid=walk-label]'));
+    }
+    assert(pausedAt, 'P did not pause a timed encode stop');
+    await checkPausedStop(page, 'encode', pausedAt, 4);
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return '?judge starts Judge Mode; ?shot and ?rail hide the overlay; P pauses a timed stop and Space resumes it';
+    return `?judge starts Judge Mode; ?shot and ?rail hide the overlay; P pauses a timed stop (${pausedAt.split('·')[0].trim()}) and Space resumes it`;
   },
 };
 

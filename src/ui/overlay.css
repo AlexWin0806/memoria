@@ -105,6 +105,11 @@
 }
 .term--small { font-size: 30px; margin: 6px 0 8px; }
 .term--large { font-size: 56px; margin: 10px 0 0; }
+/* A long term is set smaller, so that it wraps inside the panel without filling it (termLength in src/flows/format.ts). */
+.term[data-length='long'] { font-size: 30px; line-height: 1.15; }
+.term[data-length='very-long'] { font-size: 22px; line-height: 1.3; }
+.term--small[data-length='long'] { font-size: 24px; }
+.term--small[data-length='very-long'] { font-size: 20px; }
 .question {
   margin: 8px 0 16px;
   font-family: var(--type-display);
@@ -281,6 +286,8 @@ textarea.field { resize: vertical; }
   text-align: left;
   cursor: pointer;
 }
+/* An option can be one long unbroken word: it wraps inside its row, never past the panel. */
+.choice > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .choice:hover:not(:disabled) { background: var(--wash); }
 .choice:disabled { cursor: default; }
 .choice__key { color: var(--ui-muted); }
@@ -331,6 +338,8 @@ textarea.field { resize: vertical; }
 }
 .place__mark { flex: 0 0 18px; color: var(--ui-success); }
 .place[data-state='wrong'] .place__mark { color: var(--ui-danger); }
+/* The same for a term or a palace name in a results or review row. */
+.place__text { min-width: 0; overflow-wrap: anywhere; }
 .place__term { display: block; font-size: 20px; }
 .place__meta { display: block; font-size: 16px; color: var(--ui-muted); }
 .place > .link { margin: 6px 0 0 30px; }
@@ -453,6 +462,9 @@ textarea.field { resize: vertical; }
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+.pair > * { min-width: 0; }
+.prop,
+.notice { overflow-wrap: anywhere; }
 .sub {
   display: block;
   margin: 10px 0 4px;
@@ -560,6 +572,8 @@ textarea.field { resize: vertical; }
   padding: 10px 0;
   border-bottom: 1px solid var(--rule);
 }
+/* A long palace name wraps inside the column; the row's actions then sit under it. */
+.deck__text { min-width: 0; overflow-wrap: anywhere; }
 .deck__title { display: block; font-size: 20px; }
 .deck__meta { display: block; font-size: 16px; }
 .deck__actions {
