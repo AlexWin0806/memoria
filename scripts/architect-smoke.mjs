@@ -67,12 +67,14 @@ try {
     if (links.length > Math.floor(facts * 1.5)) fail(`${label}: ${links.length} links for ${facts} facts (the cap is one and a half per fact)`);
   };
   /** A palace plan, or a deck dressed as one: rooms within the limits, one fact per place in walking order, sound links. */
-  const checkPalace = (label, plan) => {
+  const checkPalace = (label, plan, { lone = false } = {}) => {
     const spec = parsePalaceId(plan.layoutId);
     if (!spec) return fail(`${label}: layoutId is not a generated palace: ${plan.layoutId}`);
     if (plan.spec && JSON.stringify(spec) !== JSON.stringify(plan.spec)) fail(`${label}: layoutId and spec disagree`);
     if (spec.rooms.length > MAX_ROOMS || spec.rooms.some((r) => r.places < 1 || r.places > ROOM_CAPACITY)) fail(`${label}: more than ${MAX_ROOMS} rooms, or a room with more than ${ROOM_CAPACITY} places`);
     if (plan.items.length > MAX_PLACES) fail(`${label}: ${plan.items.length} items`);
+    // A new palace has no room of a single place. (Only a palace that is extended can: nothing in it may move.)
+    if (!lone && plan.items.length > 1 && spec.rooms.some((r) => r.places === 1)) fail(`${label}: a room of one place: ${spec.rooms.map((r) => `${r.name} (${r.places})`).join(', ')}`);
     const placeIds = specPlaces(spec).map((p) => p.id);
     if (plan.items.length > 0 && plan.items.map((i) => i.locusId).join() !== placeIds.join()) fail(`${label}: items are not one per place in walking order: ${plan.items.map((i) => i.locusId)} against ${placeIds}`);
     const ids = new Set(plan.items.map((i) => i.id));
@@ -86,7 +88,7 @@ try {
       const inCategory = plan.categories.flatMap((c) => c.itemIds);
       if (inCategory.length !== plan.items.length || new Set(inCategory).size !== plan.items.length) fail(`${label}: every item should be in exactly one category`);
       for (const c of plan.categories) {
-        if (c.name.split(/\s+/).length > 3 && !/ & /.test(c.name)) fail(`${label}: the category name "${c.name}" is longer than three words`);
+        if (c.name.split(/\s+/).length > 3 && !/ & /.test(c.name) && !/^Steps \d+ to \d+$/.test(c.name)) fail(`${label}: the category name "${c.name}" is longer than three words`);
         for (const id of c.itemIds) if (!c.roomIds.includes(roomOf(plan.items.find((i) => i.id === id)?.locusId ?? ''))) fail(`${label}: an item of ${c.name} is not in one of its rooms`);
         for (const roomId of c.roomIds) if ((spec.rooms.find((r) => r.id === roomId)?.shape === 'ring') !== (c.shape === 'ring')) fail(`${label}: the room ${roomId} of ${c.name} has the wrong shape`);
       }
@@ -254,8 +256,14 @@ try {
     const cycle = FIXTURE_DECKS.find((d) => d.id === 'fixture-krebs-cycle');
     const krebsDeck = FIXTURE_DECKS.find((d) => d.id === 'fixture-krebs');
     if (cycle.items.map((it) => `${it.term}|${it.meaning}`).join() !== krebsDeck.items.map((it) => `${it.term}|${it.meaning}`).join()) fail('fixture-krebs-cycle: terms and meanings should be those of fixture-krebs, in order');
-    const rooms = parsePalaceId(cycle.layoutId).rooms;
-    if (rooms.length > 2 || rooms.some((r) => r.shape !== 'ring')) fail(`fixture-krebs-cycle: expected one or two round rooms, got ${rooms.map((r) => `${r.name}:${r.shape ?? 'hall'}`)}`);
+    // Eight steps do not fit one round room (five places), and two round rooms would read as two cycles:
+    // two workshop halls of four stations, the loop closed by the link from the last step back to the first.
+    const cycleSpec = parsePalaceId(cycle.layoutId);
+    const rooms = cycleSpec.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`).join();
+    if (cycleSpec.kit !== 'workshop' || rooms !== 'Citrate to succinyl-CoA:4:hall,Succinate to oxaloacetate:4:hall') fail(`fixture-krebs-cycle: expected two workshop halls of four, got ${cycleSpec.kit}: ${rooms}`);
+    if (cycle.items.map((it) => it.locusId).join() !== specPlaces(cycleSpec).map((pl) => pl.id).join()) fail('fixture-krebs-cycle: the items are not on the places of its palace, in order');
+    if (!cycle.links.some((l) => l.kind === 'becomes' && l.from === cycle.items.at(-1).id && l.to === cycle.items[0].id)) fail('fixture-krebs-cycle: the link from the last step back to the first is missing');
+    if (parsePalaceId(tenses.layoutId).kit !== 'gothic') fail('fixture-spanish-tenses: should stay in the Gothic library');
     const blocks = cycle.links.filter((l) => l.kind === 'blocks');
     if (cycle.links.filter((l) => l.kind === 'becomes').length !== 8 || blocks.length < 1 || blocks.length > 2 || cycle.links.some((l) => !l.label)) fail('fixture-krebs-cycle: expected eight labelled "becomes" links and one or two labelled "blocks" links');
     if (cycle.focus !== 'process') fail('fixture-krebs-cycle: focus should be process');
@@ -599,7 +607,7 @@ try {
 
   // ── 2d. Generated palaces offline: rooms from headings, links from plain phrases ──
   section('Offline planner: rooms, links, the 30-place limit, extension');
-  const kitList = [{ id: 'gothic', name: 'Gothic library', blurb: 'Stone shelves and lecterns.' }, { id: 'zen', name: 'Zen garden', blurb: 'Raked gravel, stones and water.' }];
+  const kitList = [{ id: 'gothic', name: 'Gothic library', blurb: 'Stone shelves and lecterns.' }, { id: 'workshop', name: 'Workshop', blurb: 'Machines in a line, a channel from station to station: suits processes.' }];
   {
     const verbs = ['# Comer in three tenses', '## Past', 'comí - I ate', 'comiste - you ate', 'comió - he ate', '## Present', 'como - I eat', 'comes - you eat', 'come - he eats', '## Future', 'comeré - I will eat', 'comerás - you will eat', 'comerá - he will eat', 'comí <-> como', 'como <-> comeré'].join('\n');
     const heard = [];
@@ -616,8 +624,10 @@ try {
     // Every draft here is a labelled box: all nine are flagged "needs a better picture".
     if (plan.lowConfidence.length !== 9 || !plan.items.every((it) => plan.lowConfidence.includes(it.id))) fail(`offline headings: ${plan.lowConfidence.length} of 9 generic drafts flagged in lowConfidence`);
     if (plan.kit.id !== 'gothic' || plan.kit.chosenBy !== 'default' || plan.kit.reason) fail(`offline headings: the kit should be the first one, chosen by nobody: ${JSON.stringify(plan.kit)}`);
-    if (designPalaceLocal({ text: verbs, kits: kitList, kit: 'zen' }).kit.chosenBy !== 'learner') fail('offline: a kit asked for by id is the learner\'s choice');
-    if (designPalaceLocal({ text: verbs, kit: 'zen' }).spec.kit !== 'zen') fail('offline: the chosen kit is not in the palace');
+    if (designPalaceLocal({ text: verbs, kits: kitList, kit: 'workshop' }).kit.chosenBy !== 'learner') fail('offline: a kit asked for by id is the learner\'s choice');
+    if (designPalaceLocal({ text: verbs, kit: 'workshop' }).spec.kit !== 'workshop') fail('offline: the chosen kit is not in the palace');
+    const noSuchKit = designPalaceLocal({ text: verbs, kit: 'castle' });
+    if (noSuchKit.spec.kit !== 'gothic' || noSuchKit.kit.chosenBy !== 'default') fail(`offline: a kit that does not exist should give way to the default, got ${JSON.stringify(noSuchKit.kit)}`);
     if (JSON.stringify(heard) !== JSON.stringify(plan.steps)) fail('offline headings: onStep did not report the planner\'s steps');
     if (snapshots.length !== 1 || snapshots[0].pendingRooms.length !== 0) fail('offline headings: onProgress should be called once with nothing pending');
     const again = designPalaceLocal({ text: verbs, kits: kitList });
@@ -640,8 +650,25 @@ try {
     if (said.filter((s) => / becomes /.test(s)).length !== 8 || !said.includes('Oxaloacetate becomes Citrate')) fail(`offline arrows: the eight "becomes" links, closing the loop, were not read: ${said.join('; ')}`);
     if (!said.includes('Succinyl-CoA blocks Citrate')) fail('offline arrows: "A inhibits B" was not read as a blocks link');
     if (said.some((s) => /requires|needs/.test(s)) || cycle.links.length !== 9) fail(`offline arrows: a second link for a pair that already has one, or a self-link, got through: ${said.join('; ')}`);
-    if (cycle.categories.length !== 1 || cycle.categories[0].shape !== 'ring' || cycle.spec.rooms.some((r) => r.shape !== 'ring')) fail('offline arrows: a list that closes on itself should be one category in round rooms');
-    if (cycle.spec.rooms.map((r) => `${r.name}:${r.places}`).join() !== 'Citric acid cycle:5,Citric acid cycle II:3') fail(`offline arrows: rooms ${cycle.spec.rooms.map((r) => `${r.name}:${r.places}`)}`);
+    // Eight steps do not fit one round room: consecutive halls, and the link back to the first step closes the loop.
+    if (cycle.spec.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`).join() !== 'Steps 1 to 5:5:hall,Steps 6 to 8:3:hall') fail(`offline arrows: rooms ${cycle.spec.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`)}`);
+    if (!cycle.steps.some((s) => /does not fit one round room/.test(s.label) && /closes it/.test(s.label))) fail('offline arrows: the trace does not say why a long cycle is not a round room');
+    // A cycle that fits is one round room, named for the cycle.
+    const water = designPalaceLocal({ text: 'Water cycle:\nEvaporation -> Condensation -> Precipitation -> Collection -> Evaporation' });
+    checkPalace('offline short cycle', water);
+    if (water.focus !== 'process' || water.spec.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`).join() !== 'Water cycle:4:ring' || water.links.length !== 4) fail(`offline short cycle: ${water.spec.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`)}, ${water.links.length} links`);
+    // The steps of a process are stations in a hall, never a room each, and never a room of one.
+    const bread = designPalaceLocal({ text: 'Mixing -> Kneading -> Proving -> Shaping -> Baking -> Cooling' });
+    checkPalace('offline process', bread);
+    if (bread.focus !== 'process' || bread.spec.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`).join() !== 'Steps 1 to 3:3:hall,Steps 4 to 6:3:hall') fail(`offline process: ${bread.spec.rooms.map((r) => `${r.name}:${r.places}`)}`);
+    const five = designPalaceLocal({ text: 'Bread making:\nMixing -> Kneading -> Proving -> Shaping -> Baking' });
+    if (five.spec.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`).join() !== 'Bread making:5:hall') fail(`offline process of five: ${five.spec.rooms.map((r) => `${r.name}:${r.places}`)}`);
+    // Facts: a heading with a single fact shares the room of the heading beside it, and the trace says so.
+    const lonely = designPalaceLocal({ text: '## Metals\nIron\nCopper\nZinc\n## Liquid\nMercury\n## Gases\nNeon\nArgon' });
+    checkPalace('offline single-fact heading', lonely);
+    if (lonely.spec.rooms.map((r) => `${r.name}:${r.places}`).join() !== 'Metals:4,Gases:2' || !lonely.steps.some((s) => s.label === '"Liquid" had one fact and shares a room with "Metals".')) fail(`offline single-fact heading: ${lonely.spec.rooms.map((r) => `${r.name}:${r.places}`)}; ${lonely.steps.map((s) => s.label).join(' | ')}`);
+    const six = designPalaceLocal({ text: 'Fe\nCu\nZn\nHg\nNe\nAr' });
+    if (six.spec.rooms.map((r) => r.places).join() !== '3,3') fail(`offline: six plain facts should be three and three, never five and one: ${six.spec.rooms.map((r) => r.places)}`);
     if (cycle.focus !== 'process' || !cycle.focusReason || !cycle.steps.some((s) => /reads as a process/.test(s.label))) fail(`offline arrows: arrows over every fact should make this a process, got ${cycle.focus}`);
     const lemon = cycle.items.find((it) => it.term === 'Citrate');
     if (cycle.lowConfidence.includes(lemon.id) || cycle.lowConfidence.length === 0) fail('offline arrows: the lemon for citrate is tied to the fact and should not be flagged; the labelled boxes should be');
@@ -679,15 +706,20 @@ try {
     checkPalace('offline extension', { ...ext, items: ext.deck.items, links: ext.deck.links, spec: ext.spec, layoutId: ext.deck.layoutId, categories: null });
     if (JSON.stringify(deck) !== frozen) fail('offline extension: the deck passed in was changed');
     if (!deck.items.every((it) => ext.deck.items.includes(it))) fail('offline extension: an existing item was replaced');
-    if (ext.added.length !== 4 || ext.added.map((i) => i.term).join() !== 'comimos,comieron,comisteis,comería') fail(`offline extension: added ${ext.added.map((i) => i.term)}`);
-    if (ext.added.slice(0, 2).map((i) => i.locusId).join() !== 'r1-4,r1-5' || ext.added[2].locusId !== 'r4-1' || ext.added[3].locusId !== 'r5-1') fail(`offline extension: new facts should fill Past, then open "Past II" and "Conditional" at the end: ${ext.added.map((i) => i.locusId)}`);
-    if (ext.spec.rooms.map((r) => `${r.id}:${r.name}:${r.places}`).join() !== 'r1:Past:5,r2:Present:3,r3:Future:3,r4:Past II:1,r5:Conditional:1') fail(`offline extension: rooms ${ext.spec.rooms.map((r) => `${r.id}:${r.name}:${r.places}`)}`);
+    if (ext.added.length !== 4 || ext.added.map((i) => i.term).join() !== 'comimos,comería,comieron,comisteis') fail(`offline extension: added ${ext.added.map((i) => i.term)}`);
+    // Three more for Past, which has two free places: one is held back so that "Past II" opens with two, not one.
+    // "Conditional" has a single fact, so it shares the last room instead of opening a room of one place.
+    if (ext.added.map((i) => i.locusId).join() !== 'r1-4,r3-4,r4-1,r4-2') fail(`offline extension: expected one more in Past, two in a new "Past II", and the lone conditional in Future: ${ext.added.map((i) => `${i.term}@${i.locusId}`)}`);
+    if (!ext.steps.some((s) => s.label === '"Conditional" had one fact and shares a room with "Future".')) fail(`offline extension: the steps do not say where the lone fact went: ${ext.steps.map((s) => s.label).join(' | ')}`);
+    if (ext.spec.rooms.map((r) => `${r.id}:${r.name}:${r.places}`).join() !== 'r1:Past:4,r2:Present:3,r3:Future:4,r4:Past II:2') fail(`offline extension: rooms ${ext.spec.rooms.map((r) => `${r.id}:${r.name}:${r.places}`)}`);
     const future1 = deck.items.find((i) => i.term === 'comeré');
-    if (ext.links.length !== 1 || ext.links[0].from !== future1.id || ext.links[0].to !== ext.added[3].id || ext.links[0].kind !== 'becomes') fail(`offline extension: the link from an old fact to a new one is missing: ${JSON.stringify(ext.links)}`);
+    if (ext.links.length !== 1 || ext.links[0].from !== future1.id || ext.links[0].to !== ext.added.find((i) => i.term === 'comería').id || ext.links[0].kind !== 'becomes') fail(`offline extension: the link from an old fact to a new one is missing: ${JSON.stringify(ext.links)}`);
     if (ext.deck.links.length !== 3 || ext.deck.id !== deck.id) fail('offline extension: the grown deck should keep its id and its old links');
     const heroesBefore = new Set(deck.items.map((i) => i.imago.glyphs[0]));
     if (ext.added.some((i) => heroesBefore.has(i.imago.glyphs[0]))) fail('offline extension: a new image reuses a picture that is already in the palace');
     if (ext.steps.some((s) => /Skipped/.test(s.label)) === false) fail('offline extension: "comí" is already in the palace and should be reported as skipped');
+    const wing = extendPalaceLocal(deck, '## Conditional\ncomería - I would eat\ncomerías - you would eat');
+    if (wing.spec.rooms.map((r) => `${r.name}:${r.places}`).join() !== 'Past:3,Present:3,Future:3,Conditional:2' || wing.added.map((i) => i.locusId).join() !== 'r4-1,r4-2') fail(`offline extension: a new category of two should open its own room at the end: ${wing.spec.rooms.map((r) => `${r.name}:${r.places}`)}`);
     // A plain palace simply continues.
     const plainDeck = { id: 'deck-plain', title: 'Things', kind: 'pairs', layoutId: twelve.layoutId, items: twelve.items, createdAt: 1 };
     const more = extendPalaceLocal(plainDeck, lines.slice(12, 20).join('\n'));
@@ -710,7 +742,7 @@ try {
     // The link rules, applied again on the client to whatever the server sends.
     const dirty = toOutline(
       {
-        title: 'T', kind: 'list', kit: { id: 'zen', chosen: true, reason: 'Because.' },
+        title: 'T', kind: 'list', kit: { id: 'workshop', chosen: true, reason: 'Because.' },
         categories: [{ name: 'A', shape: 'ring' }, { name: 'B', shape: 'hall' }],
         items: [{ ref: 'i1', term: 'one', category: 0, picture: '🍋' }, { ref: 'i2', term: 'two', category: 1, picture: '🍋' }, { ref: 'i3', term: 'three', category: 0, picture: '👨‍👩‍👧' }, { ref: 'i4', term: 'four', category: 1 }],
         links: [
@@ -720,15 +752,27 @@ try {
         ],
         overflow: ['left'], steps: [{ kind: 'plan', label: 'Found 1 facts.' }, { kind: 'nope', label: 'x' }],
       },
-      { cap: 30, kitIds: ['zen'] },
+      { cap: 30, kitIds: ['workshop'] },
     );
     const got = dirty?.links.map((l) => `${l.from}>${l.to}:${l.kind}${l.label ? `:${l.label}` : ''}`).join(' ');
     console.log(`[link rules]  ${got}`);
     if (got !== 'i1>i2:becomes i3>i4:blocks:two words i1>i3:needs i1>i4:needs i2>i3:needs i2>i4:needs') fail(`client link rules: ${got}`);
     if (dirty.items.map((i) => i.ref).join() !== 'i1,i3,i2,i4' || dirty.items[2].picture || dirty.items[1].picture) fail('client outline rules: items should be in walking order, with repeated or unsafe pictures removed');
-    if (dirty.steps.length !== 1 || dirty.steps[0].label !== 'Found 1 fact.' || dirty.kit?.id !== 'zen') fail('client outline rules: steps or kit not cleaned');
+    if (dirty.steps.length !== 1 || dirty.steps[0].label !== 'Found 1 fact.' || dirty.kit?.id !== 'workshop') fail('client outline rules: steps or kit not cleaned');
     if (toOutline({ title: 'T', kind: 'list', categories: [{ name: 'A' }], items: [{ ref: 'i1', term: 'one', category: 3 }] }, { cap: 30 })) fail('client outline rules: an item in a category that does not exist was accepted');
     if (toOutline({ title: 'T', kind: 'list', categories: [{ name: 'A' }], items: Array.from({ length: 31 }, (_, i) => ({ ref: `i${i + 1}`, term: `t${i}`, category: 0 })) }, { cap: 30 })) fail('client outline rules: 31 items were accepted');
+    const sixRooms = toOutline(
+      {
+        title: 'Bread', kind: 'list', focus: 'process', focusReason: 'Each step leads to the next.',
+        categories: ['Mixing', 'Kneading', 'Proving', 'Shaping', 'Baking', 'Cooling'].map((name) => ({ name, shape: 'hall' })),
+        items: ['Mixing', 'Kneading', 'Proving', 'Shaping', 'Baking', 'Cooling'].map((term, i) => ({ ref: `i${i + 1}`, term, category: i })),
+        links: [], overflow: [], steps: [],
+      },
+      { cap: 30 },
+    );
+    if (sixRooms.categories.map((c, i) => `${c.name}:${sixRooms.items.filter((it) => it.category === i).length}`).join() !== 'Steps 1 to 3:3,Steps 4 to 6:3' || sixRooms.links.length !== 5 || !sixRooms.steps.some((s) => /never a single step/.test(s.label))) {
+      fail(`client room rules: six steps in six rooms should arrive as two rooms of three: ${sixRooms.categories.map((c) => c.name)}; ${sixRooms.steps.map((s) => s.label)}`);
+    }
     const capped = cleanLinks(Array.from({ length: 9 }, (_, i) => ({ from: `a${i}`, to: `b${i}`, kind: 'needs' })), { known: () => true, max: linkCap(4) });
     if (capped.length !== 6) fail(`client link rules: the cap for four facts is six links, got ${capped.length}`);
   }
@@ -890,7 +934,7 @@ try {
       modelItems[2].picture = '👨‍👩‍👧'; // not a single emoji
       modelItems.push({ ...oItem(3, 'c1'), term: 'a second fact with the id i3' }, { ...oItem(27, 'c6'), term: '   ' });
       const answerA = {
-        title: 'Mock palace', kind: 'list', kit: 'zen', kitReason: 'A cycle suits a garden.', focus: 'facts', focusReason: '',
+        title: 'Mock palace', kind: 'list', kit: 'workshop', kitReason: 'A cycle suits a garden.', focus: 'facts', focusReason: '',
         categories: sizes.map((_, c) => ({ id: `c${c + 1}`, name: c === 0 ? 'Past tense forms here' : `Group ${c + 1}`, cycle: c === 3 })),
         items: modelItems,
         links: [
@@ -918,20 +962,26 @@ try {
         check('outline: repeated and unsafe pictures are dropped', o.items[0].picture === GLYPHS[1] && !o.items[1].picture && !o.items[2].picture && o.items.every((i) => !i.picture || isSafeGlyph(i.picture)));
         const said = o.links.map((l) => `${l.from}>${l.to}:${l.kind}${l.label ? `:${l.label}` : ''}`).join(' ');
         check('outline: links have two different known facts, one per pair, short labels', said === 'i1>i2:becomes i12>i13:becomes:next i13>i14:becomes i14>i12:becomes i20>i3:blocks:inhibits it', said);
-        check('outline: the Architect chose a kit and said why', o.kit.id === 'zen' && o.kit.chosen === true && o.kit.reason === 'A cycle suits a garden.' && o.steps.some((s) => /Zen garden kit/.test(s.label)), JSON.stringify(o.kit));
+        check('outline: the Architect chose a kit and said why', o.kit.id === 'workshop' && o.kit.chosen === true && o.kit.reason === 'A cycle suits a garden.' && o.steps.some((s) => /Workshop kit/.test(s.label)), JSON.stringify(o.kit));
         check('outline: steps say what was built', o.steps.some((s) => /6 rooms from 5 categories/.test(s.label) && /Merged 1/.test(s.label)) && o.steps.some((s) => /5 links/.test(s.label)));
       }
       const prompt = String(seen[0]?.messages?.[0]?.content);
       const schema = JSON.stringify(seen[0]?.output_config?.format?.schema ?? {});
-      check('outline request: one call, kits listed, limits stated, links only where stated', seen.length === 1 && /zen: Zen garden/.test(prompt) && /at most 30 facts/.test(prompt) && /only where the material states them/.test(prompt));
-      check('outline request: schema pins item ids, category ids and kit ids', schema.includes('"i30"') && !schema.includes('"i31"') && schema.includes('"c6"') && schema.includes('"zen"') && schema.includes('"mirrors"'));
+      check('outline request: one call, kits listed, limits stated, links only where stated', seen.length === 1 && /workshop: Workshop\. Machines in a line/.test(prompt) && /at most 30 facts/.test(prompt) && /only where the material states them/.test(prompt));
+      check('outline request: schema pins item ids, category ids and kit ids', schema.includes('"i30"') && !schema.includes('"i31"') && schema.includes('"c6"') && schema.includes('"workshop"') && schema.includes('"mirrors"'));
 
       // No real categories: plain consecutive rooms in the order given.
-      queue.push(answer(JSON.stringify({ title: 'Plain', kind: 'list', kit: 'castle', kitReason: '', focus: 'facts', focusReason: '', categories: [{ id: 'c1', name: '', cycle: false }], items: Array.from({ length: 12 }, (_, i) => oItem(i + 1, 'c1')), links: [], overflow: [], grouping: '' })));
-      r = await call({ ...outlineBody, kit: 'castle', maxItems: 12 });
+      queue.push(answer(JSON.stringify({ title: 'Plain', kind: 'list', kit: 'workshop', kitReason: '', focus: 'facts', focusReason: '', categories: [{ id: 'c1', name: '', cycle: false }], items: Array.from({ length: 12 }, (_, i) => oItem(i + 1, 'c1')), links: [], overflow: [], grouping: '' })));
+      r = await call({ ...outlineBody, kit: 'workshop', maxItems: 12 });
       const plain = r.json?.outline;
       check('outline: no categories gives plain rooms of up to five, in order', plain?.categories.map((c) => c.name).join() === 'Part 1,Part 2,Part 3' && plain.items.map((i) => i.category).join('') === '000001111122' && plain.items.every((it, i) => it.ref === `i${i + 1}`), plain?.categories.map((c) => c.name).join());
-      check('outline: a kit chosen by the learner is not second-guessed', plain?.kit.id === 'castle' && plain.kit.chosen === false && !plain.steps.some((s) => /kit/.test(s.label)), JSON.stringify(plain?.kit));
+      check('outline: a kit chosen by the learner is not second-guessed', plain?.kit.id === 'workshop' && plain.kit.chosen === false && !plain.steps.some((s) => /kit/.test(s.label)), JSON.stringify(plain?.kit));
+      // A kit that is not in the list the app sent does not exist: it can never come back.
+      seen.length = 0;
+      queue.push(answer(JSON.stringify({ title: 'Plain', kind: 'list', kit: 'gothic', kitReason: '', focus: 'facts', focusReason: '', categories: [{ id: 'c1', name: 'Things', cycle: false }], items: [oItem(1, 'c1'), oItem(2, 'c1')], links: [], overflow: [], grouping: '' })));
+      r = await call({ ...outlineBody, kit: 'castle' });
+      check('outline: a kit that is not in the list falls back to the default', r.json?.outline?.kit.id === 'gothic' && !JSON.stringify(seen[0]?.output_config?.format?.schema ?? {}).includes('castle') && /answer kit "gothic"/.test(String(seen[0]?.messages?.[0]?.content)), JSON.stringify(r.json?.outline?.kit));
+      check('outline request: with auto, the model is told to act on what a kit says it suits', /choose a kit described as suiting them/.test(prompt) && /suits processes/.test(prompt));
 
       // Thirty facts in categories of 6, 5, 5, 5, 5 and 4 need seven rooms and nothing merges: the last category is left out, and said to be.
       k = 0;
@@ -945,7 +995,7 @@ try {
       queue.push(
         answer(
           JSON.stringify({
-            title: '', kind: 'pairs', kit: 'zen', kitReason: '', focus: 'process', focusReason: 'not for an extension',
+            title: '', kind: 'pairs', kit: 'workshop', kitReason: '', focus: 'process', focusReason: 'not for an extension',
             categories: [{ id: 'c1', name: 'Conditional', cycle: false }],
             items: [oItem(1, 'x1', { term: 'comimos' }), oItem(2, 'x1', { term: 'Comí' }), oItem(3, 'c1', { term: 'comería' })],
             links: [{ from: 'i1', to: 'e1', kind: 'mirrors', label: '' }, { from: 'e1', to: 'e2', kind: 'mirrors', label: '' }, { from: 'e4', to: 'i3', kind: 'becomes', label: '' }],
@@ -955,7 +1005,7 @@ try {
       );
       seen.length = 0;
       const existing = { title: 'Comer', rooms: [{ name: 'Past', shape: 'hall', free: 2, terms: ['comí', 'comiste', 'comió'] }, { name: 'Future', shape: 'hall', free: 4, terms: ['comeré'] }], newRooms: 4 };
-      r = await call({ op: 'outline', text: 'more notes', kind: 'pairs', maxItems: 26, kit: 'zen', existing });
+      r = await call({ op: 'outline', text: 'more notes', kind: 'pairs', maxItems: 26, kit: 'workshop', existing });
       const grown = r.json?.outline;
       const extPrompt = String(seen[0]?.messages?.[0]?.content);
       check('outline (extend): the prompt shows what stands, numbered', /x1\. "Past", 2 free places: \[e1\] comí; \[e2\] comiste; \[e3\] comió/.test(extPrompt) && /\[e4\] comeré/.test(extPrompt) && /Nothing that stands may change/.test(extPrompt));
@@ -981,7 +1031,58 @@ try {
       const chainSaid = proc?.links.map((l) => `${l.from}>${l.to}:${l.kind}${l.label ? `:${l.label}` : ''}`).join(' ');
       check('outline (process): focus and its reason are returned, and said in the steps', proc?.focus === 'process' && /converted into the next/.test(proc.focusReason ?? '') && proc.steps.some((s) => /This is a process/.test(s.label) && /Each step is linked to the next/.test(s.label)), proc?.steps.map((s) => s.label).join(' | '));
       check('outline (process): every step is linked to the next, the loop closed, stated links and labels kept', chainSaid === 'i1>i2:becomes:loses CO2 i2>i3:becomes i3>i4:becomes i4>i5:becomes i5>i6:becomes:adds water i6>i1:becomes i4>i1:blocks:inhibits it', chainSaid);
-      check('outline (process): a cycle is one ring category, split into two round rooms by the client', proc?.categories.length === 1 && proc.categories[0].shape === 'ring' && proc.categories[0].name === 'The cycle');
+      check('outline (process): a cycle too long for one round room runs through halls, and says why', proc?.categories.map((c) => `${c.name}:${c.shape}`).join() === 'Steps 1 to 3:hall,Steps 4 to 6:hall' && proc.items.map((i) => i.category).join('') === '000111' && proc.steps.some((s) => /does not fit one round room/.test(s.label)), proc?.categories.map((c) => `${c.name}:${c.shape}`).join());
+
+      // The rooms of a process, whatever the model returns. Seen live: six steps, six rooms of one place.
+      const processAnswer = (title, cats, links = []) => {
+        let n = 0;
+        return answer(
+          JSON.stringify({
+            title, kind: 'list', kit: 'gothic', kitReason: '', focus: 'process', focusReason: 'Each step leads to the next.',
+            categories: cats.map(([name], c) => ({ id: `c${c + 1}`, name, cycle: false })),
+            items: cats.flatMap(([, size], c) => Array.from({ length: size }, () => oItem(++n, `c${c + 1}`))),
+            links, overflow: [], grouping: 'Each step is its own room.',
+          }),
+        );
+      };
+      const roomsOf = (o) => o?.categories.map((c, i) => `${c.name}:${o.items.filter((it) => it.category === i).length}:${c.shape}`).join();
+      const stepNames = ['Mixing', 'Kneading', 'Proving', 'Shaping', 'Baking', 'Cooling'];
+      queue.push(processAnswer('How bread is made', stepNames.map((name) => [name, 1])));
+      r = await call({ ...outlineBody, kit: 'gothic' });
+      let rooms = r.json?.outline;
+      check('outline (process): six steps in six rooms come back as two halls of three stations', roomsOf(rooms) === 'Steps 1 to 3:3:hall,Steps 4 to 6:3:hall' && rooms.items.map((i) => i.ref).join() === 'i1,i2,i3,i4,i5,i6' && rooms.links.length === 5, roomsOf(rooms));
+      check('outline (process): the steps say what was done, not the model\'s "each step is its own room"', rooms?.steps.some((s) => /A room is a phase, never a single step: the 6 steps are stations in 2 rooms/.test(s.label)) && rooms.steps.some((s) => /Set the 6 steps out as stations/.test(s.label)) && !rooms.steps.some((s) => /its own room/.test(s.label)), rooms?.steps.map((s) => s.label).join(' | '));
+      queue.push(processAnswer('Bread making', stepNames.slice(0, 5).map((name) => [name, 1])));
+      r = await call({ ...outlineBody, kit: 'gothic' });
+      check('outline (process): up to five steps are one room, named for the process', roomsOf(r.json?.outline) === 'Bread making:5:hall', roomsOf(r.json?.outline));
+      queue.push(processAnswer('Water cycle', ['Evaporation', 'Condensation', 'Precipitation', 'Collection'].map((name) => [name, 1]), [{ from: 'i4', to: 'i1', kind: 'becomes', label: '' }, { from: 'i1', to: 'i2', kind: 'becomes', label: '' }, { from: 'i2', to: 'i3', kind: 'becomes', label: '' }, { from: 'i3', to: 'i4', kind: 'becomes', label: '' }]));
+      r = await call({ ...outlineBody, kit: 'gothic' });
+      check('outline (process): a cycle that fits is one round room', roomsOf(r.json?.outline) === 'Water cycle:4:ring' && r.json.outline.links.length === 4, roomsOf(r.json?.outline));
+      queue.push(processAnswer('Baking a loaf', [['Preparing', 3], ['Resting', 1], ['Baking', 4]]));
+      r = await call({ ...outlineBody, kit: 'gothic' });
+      rooms = r.json?.outline;
+      check('outline (process): the notes\' phases are rooms when they hold two steps or more; a phase of one joins its neighbour', roomsOf(rooms) === 'Preparing:4:hall,Baking:4:hall' && rooms.steps.some((s) => s.label === '"Resting" is a single step, so it stands in "Preparing".'), roomsOf(rooms));
+      queue.push(processAnswer('A long line', [['Start', 5], ['Middle', 1], ['End', 5]]));
+      r = await call({ ...outlineBody, kit: 'gothic' });
+      check('outline (process): a single step that fits in neither neighbour means stations in order, never a room of one', roomsOf(r.json?.outline) === 'Steps 1 to 5:5:hall,Steps 6 to 8:3:hall,Steps 9 to 11:3:hall', roomsOf(r.json?.outline));
+
+      // Facts: a category of one fact shares the room of the category beside it, when the two fit.
+      let m = 0;
+      const lonelyCats = [['Metals', 3], ['Liquid', 1], ['Gases', 4], ['Unknown', 1], ['Rocks', 5], ['Odd', 1]];
+      queue.push(
+        answer(
+          JSON.stringify({
+            title: 'Things', kind: 'list', kit: 'gothic', kitReason: '', focus: 'facts', focusReason: '',
+            categories: lonelyCats.map(([name], c) => ({ id: `c${c + 1}`, name, cycle: false })),
+            items: lonelyCats.flatMap(([, size], c) => Array.from({ length: size }, () => oItem(++m, `c${c + 1}`))),
+            links: [], overflow: [], grouping: 'Six groups.',
+          }),
+        ),
+      );
+      r = await call({ ...outlineBody, kit: 'gothic' });
+      rooms = r.json?.outline;
+      check('outline (facts): a category of one fact shares a room with its neighbour when the two fit', roomsOf(rooms) === 'Metals:4:hall,Gases:5:hall,Rocks:5:hall,Odd:1:hall' && rooms.items.map((i) => i.ref).join() === Array.from({ length: 15 }, (_, i) => `i${i + 1}`).join(), roomsOf(rooms));
+      check('outline (facts): the steps say which categories share a room', rooms?.steps.some((s) => s.label === '"Liquid" had one fact and shares a room with "Metals".') && rooms.steps.some((s) => s.label === '"Unknown" had one fact and shares a room with "Gases".') && !rooms.steps.some((s) => s.label === 'Six groups.'), rooms?.steps.map((s) => s.label).join(' | '));
       check('outline request: the model is asked for focus, and told what a process needs', /focus: "process" when the facts are the steps or stages/.test(prompt) && schema.includes('"process"'));
     }
     {
@@ -1101,7 +1202,7 @@ try {
       // what it is asked instead of from a queue.
       console.log('');
       const makeOutline = (n, { cycle = false, focus = 'facts', links = [] } = {}) => ({
-        title: 'Thirty things', kind: 'pairs', kit: 'zen', kitReason: 'Many small groups suit a garden of stones.', focus, focusReason: focus === 'process' ? 'Each step leads to the next.' : '',
+        title: 'Thirty things', kind: 'pairs', kit: 'workshop', kitReason: 'Many small groups suit a garden of stones.', focus, focusReason: focus === 'process' ? 'Each step leads to the next.' : '',
         categories: Array.from({ length: Math.ceil(n / 5) }, (_, c) => ({ id: `c${c + 1}`, name: `Group ${c + 1}`, cycle })),
         items: Array.from({ length: n }, (_, i) => ({ id: `i${i + 1}`, term: `thing ${i + 1}`, meaning: `gloss ${i + 1}`, category: `c${Math.floor(i / 5) + 1}`, picture: GLYPHS[i] })),
         links, overflow: [], grouping: 'Five things to a room, in the order given.',
@@ -1156,7 +1257,7 @@ try {
       check('palace: one outline call, then six rooms (draft and check each) and the link check', fetches === 8 && seen.length === 14 && script.drafts === 6 && script.checks === 6, `${fetches} requests, ${seen.length} model calls`);
       check('palace: the rooms are drawn at the same time (14 model calls of 250 ms in well under 3.5 s)', wall < 2000, `${wall} ms`);
       check('palace: the outline arrives first with a draft in every place, then rooms fill in', snaps.length >= 8 && snaps[0].pendingRooms.length === 6 && snaps[0].items.length === 30 && snaps[0].items.every((it) => it.imago.source === 'fallback') && snaps.at(-1).pendingRooms.length === 0 && snaps.every((p, i) => i === 0 || p.pendingRooms.length <= snaps[i - 1].pendingRooms.length), `${snaps.length} snapshots, pending ${snaps.map((p) => p.pendingRooms.length).join(' ')}`);
-      check('palace: the kit is the Architect\'s suggestion, with its reason', palace.kit.id === 'zen' && palace.kit.chosenBy === 'architect' && /garden of stones/.test(palace.kit.reason ?? '') && palace.spec.kit === 'zen', JSON.stringify(palace.kit));
+      check('palace: the kit is the Architect\'s suggestion, with its reason', palace.kit.id === 'workshop' && palace.kit.chosenBy === 'architect' && /garden of stones/.test(palace.kit.reason ?? '') && palace.spec.kit === 'workshop', JSON.stringify(palace.kit));
       const termOf = (id) => palace.items.find((it) => it.id === id)?.term;
       check('palace: the link the notes do not support is dropped', palace.links.map((l) => `${termOf(l.from)} ${l.kind} ${termOf(l.to)}${l.label ? ` (${l.label})` : ''}`).join('; ') === 'thing 1 becomes thing 2 (next); thing 29 mirrors thing 30', JSON.stringify(palace.links));
       check('palace: no picture is used twice', new Set(palace.items.map((it) => it.imago.glyphs[0])).size === 30);
@@ -1192,19 +1293,19 @@ try {
       // A process: the chain of steps is whole, the loop closed, and the link check cannot cut it.
       script.outline = makeOutline(4, { cycle: true, focus: 'process', links: [{ from: 'i1', to: 'i2', kind: 'becomes', label: 'loses CO2' }, { from: 'i3', to: 'i1', kind: 'blocks', label: '' }] });
       script.unsupported = ['l2', 'l5'];
-      const stepsPlan = await designPalace({ text: 'thing 1 -> thing 2 -> thing 3 -> thing 4 -> thing 1', kit: 'zen' });
+      const stepsPlan = await designPalace({ text: 'thing 1 -> thing 2 -> thing 3 -> thing 4 -> thing 1', kit: 'workshop' });
       const pTerm = (id) => stepsPlan.items.find((it) => it.id === id)?.term;
       const chain = stepsPlan.links.map((l) => `${pTerm(l.from)} ${l.kind} ${pTerm(l.to)}${l.label ? ` (${l.label})` : ''}`).join('; ');
       checkPalace('client process', stepsPlan);
       check('process: every step is linked to the next and the loop is closed, whatever the link check says', stepsPlan.focus === 'process' && /leads to the next/.test(stepsPlan.focusReason ?? '') && chain === 'thing 1 becomes thing 2 (loses CO2); thing 2 becomes thing 3; thing 3 becomes thing 4; thing 4 becomes thing 1', chain);
-      check('process: a cycle gets a round room, in the kit the learner chose', stepsPlan.spec.rooms.length === 1 && stepsPlan.spec.rooms[0].shape === 'ring' && stepsPlan.categories[0].shape === 'ring' && stepsPlan.kit.chosenBy === 'learner' && stepsPlan.spec.kit === 'zen' && stepsPlan.steps.some((s) => /This is a process/.test(s.label)));
+      check('process: a cycle gets a round room, in the kit the learner chose', stepsPlan.spec.rooms.length === 1 && stepsPlan.spec.rooms[0].shape === 'ring' && stepsPlan.categories[0].shape === 'ring' && stepsPlan.kit.chosenBy === 'learner' && stepsPlan.spec.kit === 'workshop' && stepsPlan.steps.some((s) => /This is a process/.test(s.label)));
 
       // Extending a palace that stands: new facts join a room or open one; nothing old is touched.
-      const stand = designPalaceLocal({ text: '## Past\ncomí - I ate\ncomiste - you ate\ncomió - he ate\n## Future\ncomeré - I will eat', kit: 'zen' });
+      const stand = designPalaceLocal({ text: '## Past\ncomí - I ate\ncomiste - you ate\ncomió - he ate\n## Future\ncomeré - I will eat\ncomerás - you will eat', kit: 'workshop' });
       const standDeck = { id: 'deck-ext', title: 'Comer', kind: 'pairs', layoutId: stand.layoutId, items: stand.items, createdAt: 1, focus: 'facts' };
       const frozenDeck = JSON.stringify(standDeck);
       script.outline = {
-        title: '', kind: 'pairs', kit: 'zen', kitReason: '', focus: 'process', focusReason: 'ignored when extending',
+        title: '', kind: 'pairs', kit: 'workshop', kitReason: '', focus: 'process', focusReason: 'ignored when extending',
         categories: [{ id: 'c1', name: 'Conditional', cycle: false }],
         items: [{ id: 'i1', term: 'comimos', meaning: 'we ate', category: 'x1', picture: '🧾' }, { id: 'i2', term: 'comería', meaning: 'I would eat', category: 'c1', picture: '🍰' }],
         links: [{ from: 'i1', to: 'e1', kind: 'mirrors', label: 'same tense' }, { from: 'e4', to: 'i2', kind: 'becomes', label: '' }],
@@ -1216,11 +1317,11 @@ try {
       const grownDeck = await extendPalace(standDeck, 'comimos - we ate\ncomería - I would eat', { onProgress: (e) => snapsE.push(e) });
       const extPrompts = seen.map((b) => String(b.messages?.[0]?.content));
       const oldTerm = (id) => grownDeck.deck.items.find((it) => it.id === id)?.term;
-      check('extend: new facts fill the room of their category and open a new room at the end', grownDeck.source === 'api' && grownDeck.added.map((it) => `${it.term}@${it.locusId}`).join() === 'comimos@r1-4,comería@r3-1' && grownDeck.spec.rooms.map((r) => `${r.name}:${r.places}`).join() === 'Past:4,Future:1,Conditional:1' && grownDeck.added.every((it) => it.imago.source === 'architect'), grownDeck.added.map((it) => `${it.term}@${it.locusId}`).join());
-      check('extend: nothing that stands is touched', JSON.stringify(standDeck) === frozenDeck && standDeck.items.every((it) => grownDeck.deck.items.includes(it)) && grownDeck.deck.id === standDeck.id && grownDeck.deck.focus === 'facts' && grownDeck.deck.items.length === 6);
+      check('extend: a new fact joins the room of its category; a lone fact of a new category shares the last room', grownDeck.source === 'api' && grownDeck.added.map((it) => `${it.term}@${it.locusId}`).join() === 'comimos@r1-4,comería@r2-3' && grownDeck.spec.rooms.map((r) => `${r.name}:${r.places}`).join() === 'Past:4,Future:3' && grownDeck.added.every((it) => it.imago.source === 'architect'), grownDeck.added.map((it) => `${it.term}@${it.locusId}`).join());
+      check('extend: nothing that stands is touched', JSON.stringify(standDeck) === frozenDeck && standDeck.items.every((it) => grownDeck.deck.items.includes(it)) && grownDeck.deck.id === standDeck.id && grownDeck.deck.focus === 'facts' && grownDeck.deck.items.length === 7);
       check('extend: new links may join a new fact to an old one', grownDeck.links.map((l) => `${oldTerm(l.from)} ${l.kind} ${oldTerm(l.to)}${l.label ? ` (${l.label})` : ''}`).join('; ') === 'comimos mirrors comí (same tense); comeré becomes comería' && grownDeck.deck.links.length === 2, JSON.stringify(grownDeck.links));
       check('extend: the Architect is shown what stands, and the images that stand beside the new ones', extPrompts[0].includes('This palace already stands ("Comer")') && extPrompts.some((p) => p.startsWith('Write one memory image') && p.includes('Images that already stand in this room') && p.includes(stand.items[0].imago.scene)));
-      check('extend: progress is reported as rooms arrive', snapsE.length >= 3 && snapsE[0].pendingRooms.length === 2 && snapsE.at(-1).pendingRooms.length === 0 && snapsE[0].deck.items.length === 6);
+      check('extend: progress is reported as rooms arrive', snapsE.length >= 3 && snapsE[0].pendingRooms.length === 2 && snapsE.at(-1).pendingRooms.length === 0 && snapsE[0].deck.items.length === 7);
       checkPalace('client extension', { items: grownDeck.deck.items, links: grownDeck.deck.links, spec: grownDeck.spec, layoutId: grownDeck.deck.layoutId, categories: null });
       responder = null;
 
