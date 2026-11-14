@@ -19,7 +19,7 @@ export const CRANIAL_NERVES: Deck = {
     },
     {
       id: 'cn-02', term: 'Optic', meaning: 'II. Sight: carries what the eye sees to the brain.', locusId: 'domus-02',
-      imago: { scene: 'One huge eye sits on the bench wrapped in the red cloak, staring straight at you.', glyphs: ['👁️', '🧣'], action: 'bob', reason: 'Optic is the nerve of sight.', source: 'fixture' },
+      imago: { scene: 'One huge eye sits on the bench wrapped in the red cloak, staring straight at you.', glyphs: ['👁️', '🧥'], action: 'bob', reason: 'Optic is the nerve of sight.', source: 'fixture' },
     },
     {
       id: 'cn-03', term: 'Oculomotor', meaning: 'III. Moves the eye (most of its muscles), lifts the eyelid and narrows the pupil.', locusId: 'domus-03',

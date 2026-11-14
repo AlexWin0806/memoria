@@ -303,6 +303,51 @@ try {
     check('regenerate returns one image', r.status === 200 && r.json.imago?.action === 'shake' && r.json.imago.glyphs.length === 2, JSON.stringify(r.json?.imago));
     check('regenerate prompt carries the miss, the hint and the other images', /failed to recall/.test(regenPrompt) && /make it about music/.test(regenPrompt) && /A cat spins/.test(regenPrompt));
 
+    // The browser client end to end: planPalace → fetch (routed to the handler in
+    // process) → the stand-in upstream. Covers payload validation, the cache and the
+    // fall-back, with a Map standing in for localStorage.
+    const store = new Map();
+    const realFetch = globalThis.fetch;
+    let fetches = 0;
+    globalThis.window = globalThis;
+    globalThis.localStorage = {
+      getItem: (k) => store.get(k) ?? null,
+      setItem: (k, v) => void store.set(k, String(v)),
+      removeItem: (k) => void store.delete(k),
+      key: (i) => [...store.keys()][i] ?? null,
+      get length() { return store.size; },
+    };
+    globalThis.fetch = async (url, init) => {
+      if (url !== '/api/architect') return realFetch(url, init);
+      fetches++;
+      const out = await call(JSON.parse(init.body));
+      return new Response(JSON.stringify(out.json), { status: out.status, headers: { 'content-type': 'application/json' } });
+    };
+    try {
+      const clientReq = { ...base, maxItems: 8, text: samples['term - meaning list'] };
+      queue.push(answer(JSON.stringify(draft)), answer(JSON.stringify(review)));
+      const online = await planPalace(clientReq);
+      check('client: plan comes from the API', online.source === 'api' && online.items.length === 8 && online.items.every((it) => it.imago.source === 'architect' && it.id), `source=${online.source}, ${online.items.length} items`);
+      const repeat = await planPalace(clientReq);
+      check('client: the same request is served from the cache', repeat.source === 'api' && fetches === 1 && repeat.items[0].id !== online.items[0].id, `${fetches} fetch(es)`);
+      queue.push(answer(JSON.stringify({ scene: 'A cat juggles the lamp.', glyphs: ['🐈'], action: 'hop', reason: 'Chat means cat.' })));
+      const again = await regenerateImago({ item: online.items[0], locus: lociById.get(online.items[0].locusId), others: online.items.map((it) => it.imago) });
+      check('client: regenerate comes from the API', again.source === 'architect' && again.scene === 'A cat juggles the lamp.');
+      let before = fetches;
+      const flaky = await planPalace({ ...clientReq, text: 'uno\ndos\ntres' }); // upstream queue is empty: the handler answers 502
+      check('client: one bad answer falls back to the local planner', flaky.source === 'local' && flaky.items.length === 3 && fetches === before + 1);
+      delete process.env.ANTHROPIC_API_KEY; // the handler now answers 503
+      before = fetches;
+      const down = await planPalace({ ...clientReq, text: 'cuatro\ncinco' });
+      const after = await planPalace({ ...clientReq, text: 'seis\nsiete' });
+      process.env.ANTHROPIC_API_KEY = 'placeholder-not-a-real-key';
+      check('client: an unavailable service falls back, then the network is skipped for a while', down.source === 'local' && after.source === 'local' && fetches === before + 1, `${fetches - before} fetch(es) for two plans`);
+    } finally {
+      globalThis.fetch = realFetch;
+      delete globalThis.window;
+      delete globalThis.localStorage;
+    }
+
     delete process.env.ANTHROPIC_BASE_URL;
     await new Promise((r2) => upstream.close(r2));
 

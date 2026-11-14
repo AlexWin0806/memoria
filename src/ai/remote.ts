@@ -79,8 +79,9 @@ export async function callArchitect(body: unknown, timeoutMs: number): Promise<u
       signal: controller.signal,
     });
     if (!res.ok) {
-      // 400 means this request was bad, not the service: do not penalise the next one.
-      if (res.status !== 400 && res.status !== 422) skipNetworkUntil = Date.now() + COOL_OFF_MS;
+      // Back off only when the service itself is unavailable (no key, busy, rate limited,
+      // too slow). A rejected request or one bad answer says nothing about the next call.
+      if ([429, 503, 504].includes(res.status)) skipNetworkUntil = Date.now() + COOL_OFF_MS;
       return null;
     }
     return (await res.json()) as unknown;
