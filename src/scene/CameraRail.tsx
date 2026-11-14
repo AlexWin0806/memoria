@@ -5,6 +5,7 @@ import type { PalaceLayout } from '@/layouts';
 import { type SessionState, useSession } from '@/state/session';
 import type { Qa } from './qa';
 import { type RailNode, Rail, easePos, leadIn, poseOf, railDuration, routeNodes, sampleRail, timeForProgress, viaBetween } from './rail';
+import { TOUR_LINGER, TOUR_PACE, type Tour } from './tour';
 import type { Veil } from './veil';
 
 const DIP_OUT = 0.2;
@@ -23,6 +24,13 @@ const PARALLAX_Y = 0.025;
  */
 const DRIFT_ANGLE = 0.035;
 const DRIFT_RISE = 0.04;
+/**
+ * Bottom sheet (narrow screens): a locus view fills about this fraction of the frame's
+ * height with the place and its image. When the sheet leaves less than that, the lens
+ * widens just enough to keep both in the strip above it, down to this zoom.
+ */
+const VIEW_FILL = 0.78;
+const MIN_ZOOM = 0.42;
 
 /** Pointer in -1..1, tracked on the window so it works under the 2D overlay too. */
 const pointer = { x: 0, y: 0 };
@@ -69,9 +77,17 @@ function createRig() {
     parX: 0,
     parY: 0,
     inset: 0,
+    insetY: 0,
     appliedInset: -1,
+    appliedInsetY: -1,
     appliedW: 0,
     appliedH: 0,
+    /** The results tour being walked, its current stop, and how long the camera has rested there. */
+    tour: null as Tour | null,
+    tourIndex: 0,
+    linger: 0,
+    /** The same, for scripts (`window.__memoria.tour`). */
+    report: { active: false, index: -1, at: -1 },
   };
 }
 
@@ -84,6 +100,8 @@ interface CameraRailProps {
   reduced: boolean;
   /** Slow drift around the overview (title, results, review). */
   drift: boolean;
+  /** Results: stroll through these places instead of resting at `target`. */
+  tour: Tour | null;
   qa: Qa;
   veil: Veil;
 }
@@ -93,7 +111,7 @@ interface CameraRailProps {
  * glides there along a spline rail or, for far jumps and reduced motion, cuts under a
  * short dip of the veil. It reports back through `session.arrived` and nothing else.
  */
-export function CameraRail({ layout, target, session, reduced, drift, qa, veil }: CameraRailProps) {
+export function CameraRail({ layout, target, session, reduced, drift, tour, qa, veil }: CameraRailProps) {
   const camera = useThree((s) => s.camera);
   const rig = useMemo(createRig, []);
 
@@ -107,8 +125,10 @@ export function CameraRail({ layout, target, session, reduced, drift, qa, veil }
   }, []);
 
   useEffect(() => {
-    if (window.__memoria) window.__memoria.camera = camera;
-  }, [camera]);
+    if (!window.__memoria) return;
+    window.__memoria.camera = camera;
+    window.__memoria.tour = rig.report;
+  }, [camera, rig]);
 
   // QA freeze-frames: pin the pose before the first frame is drawn.
   useLayoutEffect(() => {
@@ -155,7 +175,8 @@ export function CameraRail({ layout, target, session, reduced, drift, qa, veil }
     rail.finish();
     rig.phase = 'glide';
     rig.t = 0;
-    rig.dur = railDuration(rail.length, rail.knots - 1, session.judge);
+    // A tour is a stroll: slower than any walk, whatever the pace of the run that led here.
+    rig.dur = rig.tour ? Math.min(6, railDuration(rail.length, rail.knots - 1, false) * TOUR_PACE) : railDuration(rail.length, rail.knots - 1, session.judge);
     rig.settleFrom = rig.settleAmt;
   };
 
@@ -206,11 +227,17 @@ export function CameraRail({ layout, target, session, reduced, drift, qa, veil }
     const { width, height } = state.size;
     const live = useSession.getState();
     const wantInset = Math.min(qa.frozen ? qa.inset : live.insetRight, width * 0.7);
-    rig.inset = reduced || qa.frozen || Math.abs(wantInset - rig.inset) < 0.5 ? wantInset : damp(rig.inset, wantInset, 7, dt);
-    if (isPerspective(cam) && (rig.inset !== rig.appliedInset || width !== rig.appliedW || height !== rig.appliedH)) {
-      if (rig.inset > 0) cam.setViewOffset(width, height, rig.inset / 2, 0, width, height);
+    const wantInsetY = Math.min(qa.frozen ? qa.insetBottom : live.insetBottom, height * 0.7);
+    const snap = reduced || qa.frozen;
+    rig.inset = snap || Math.abs(wantInset - rig.inset) < 0.5 ? wantInset : damp(rig.inset, wantInset, 7, dt);
+    rig.insetY = snap || Math.abs(wantInsetY - rig.insetY) < 0.5 ? wantInsetY : damp(rig.insetY, wantInsetY, 7, dt);
+    if (isPerspective(cam) && (rig.inset !== rig.appliedInset || rig.insetY !== rig.appliedInsetY || width !== rig.appliedW || height !== rig.appliedH)) {
+      cam.zoom = Math.min(1, Math.max(MIN_ZOOM, (height - rig.insetY) / (height * VIEW_FILL)));
+      // Both calls rebuild the projection, so the zoom above takes effect with them.
+      if (rig.inset > 0 || rig.insetY > 0) cam.setViewOffset(width, height, rig.inset / 2, rig.insetY / 2, width, height);
       else cam.clearViewOffset();
       rig.appliedInset = rig.inset;
+      rig.appliedInsetY = rig.insetY;
       rig.appliedW = width;
       rig.appliedH = height;
     }
@@ -223,7 +250,34 @@ export function CameraRail({ layout, target, session, reduced, drift, qa, veil }
     }
     // Props lag the store by a render; only act when they describe the store as it is now.
     const fresh = live === session;
-    if (fresh && target !== rig.planned) plan(target);
+
+    // Results tour: rest at a place, then move on to the next, round and round. Under
+    // reduced motion it is one still view instead.
+    let want = target;
+    if (tour !== rig.tour) {
+      rig.tour = tour;
+      rig.tourIndex = 0;
+      rig.linger = 0;
+    }
+    if (tour) {
+      const stop = tour.stops[rig.tourIndex];
+      if (!reduced && rig.phase === 'rest' && rig.at === stop && tour.stops.length > 1) {
+        rig.linger += dt;
+        if (rig.linger >= TOUR_LINGER) {
+          rig.tourIndex = (rig.tourIndex + 1) % tour.stops.length;
+          rig.linger = 0;
+        }
+      }
+      want = reduced ? tour.hold : tour.stops[rig.tourIndex];
+      rig.report.index = reduced ? tour.stops.indexOf(tour.hold) : rig.tourIndex;
+      rig.report.at = rig.phase === 'rest' && rig.at === want ? want : -1;
+    } else {
+      rig.report.index = -1;
+      rig.report.at = -1;
+    }
+    rig.report.active = tour !== null;
+
+    if (fresh && want !== rig.planned) plan(want);
 
     if (rig.phase === 'dip') {
       rig.t += dt;

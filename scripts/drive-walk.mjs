@@ -13,7 +13,10 @@
  * starts an encode walk over loci 0..7 with the Judge deck, steps through it, and asserts
  * each time that `arrived` becomes true within 6 s and that the camera stands at that
  * locus's viewpoint. Then it checks a step back, a far jump (cut + lead-in), steps taken
- * mid-flight, reduced motion, the results pose, the familiarization name plates and the view inset.
+ * mid-flight, reduced motion, the flourish at the moment of recall (one right answer, one
+ * wrong: it plays and clears), the results tour (a still view under reduced motion, then
+ * three stops reached in order, then it stops when results is left), the familiarization
+ * name plates and the view insets (docked panel, bottom sheet).
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -138,8 +141,73 @@ try {
   await arrive('reduced motion next() (cut to locus 3)', poses.loci[3]);
   await page.evaluate(() => window.__memoria.settings.getState().setReducedMotion(null));
 
+  // The moment of recall: a right answer plays the ring and the settle, a wrong one the shake.
+  // The Judge deck's item at locus n is `carpal-<n + 1>`.
+  const flourishIs = (kind, locus, timeout) =>
+    page
+      .waitForFunction(([k, l]) => window.__memoria.flourish?.kind === k && window.__memoria.flourish.locus === l, [kind, locus], { timeout, polling: 16 })
+      .then(() => true, () => false);
+  await session((s, a) => s.startWalk('recall', { stops: a }), stops);
+  await arrive('recall again for the flourish (locus 0)', poses.loci[0]);
+  check(await flourishIs('none', -1, 500), 'flourish idle before any answer');
+  await session((s) => s.answer({ itemId: 'carpal-1', correct: true, given: 'Scaphoid', ms: 900 }));
+  check(await flourishIs('right', 0, 1500), 'right answer at locus 0 -> flourish "right" plays there');
+  check(await flourishIs('none', -1, 5000), 'flourish clears after the right answer');
+  await session((s) => s.next());
+  await arrive('recall stop 2 (locus 1)', poses.loci[1]);
+  await session((s) => s.answer({ itemId: 'carpal-2', correct: false, given: 'Hamate', ms: 900 }));
+  check(await flourishIs('wrong', 1, 1500), 'wrong answer at locus 1 -> flourish "wrong" plays there');
+  check(await flourishIs('none', -1, 5000), 'flourish clears after the wrong answer');
+  if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'recall-answered.png') });
+
+  // Results tour. `tour.at` is the locus the camera rests at, -1 while it moves.
+  const tourAt = (locus, timeout) =>
+    page
+      .waitForFunction((l) => window.__memoria.tour?.active === true && window.__memoria.tour.at === l, locus, { timeout, polling: 50 })
+      .then(() => true, () => false);
+  const cameraOff = async (pose) => {
+    const p = await page.evaluate(() => {
+      const c = window.__memoria.camera.position;
+      return [c.x, c.y, c.z];
+    });
+    return Math.hypot(p[0] - pose[0], p[1] - pose[1], p[2] - pose[2]);
+  };
+
+  // Reduced motion: one still view, of the place with the most right answers around it
+  // (locus 0 here: the only right answer), and it stays put for longer than a tour lingers.
+  await page.evaluate(() => window.__memoria.settings.getState().setReducedMotion(true));
   await session((s) => s.toResults());
-  await arrive('results (overview)');
+  const held = await tourAt(0, ARRIVE_MS);
+  await page.waitForTimeout(3600);
+  const stillThere = await page.evaluate(() => window.__memoria.tour.at === 0 && window.__memoria.session.getState().arrived);
+  const heldOff = await cameraOff(poses.loci[0]);
+  check(held && stillThere && heldOff < 0.01, 'results, reduced motion: still view of locus 0, no motion', `${heldOff.toFixed(3)} m from pose after 3.6 s`);
+  await page.evaluate(() => window.__memoria.settings.getState().setReducedMotion(null));
+
+  // The tour proper: the walked places in route order, each reached and rested at.
+  for (let i = 0; i < 3; i++) {
+    const t0 = Date.now();
+    const reached = await tourAt(stops[i], 15000);
+    const index = await page.evaluate(() => window.__memoria.tour.index);
+    const off = await cameraOff(poses.loci[stops[i]]);
+    check(reached && index === i && off < 0.2, `results tour stop ${i + 1} (locus ${stops[i]})`, `${reached ? `reached in ${Date.now() - t0} ms` : 'not reached'}, ${off.toFixed(3)} m from pose`);
+    if (shotsDir) await page.screenshot({ path: path.join(shotsDir, `results-tour-${i + 1}.png`) });
+  }
+
+  // Leaving results ends the tour: the camera goes where the title wants it and stays there.
+  await session((s) => s.toAttract());
+  await arrive('leave results (back to the overview)');
+  await page.waitForTimeout(3600);
+  const after = await page.evaluate(() => ({ ...window.__memoria.tour }));
+  const overviewOff = await cameraOff(poses.overview);
+  check(after.active === false && after.at === -1 && overviewOff < 0.5, 'tour stopped: camera still at the overview 3.6 s later', `${overviewOff.toFixed(3)} m from pose`);
+
+  // No walk behind the results (a review dashboard path): the overview, as before.
+  await session((s) => s.toResults());
+  await arrive('results without stops (overview)');
+  const idle = await page.evaluate(() => window.__memoria.tour.active);
+  check(idle === false && (await cameraOff(poses.overview)) < 0.5, 'results without stops: no tour');
+  await session((s) => s.toAttract());
 
   // Familiarization: the locus name plate appears in-world once the camera has arrived.
   await session((s, a) => s.startWalk('familiarize', { deckId: null, stops: a }), stops);
@@ -157,6 +225,24 @@ try {
   check(Math.abs(view - 200) < 2, 'view inset 400 px -> principal point shifted 200 px', `offsetX ${view.toFixed(1)}`);
   if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'inset-400.png') });
   await session((s) => s.setInsetRight(0));
+
+  // Bottom sheet: the picture is lifted into the strip above it and the lens widens to fit.
+  const frame = page.viewportSize();
+  await session((s, h) => s.setInsetBottom(h), frame.height / 2);
+  await page.waitForTimeout(1500);
+  const sheet = await page.evaluate(() => {
+    const c = window.__memoria.camera;
+    return { y: c.view && c.view.enabled ? c.view.offsetY : 0, zoom: c.zoom };
+  });
+  check(Math.abs(sheet.y - frame.height / 4) < 2 && sheet.zoom < 0.7 && sheet.zoom > 0.6, 'bottom inset of half the frame -> principal point lifted a quarter, lens widened', `offsetY ${sheet.y.toFixed(1)}, zoom ${sheet.zoom.toFixed(3)}`);
+  if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'inset-bottom.png') });
+  await session((s) => s.setInsetBottom(0));
+  await page.waitForTimeout(1500);
+  const cleared = await page.evaluate(() => {
+    const c = window.__memoria.camera;
+    return { on: Boolean(c.view && c.view.enabled), zoom: c.zoom };
+  });
+  check(!cleared.on && cleared.zoom === 1, 'insets cleared -> view offset off, zoom 1');
 } catch (e) {
   failed++;
   console.error(`FAIL ${e.message.split('\n')[0]}`);
