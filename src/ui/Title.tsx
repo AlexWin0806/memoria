@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CompareLink } from '@/ab/CompareLink';
 import type { Deck, ReviewCard } from '@/core/types';
 import { judgeVariantFromUrl, startEncode, startJudge, startRecall } from '@/flows/flow';
 import { formatWhen, plural } from '@/flows/format';
@@ -99,6 +100,7 @@ export function Title() {
       </section>
 
       <Settings />
+      <CompareLink />
     </main>
   );
 }
