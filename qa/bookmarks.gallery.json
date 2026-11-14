@@ -1,0 +1,7 @@
+[
+  { "name": "gallery-0", "query": "gallery&shot=0&measure" },
+  { "name": "gallery-1", "query": "gallery&shot=1&measure" },
+  { "name": "gallery-2", "query": "gallery&shot=2&measure" },
+  { "name": "gallery-3", "query": "gallery&shot=3&measure" },
+  { "name": "gallery-4", "query": "gallery&shot=4&measure" }
+]
