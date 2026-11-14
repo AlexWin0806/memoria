@@ -17,6 +17,7 @@ export const KIT_LIST: KitInfo[] = [
     name: 'Gothic library',
     blurb: 'Tall stone halls with pointed arches, lancet windows, dark oak and chained books.',
   },
+  { id: 'zen', name: 'Zen garden', blurb: 'Open courts of raked gravel and moss under the sky, low plastered walls, stepping stones and roofed gates.' },
   { id: 'workshop', name: 'Workshop', blurb: 'Timber works halls of machines in a line, a channel running from station to station: suits processes, pathways and sequences of steps.' },
 ];
 
