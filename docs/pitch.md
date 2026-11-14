@@ -14,7 +14,7 @@ Open the site with `?judge=pitch` before the judge arrives. It waits on the titl
 | 0:15 | Judge | **Encode walk**, eight places, about 47 seconds. Speaker stays quiet: talking over it would make the judge worse at it. |
 | 1:02 | Speaker | "Now the pictures are gone. We will check four of the eight places. What did you leave there?" |
 | 1:05 | Judge | **Recall, spot check.** Four of the eight places, chosen at random, multiple choice, about 25 seconds. Each place takes on colour when they get it right. |
-| 1:30 | Speaker | **What just happened.** "That is the method of loci. It is about 2,100 years old in writing. Two meta-analyses find a medium-to-large gain in recall for lists like this; one warns of a high risk of bias in the studies, and a later review rates the evidence as low quality. The catch has always been setup: you need a palace, a route and a picture for every fact." |
+| 1:30 | Speaker | **What just happened.** "That is the method of loci. It is about 2,100 years old in writing. Two meta-analyses find a medium-to-large gain in recall for lists like this; both flag a high risk of bias, and a 2025 review grades the evidence low to very low. The catch has always been setup: you need a palace, a route and a picture for every fact." |
 | 1:42 | Speaker | **What we built.** "Memoria removes the setup. Paste your notes; an AI architect picks the facts, invents the pictures and checks them against the classical rules; you read through them and can change any of them. Then it tests you instead of letting you re-read, and schedules reviews at growing intervals, which is what the research says makes memories last." |
 | 1:54 | Speaker | **Close.** "It is free, it runs from a link on an ordinary laptop, and next we want you to be able to scan your own home and use that as your palace." |
 | 2:00 | | Stop. |
@@ -28,7 +28,7 @@ and end on "what we built".
 
 ## If asked
 
-- **Does it work?** "We have not run an efficacy study of Memoria. The technique is well studied; our own evidence is n = (fill in) people at this venue, informal: (fill in) of 8 with the palace against (fill in) of 8 with a plain list."
+- **Does it work?** "We have not run an efficacy study of Memoria. The technique is well studied; our own evidence is n = (fill in) people at this venue, informal: (fill in) of 8 with the palace against (fill in) of 8 with a plain list, on two different eight-item lists, tested in the same sitting." Drop this sentence if the venue test was not run.
 - **What is the AI doing?** "It plans (which facts, which room), acts (writes the images), checks itself (a second pass that scores each image for concreteness, action, distinctness and its tie to the meaning) and adapts (when you miss an item it proposes a stronger image). The key stays on the server; the demo you just did ran entirely offline."
 - **Why not flashcards?** "Flashcards give you spacing and testing but no encoding strategy. A palace gives you the encoding but nothing after. This is both, in one loop."
 - **What is it bad at?** "Understanding. It is for ordered, discrete facts. And one list per route: load two similar lists onto the same route and they interfere."
