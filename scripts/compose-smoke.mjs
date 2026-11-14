@@ -27,6 +27,12 @@
  *   e  Saved data: a deck whose links name a missing item, link an item to itself, have an
  *      unknown kind or repeat a pair, and whose focus is not one of the two, keeps its items and
  *      its good link; the rest is dropped and the original is set aside
+ *   m  The proposal fills in room by room. A stand-in for the Architect answers the outline at
+ *      once, the first room's images after a moment and the second room's later: until then the
+ *      second room's cards are marked as drafts and the place button waits; an image the learner
+ *      rewrites meanwhile is not overwritten; the kit, the reason for it, the process focus and
+ *      the links the outline carried are all shown. (This checks the screen against the wire
+ *      format, not the live model.)
  *   k  With two kits or more: another kit after planning keeps every place id, says the images
  *      were written for other places, and draws them again on request (skipped with one kit)
  *
@@ -122,17 +128,22 @@ const PLANETS = ['Mercury - the closest planet to the Sun', 'Venus - the hottest
 // rendering out of the way. `debug=stores` puts the stores on window.__memoria.
 const QUERY = 'theme=greybox&debug=stores';
 
-async function open({ reducedMotion = false, seed } = {}) {
+async function open({ reducedMotion = false, seed, architect } = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, reducedMotion: reducedMotion ? 'reduce' : 'no-preference' });
   const page = await context.newPage();
   page.setDefaultTimeout(60000);
   const errors = [];
   const calls = [];
   page.on('pageerror', (e) => errors.push(String(e)));
-  // No Architect: whatever serves the page, every plan comes from the offline planner.
-  await page.route('**/api/architect', (route) => {
-    calls.push(route.request().postData() ?? '');
-    return route.abort();
+  // No Architect: whatever serves the page, every plan comes from the offline planner. (Case m
+  // puts a stand-in there instead: `architect` answers a request with { wait, body }, or nothing.)
+  await page.route('**/api/architect', async (route) => {
+    const posted = route.request().postData() ?? '';
+    calls.push(posted);
+    const answer = architect?.(JSON.parse(posted));
+    if (!answer) return route.abort();
+    await new Promise((r) => setTimeout(r, answer.wait ?? 0));
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer.body) }).catch(() => {});
   });
   if (seed) await context.addInitScript(seed.fn, seed.arg);
   await page.goto(`${base}/?${QUERY}`, { waitUntil: 'load' });
@@ -208,7 +219,8 @@ async function pdfFrom(html) {
   await printer.setContent(html);
   return printer.pdf({ format: 'A4' });
 }
-const li = (list) => list.map((b) => `<li>${b}</li>`).join('');
+// Each item ends in a full stop, as written notes do: the reader takes short lines with no stop for one wrapped sentence.
+const li = (list) => list.map((b) => `<li>${b}.</li>`).join('');
 /** A title with nothing under it, then three headings set larger than the text, each with a list. */
 const PDF_HTML = `<html><body style="font: 12pt Georgia, serif; margin: 12mm">
   <h1 style="font-size: 24pt">The cell</h1>
@@ -429,7 +441,7 @@ const cases = {
     assert((await text(page.getByTestId('extend-keeps'))) === 'Everything already in this palace stays where it is.', 'the screen does not say what will not change');
     assert((await text(page.getByTestId('extend-size'))) === `${KITS[0].name} · 3 rooms · 9 places. It has room for 21 more: a palace holds 30 places.`, `size: ${await text(page.getByTestId('extend-size'))}`);
     // Nothing in it has been studied: one calm line, and nothing is blocked.
-    assert((await text(page.getByTestId('extend-finish-first'))).startsWith('9 of its 9 places are still in ruins or under repair. You may want to finish those first'), `the suggestion reads: ${await text(page.getByTestId('extend-finish-first'))}`);
+    assert((await text(page.getByTestId('extend-finish-first'))).startsWith('9 of its 9 places are still in ruins or under repair. You may want to finish those walks before you add more. This is a suggestion, not a finding'), `the suggestion reads: ${await text(page.getByTestId('extend-finish-first'))}`);
     assert((await page.getByTestId('arch').count()) === 0, 'a palace that stands should not be offered another architecture here');
     await sceneShows(page, before.layoutId);
     assert((await session(page)).deckId === before.id, 'the palace being added to should be shown with its images');
@@ -510,22 +522,28 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
 
-    // A palace that is nearly full: two places left, five facts for its last room.
+    // A palace that is nearly full: six rooms, two places left in the last.
     const rooms = [['Alpha', 5], ['Beta', 5], ['Gamma', 5], ['Delta', 5], ['Epsilon', 5], ['Zeta', 3]];
     const full = await open({ seed: seedDecks([genDeck('deck-nearly-full', 'Nearly full', KITS[0].id, rooms)]) });
     await full.page.getByTestId('title').waitFor();
     await deckRow(full.page, 'Nearly full').getByTestId('deck-extend').click();
     assert((await text(full.page.getByTestId('extend-size'))).includes('It has room for 2 more'), `size: ${await text(full.page.getByTestId('extend-size'))}`);
-    await full.page.getByTestId('compose-text').fill(['# Zeta', 'one - 1', 'two - 2', 'three - 3', 'four - 4', 'five - 5'].join('\n'));
+    // Notes with no heading would need a room of their own, and there can be no seventh: say so, and where the space is.
+    await full.page.getByTestId('compose-text').fill(['one - 1', 'two - 2', 'three - 3'].join('\n'));
+    await full.page.getByTestId('compose-design').click();
+    const none = await text(full.page.getByTestId('compose-error'));
+    assert(none === 'None of the 3 new facts has a place: one, two, three. This palace cannot take another room (it holds 6), and its free places are in Zeta. Put the new facts under that heading, as in "# Zeta".', `nothing could be placed: ${none}`);
+    // Under the heading of the room with space, two fit; the rest are named.
+    await full.page.getByTestId('compose-text').fill(['# Zeta', 'one - 1', 'two - 2', 'three - 3', 'four - 4', '# Epsilon', 'five - 5', 'six - 6'].join('\n'));
     await full.page.getByTestId('compose-design').click();
     await full.page.getByTestId('proposal').waitFor();
     assert((await full.page.getByTestId('proposal-row').count()) === 2, 'a palace with two places left took more than two');
     const left = await text(full.page.getByTestId('compose-overflow'));
-    assert(left.startsWith(`Left out: the palace is full. It holds ${MAX_PLACES} places, and 3 new facts have no place:`) && ['three', 'four', 'five'].every((t) => left.includes(t)), `what was left out: ${left}`);
+    assert(left.startsWith(`Left out: the palace is full. It holds ${MAX_PLACES} places, and 4 new facts have no place:`) && ['three', 'four', 'five', 'six'].every((t) => left.includes(t)), `what was left out: ${left}`);
     await shot(full.page, 'extend-full');
     assert(full.errors.length === 0, `page errors: ${full.errors.join(' | ')}`);
     await full.context.close();
-    return 'added 3 under an old heading and a new one: old items identical, places appended (r2-4, r4-1, r4-2), new room marked, only those 3 surveyed; from the results screen too; a nearly full palace names the 3 left out';
+    return 'added 3 under an old heading and a new one: old items identical, places appended (r2-4, r4-1, r4-2), new room marked, only those 3 surveyed; from the results screen too; a nearly full palace names the facts left out, and says where the space is when none fits';
   },
 
   async c() {
@@ -534,7 +552,7 @@ const cases = {
       text: PLANETS,
       stage: 'proposal',
       plan: { title: 'Planets', kind: 'pairs', steps: [{ kind: 'plan', label: 'Found 3 facts.' }], source: 'local', overflow: [] },
-      items: ['Mercury', 'Venus', 'Earth'].map((term, i) => ({ id: `old-${i}`, term, meaning: 'a planet', locusId: `domus-${i + 1}`, imago: { scene: `${term} rolls past.`, glyphs: ['🪐'], action: 'spin', source: 'fallback' } })),
+      items: ['Mercury', 'Venus', 'Earth'].map((term, i) => ({ id: `old-${i}`, term, meaning: 'a planet', locusId: `domus-0${i + 1}`, imago: { scene: `${term} rolls past.`, glyphs: ['🪐'], action: 'spin', source: 'fallback' } })),
       title: 'Planets',
       drafted: {},
       shown: {},
@@ -603,7 +621,7 @@ const cases = {
     await page.getByTestId('compose-design').click();
     await page.getByTestId('proposal').waitFor();
     assert(JSON.stringify(await roomNames(page)) === JSON.stringify(PDF_ROOMS), `rooms from the PDF: ${await roomNames(page)}`);
-    assert((await page.getByTestId('proposal-row').count()) === 9, `expected nine images, got ${await page.getByTestId('proposal-row').count()}`);
+    assert((await page.getByTestId('proposal-row').count()) === 9, `expected nine images, got ${await page.getByTestId("proposal-row").count()} from: ${notes.join(" | ")}`);
     assert((await page.getByTestId('compose-title').inputValue()) === 'The cell', `the palace is named "${await page.getByTestId('compose-title').inputValue()}"`);
     await shot(page, 'pdf-rooms');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
@@ -638,6 +656,91 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return 'of 7 links the good one and one with its long label removed are kept; missing item, self link, unknown kind, repeated pair and a non-link are dropped; bad focus dropped; deck and items kept; original set aside';
+  },
+
+  async m() {
+    const CYCLE = ['Citrate', 'Isocitrate', 'Ketoglutarate', 'Succinyl-CoA', 'Succinate', 'Fumarate'];
+    const PICTURES = ['🍋', '🍊', '🔥', '🧵', '🧃', '💨'];
+    const SLOW_ROOM_MS = 15000;
+    const architect = (body) => {
+      if (body.op === 'outline') {
+        return {
+          body: {
+            outline: {
+              title: 'The citric acid cycle',
+              kind: 'list',
+              kit: { id: KITS[0].id, chosen: true, reason: 'Six steps in two halves suit two quiet halls.' },
+              focus: 'process',
+              focusReason: 'Each compound is made from the one before it.',
+              categories: [{ name: 'First half', shape: 'hall' }, { name: 'Second half', shape: 'hall' }],
+              items: CYCLE.map((term, i) => ({ ref: `i${i + 1}`, term, category: i < 3 ? 0 : 1, picture: PICTURES[i] })),
+              links: [{ from: 'i1', to: 'i2', kind: 'becomes', label: 'isomerisation' }],
+              overflow: [],
+              steps: [{ kind: 'plan', label: 'Sorted 6 facts into 2 rooms.' }],
+            },
+          },
+        };
+      }
+      if (body.op === 'images') {
+        return {
+          wait: body.room.index === 0 ? 300 : SLOW_ROOM_MS,
+          body: {
+            images: body.items.map((it) => ({ ref: it.ref, scene: `STAND-IN ${it.term} dances on the ${it.place?.name ?? 'floor'}.`, glyphs: [it.picture ?? '🧪'], action: 'spin', reason: `It is ${it.term}.` })),
+            review: { checked: true, rewritten: [] },
+            steps: [{ kind: 'generate', label: `Drew ${body.room.name}.` }],
+          },
+        };
+      }
+      if (body.op === 'links') return { wait: 200, body: { keep: body.links.map(() => true), steps: [{ kind: 'check', label: 'Checked the links against the notes.' }] } };
+      return null;
+    };
+    const { context, page, errors, calls } = await open({ architect });
+    await page.getByTestId('title').waitFor();
+    await page.getByTestId('title-build').click();
+    await page.getByTestId('compose-text').fill(CYCLE.join('\n'));
+    await page.getByTestId('compose-design').click();
+    const proposal = page.getByTestId('proposal');
+    await proposal.waitFor();
+
+    // The outline is in: both rooms are on screen, the second still being drawn.
+    const scenes = () => page.getByTestId('prop-scene').evaluateAll((els) => els.map((el) => el.value));
+    await page.waitForFunction(() => document.querySelector('[data-testid=prop-scene]')?.value.startsWith('STAND-IN'));
+    assert(JSON.stringify(await roomNames(page)) === JSON.stringify(['First half', 'Second half']), `rooms: ${await roomNames(page)}`);
+    const early = await scenes();
+    assert(early.slice(0, 3).every((t) => t.startsWith('STAND-IN')) && early.slice(3).every((t) => t && !t.startsWith('STAND-IN')), `the first room should be drawn and the second hold drafts: ${early}`);
+    const marked = await page.locator('[data-testid=room]').evaluateAll((els) => els.map((el) => el.querySelectorAll('[data-testid=prop-drawing]').length));
+    assert(JSON.stringify(marked) === '[0,3]', `cards marked as drafts, per room: ${marked}`);
+    assert((await text(page.getByTestId('compose-drawing'))) === 'The Architect is still drawing 1 room: Second half. Their images are offline drafts until then.', `while drawing: ${await text(page.getByTestId('compose-drawing'))}`);
+    await page.getByTestId('compose-skip').click();
+    assert(await page.getByTestId('compose-place').isDisabled(), 'the place button should wait for the Architect');
+    assert((await page.getByTestId('compose-wait').count()) === 1, 'nothing says why the place button waits');
+    assert((await page.locator('[data-testid=room]').nth(1).getByTestId('regenerate').first().isDisabled()), 'Regenerate should wait on a card that is still being drawn');
+    await sceneShows(page, await proposal.getAttribute('data-layout'));
+    await shot(page, 'streaming');
+    // An image rewritten while its room is being drawn is the learner's: the Architect's does not replace it.
+    const MINE = 'My own picture of succinate, written while the Architect was busy.';
+    await page.getByTestId('prop-scene').nth(4).fill(MINE);
+
+    await page.waitForFunction(() => !document.querySelector('[data-testid=prop-drawing]') && !document.querySelector('[data-testid=compose-wait]'), null, { timeout: 40000 });
+    const late = await scenes();
+    assert(late[4] === MINE, `the learner's image was overwritten: ${late[4]}`);
+    assert(late.filter((t) => t.startsWith('STAND-IN')).length === 5, `the other five should be the Architect's: ${late}`);
+    assert((await text(page.getByTestId('compose-drawing'))) === '' && !(await page.getByTestId('compose-place').isDisabled()), 'the screen still waits after the last room arrived');
+    assert((await page.getByTestId('compose-local').count()) === 0 && (await text(page.getByTestId('compose-steps-head'))) === 'What the Architect did', 'the plan should read as the Architect\'s');
+    assert((await text(page.getByTestId('kit-chosen'))).startsWith(`The Architect chose the ${KITS[0].name}: Six steps in two halves suit two quiet halls.`), `the kit and its reason: ${await text(page.getByTestId('kit-chosen'))}`);
+    assert((await text(page.getByTestId('focus-read'))) === 'The Architect read these notes as a process: Each compound is made from the one before it.', `focus: ${await text(page.getByTestId('focus-read'))}`);
+    assert((await picked(page, 'focus')) === 'process', 'the choice should start at what the Architect decided');
+    const rows = await linkRows(page);
+    assert(rows[0] === 'Citrate becomes Isocitrate: isomerisation' && rows.length >= 5, `links: ${rows}`);
+    const ops = calls.map((c) => JSON.parse(c).op);
+    assert(ops[0] === 'outline' && ops.filter((o) => o === 'images').length === 2, `requests: ${ops}`);
+    const sent = JSON.parse(calls[0]);
+    assert(sent.kit === 'auto' && JSON.stringify(sent.kits.map((k) => k.id)) === JSON.stringify(KITS.map((k) => k.id)), `the outline request did not carry the kits: ${JSON.stringify(sent.kits)}`);
+    assert(JSON.parse(calls.find((c) => JSON.parse(c).op === 'images')).items.every((it) => it.place?.name), 'the images request did not carry the places');
+    await shot(page, 'streamed');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'outline first, then room by room: the second room\'s cards are marked as drafts until its images arrive, the place button waits, a learner\'s edit made meanwhile is kept; kit with its reason, process focus and links shown';
   },
 
   async k() {

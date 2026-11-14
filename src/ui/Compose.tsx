@@ -263,10 +263,15 @@ export function Compose() {
     if (ext.added.length === 0) {
       if (!last) return true;
       const why = [...ext.steps].reverse().find((s) => s.kind === 'plan' || s.kind === 'fallback')?.label;
+      const none = `None of the ${plural(ext.overflow.length, 'new fact')} has a place: ${ext.overflow.join(', ')}.`;
+      // Places can be left while no fact fits: the palace has all its rooms, and the free places are in other rooms.
+      const free = (ext.spec?.rooms ?? []).filter((r) => r.places < ROOM_CAPACITY).map((r) => r.name);
       setError(
-        ext.overflow.length > 0
-          ? `This palace is full: it holds ${MAX_PLACES} places. None of the ${plural(ext.overflow.length, 'new fact')} has a place: ${ext.overflow.join(', ')}.`
-          : (why ?? 'There was nothing new to place. Put one fact on each line.'),
+        ext.overflow.length === 0
+          ? (why ?? 'There was nothing new to place. Put one fact on each line.')
+          : free.length === 0
+            ? `This palace is full: it holds ${MAX_PLACES} places. ${none}`
+            : `${none} This palace cannot take another room (it holds ${MAX_ROOMS}), and its free places are in ${free.join(', ')}. Put the new facts under that heading, as in "# ${free[0]}".`,
       );
       return false;
     }
@@ -590,7 +595,7 @@ export function Compose() {
               // A suggestion and no more: adding places to a palace later has not been studied (docs/research.md 8.4).
               <p className="notice" data-testid="extend-finish-first">
                 {unfinished} of its {plural(standing.items.length, 'place')} {unfinished === 1 ? 'is' : 'are'} still in ruins or under repair. You may want
-                to finish those first: a route that is still being learned is best not loaded further.
+                to finish those walks before you add more. This is a suggestion, not a finding: adding places to a palace later has not been studied.
               </p>
             )}
           </>
@@ -634,7 +639,7 @@ export function Compose() {
         ) : (
           <p className="hint" data-testid="compose-rooms-hint">
             Formats: <code>term - meaning</code>, <code>term: meaning</code>, or one item per line. A line that starts with <code>#</code> is a
-            heading, and each heading becomes a room. A palace holds up to {MAX_PLACES} places, in {MAX_ROOMS} rooms of {ROOM_CAPACITY}; each place
+            heading, and each heading becomes a room; without headings the facts are sorted into rooms for you. A palace holds up to {MAX_PLACES} places, in {MAX_ROOMS} rooms of {ROOM_CAPACITY}; each place
             holds one fact{standing ? '.' : `, and a palace needs at least ${MIN_ITEMS}.`}
           </p>
         )}
@@ -746,6 +751,10 @@ export function Compose() {
         drawing: false,
         items: items.flatMap((item, n) => (layout.loci.find((l) => l.id === item.locusId)?.roomId === room.id ? [{ item, n }] : [])),
       }));
+  const grouped = new Set(groups.flatMap((g) => g.items.map(({ item }) => item.id)));
+  const stray = items.flatMap((item, n) => (grouped.has(item.id) ? [] : [{ item, n }]));
+  // An item whose place is in none of the rooms is still shown: nothing in the proposal may vanish.
+  if (stray.length > 0) groups.push({ id: 'unplaced', name: 'Not placed', isNew: false, editable: false, drawing: false, items: stray });
   const shownRooms = groups.filter((g) => g.items.length > 0);
   const lastId = items[items.length - 1]?.id;
 
@@ -753,7 +762,6 @@ export function Compose() {
   const fresh = new Set(items.map((it) => it.id));
   const ends: LinkEnd[] = standing ? [...items.map((it) => ({ id: it.id, term: it.term })), ...standing.items.map((it) => ({ id: it.id, term: it.term, standing: true }))] : items.map((it) => ({ id: it.id, term: it.term }));
   const kitOptions: PickOption[] = KIT_LIST.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb }));
-  const chain = links.some((l) => l.kind === 'becomes');
 
   return (
     <section className="screen" data-testid="proposal" data-compose={standing ? 'extend' : 'new'} data-layout={planLayoutId ?? undefined}>
@@ -820,8 +828,10 @@ export function Compose() {
           <p>
             {plan.spec
               ? standing
-                ? `Left out: the palace is full. It holds ${MAX_PLACES} places, and ${plural(plan.overflow.length, 'new fact')} ${plan.overflow.length === 1 ? 'has' : 'have'} no place:`
-                : `Left out: the palace holds ${MAX_PLACES}. Each place holds one fact, and ${plural(plan.overflow.length, 'fact')} ${plan.overflow.length === 1 ? 'has' : 'have'} no place:`
+                ? specRoomLeft(plan.spec) === 0
+                  ? `Left out: the palace is full. It holds ${MAX_PLACES} places, and ${plural(plan.overflow.length, 'new fact')} ${plan.overflow.length === 1 ? 'has' : 'have'} no place:`
+                  : `Left out: the palace cannot take another room (it holds ${MAX_ROOMS}), and the room for ${plan.overflow.length === 1 ? 'this new fact' : `these ${plan.overflow.length} new facts`} is full:`
+                : `Left out: the palace holds ${MAX_PLACES} places, in ${MAX_ROOMS} rooms of ${ROOM_CAPACITY}, and each place holds one fact. ${plural(plan.overflow.length, 'fact')} ${plan.overflow.length === 1 ? 'has' : 'have'} no place:`
               : `This palace has ${layout.loci.length} places and each place holds one fact. The remaining ${plural(plan.overflow.length, 'fact')} ${plan.overflow.length === 1 ? 'is' : 'are'} listed here:`}
           </p>
           <ol className="rest" start={plan.spec ? 1 : items.length + 1}>
@@ -893,9 +903,9 @@ export function Compose() {
               {plan.focus === 'process' && plan.focusReason ? `: ${plan.focusReason}` : '.'}
             </p>
           )}
-          {focus === 'process' && !chain && (
+          {focus === 'process' && links.length === 0 && (
             <p className="notice" data-testid="focus-no-chain">
-              No link says what a step becomes yet, so there is nothing to ask about the steps. Add those links under "How these connect".
+              There are no links yet, so nothing says how one step leads to the next. Add them under "How these connect".
             </p>
           )}
         </PickOne>
@@ -903,7 +913,7 @@ export function Compose() {
 
       <div className="steps-block">
         <p className="label" data-testid="compose-steps-head">
-          What {who.toLowerCase()} did
+          {offline ? 'What the offline planner did' : 'What the Architect did'}
         </p>
         <ol className="steps" data-testid="compose-steps">
           {plan.steps.map((s, i) => (
@@ -995,8 +1005,8 @@ export function Compose() {
       <LinksEditor links={links} ends={ends} onChange={setLinks} taken={standing?.links ?? []} fresh={standing ? fresh : undefined} max={linkCap(items.length + (standing?.items.length ?? 0))}>
         <p className="body" data-testid="links-about">
           {plan.spec
-            ? `The links ${who.toLowerCase()} read in your notes: a view of how the notes are organised. Each is drawn in the palace between its two places. Remove any that your notes do not say.`
-            : 'Links between facts, as your notes have them: a view of how the notes are organised. Each is drawn in the palace between its two places.'}
+            ? `The links ${offline ? 'the offline planner' : 'the Architect'} read in your notes: a view of how the notes are organised. Remove any that your notes do not say.`
+            : 'Links between facts, as your notes have them: a view of how the notes are organised. Add the ones your notes say.'}
         </p>
       </LinksEditor>
       <div ref={listEnd} data-testid="proposal-end" />
