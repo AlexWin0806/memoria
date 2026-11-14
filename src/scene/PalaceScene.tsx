@@ -16,6 +16,8 @@ import type { Qa } from './qa';
 import { resultsTour } from './tour';
 import type { Veil } from './veil';
 
+const NO_TOKENS: SceneView['tokens'] = [];
+
 /** `&tokens=all`: one deck's images (the Judge deck unless `&deck=` names another), all visible, wherever the session is. */
 function allTokens(layout: PalaceLayout, deckId: string): SceneView['tokens'] {
   const byLocus = new Map(getDeck(deckId)?.items.map((it) => [it.locusId, it]));
@@ -36,14 +38,20 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
   const deck = useDeck(session.deckId);
   const cards = useReview((s) => s.cards);
   const { mode, stops, step, arrived, results } = session;
+  // The "now hidden" screen between the walks. The overlay is adding this flag to the session
+  // store; until its type carries it, it is read as an optional extra.
+  const imagesHidden = (session as { imagesHidden?: boolean }).imagesHidden === true;
 
-  const view = useMemo(
-    () => deriveSceneView({ mode, layout, deck, stops, step, arrived, results, cards }),
-    [mode, layout, deck, stops, step, arrived, results, cards],
-  );
+  const view = useMemo(() => {
+    // Not an object literal at the call, so that the extra optional property is accepted by
+    // `deriveSceneView` before and after it learns about it.
+    const input = { mode, layout, deck, stops, step, arrived, results, cards, imagesHidden };
+    return deriveSceneView(input);
+  }, [mode, layout, deck, stops, step, arrived, results, cards, imagesHidden]);
+  // While images are hidden none is mounted, so one that was still appearing is gone too.
   const tokens = useMemo(
-    () => (qa.tokensAll ? allTokens(layout, qa.deck ?? JUDGE_DECK_ID) : view.tokens),
-    [qa.tokensAll, qa.deck, layout, view.tokens],
+    () => (qa.tokensAll ? allTokens(layout, qa.deck ?? JUDGE_DECK_ID) : imagesHidden ? NO_TOKENS : view.tokens),
+    [qa.tokensAll, qa.deck, layout, view.tokens, imagesHidden],
   );
   const development = useMemo(() => {
     const dev = qa.dev;
@@ -86,7 +94,7 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
         qa={qa}
         veil={veil}
       />
-      <DevelopmentDriver layout={layout} targets={development} snap={qa.frozen} />
+      <DevelopmentDriver layout={layout} targets={development} snap={qa.frozen} veil={veil} />
       {tokens.map(({ locusIndex, item, visible }) => {
         const locus = layout.loci[locusIndex];
         return visible && locus ? (

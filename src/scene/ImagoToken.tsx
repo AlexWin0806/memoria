@@ -202,9 +202,14 @@ export interface ImagoTokenProps {
 }
 
 const APPEAR_SECONDS = 0.45;
-/** Camera distances (metres) between which a `fadeNear` token goes from hidden to solid. */
-const NEAR_HIDDEN = 0.9;
-const NEAR_SOLID = 1.9;
+/**
+ * Camera distances (metres) between which a `fadeNear` token goes from hidden to solid.
+ * At 3 m a token is half the height of the picture; closer than that (walking under the
+ * image in the arch) it would fill the frame, so it is gone by then. No resting view has an
+ * image nearer than 3 m in its picture: the viewpoints stand 4.3 m or more from their own.
+ */
+const NEAR_HIDDEN = 1.7;
+const NEAR_SOLID = 3.0;
 /** The roundel is 1 m across; with its marginal marks the token spans about 1.3 m. */
 const RADIUS = 0.5;
 const MARK_RADIUS = 0.17;
