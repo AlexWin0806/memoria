@@ -32,10 +32,12 @@ import { PAGE_FRAG, PAGE_VERT, SURFACE_FRAG, SURFACE_VERT } from './shaders';
  * discontinuities into ink line and lays the vellum over the result. No lights, no
  * shadow map. `post.quality` trades line quality for cost (see QUALITY below).
  *
- * Cost per frame at quality 2 (not yet measured on a real GPU):
- *   wash pass      scene into RGBA8 at full size; per fragment two 3D and one 2D value
- *                  noise and one loop over the loci
- *   geometry pass  scene into RGBA16F at full size, 4x multisampled; trivial shader
+ * Cost per frame at the shipped quality 1 (not yet measured on a real GPU):
+ *   wash pass      scene into RGBA8 at full size; per fragment two 3D and two 2D value
+ *                  noises and two loops over the loci (the shared field, then the
+ *                  second-glaze ownership)
+ *   geometry pass  scene into RGBA16F at full size (4x multisampled only at quality 2);
+ *                  trivial shader
  *   page pass      one full-screen triangle pair; 11 texture fetches (9 of the geometry
  *                  buffer), two 3D and seven 2D value noises
  */
@@ -53,28 +55,45 @@ const KNOBS: Record<string, number> = {
   distanceFade: 0.7,
   toneLit: 0.36,
   toneShade: -0.12,
-  washLit: 0.6,
+  washLit: 0.8,
   washLitPigment: 0.74,
   washHalf: 0.9,
-  shadeMix: 0.22,
-  washThreshold: 0.2,
-  washFull: 0.8,
-  washFirst: 0.5,
-  bleed: 0.34,
-  pool: 0.22,
-  poolWidth: 3,
-  reserve: 0.5,
-  granulation: 0.07,
-  hatchSpacing: 7.5,
-  hatchWidth: 1.1,
-  hatchStrength: 0.6,
+  shadeMix: 0.3,
+  // Staged painting (see SURFACE_FRAG). Reach above washThreshold takes the first glaze;
+  // its pigment ramps in between strengths tintFrom and tintTo (accents held to
+  // firstSaturation, a miss greyed by missGrey); a place whose own value is above
+  // washFull takes the second glaze. bleed is the hand-wander of both edges, in metres.
+  // groundAt is the palace-wide floor at which the whole page has its first coat.
+  washThreshold: 0.08,
+  washFull: 0.82,
+  washFirst: 0.66,
+  washFirstPigment: 0.72,
+  firstSaturation: 0.6,
+  tintFrom: 0.2,
+  tintTo: 0.5,
+  missGrey: 0.35,
+  groundAt: 0.1,
+  bleed: 0.4,
+  pool: 0.3,
+  poolWidth: 2.5,
+  reserve: 0.2,
+  granulation: 0.05,
+  // Hatching. Small things: their shade side. Big planes: a band hatchContact metres
+  // high where a wall meets the floor, and clusters (above the hatchPatch noise level)
+  // only where N.L is below hatchTone.
+  hatchSpacing: 11,
+  hatchWidth: 0.9,
+  hatchStrength: 0.4,
+  hatchTone: -0.4,
+  hatchContact: 0.55,
+  hatchPatch: 0.62,
   grain: 0.09,
   fibre: 0.08,
   blotch: 0.06,
   vignette: 0.9,
   foxing: 0.5,
   laid: 0,
-  quality: 2,
+  quality: 1,
 };
 
 /**
@@ -141,6 +160,7 @@ function inkMaterial(theme: Theme, slot: SurfaceSlot, accent: AccentKey | undefi
       uBase: { value: new Color(baseColor(theme, slot, accent)) },
       uKind: { value: slot === 'glow' ? 1 : slot === 'water' ? 2 : 0 },
       uPigment: { value: accent ? 1 : 0 },
+      uBroad: { value: !accent && (slot === 'floor' || slot === 'wall' || slot === 'ceiling') ? 1 : 0 },
       // Distinct ids (multiples of 1/64) so the page pass can ink the boundary between
       // two materials. The id travels in the length of the stored normal.
       uId: { value: ((((materials.size + 1) * 37) % 61) + 2) / 64 },
