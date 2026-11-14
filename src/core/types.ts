@@ -29,6 +29,8 @@ export interface Imago {
   /** 1–3 glyphs (emoji code points). The first is the hero; the rest act on or around it. */
   glyphs: string[];
   action: ImagoAction;
+  /** One line tying the image to the meaning of the fact ("scaphoid means boat-shaped"). */
+  reason?: string;
   /** Where the image came from. 'learner' once the learner has edited it. */
   source: 'architect' | 'learner' | 'fixture' | 'fallback';
 }

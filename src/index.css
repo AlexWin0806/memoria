@@ -11,3 +11,5 @@ body {
   font-family: Georgia, 'Times New Roman', serif;
   overflow: hidden;
 }
+.app { position: fixed; inset: 0; }
+.app > canvas, .app > div:first-child { position: absolute; inset: 0; }
