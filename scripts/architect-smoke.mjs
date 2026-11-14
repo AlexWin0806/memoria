@@ -2,7 +2,8 @@
 /**
  * Smoke test for the Palace Architect.  Run: node scripts/architect-smoke.mjs
  *
- *  1. Validates every fixture deck (and the control list) against a schema.
+ *  1. Validates every fixture deck against a schema, and the two plain lists of the
+ *     comparison test against the decks they are derived from.
  *  2. Runs the local planner on three sample inputs and prints the plans, then asserts
  *     its behaviour on the four inputs from QA review 1 (planets, Spanish vocabulary,
  *     Krebs-cycle prose, "Element n - name" lines) and on offline "Strengthen".
@@ -37,7 +38,7 @@ const vite = await createServer({
 const load = (path) => vite.ssrLoadModule(path);
 
 try {
-  const { FIXTURE_DECKS, CONTROL_LIST, JUDGE_DECK_ID } = await load('/src/ai/fixtures/index.ts');
+  const { FIXTURE_DECKS, CONTROL_LIST, CARPALS_AS_LIST, JUDGE_DECK_ID } = await load('/src/ai/fixtures/index.ts');
   const { DOMUS_META } = await load('/src/layouts/domus/meta.ts');
   const { planPalace, planPalaceLocal, regenerateImago, isNoStrongerSuggestion, parseLine } = await load('/src/ai/architect.ts');
   const { isSafeGlyph, wordCount, IMAGO_ACTIONS } = await load('/src/ai/glyphs.ts');
@@ -123,17 +124,48 @@ try {
     console.log(`ok  ${deck.id.padEnd(26)} ${deck.kind.padEnd(5)} ${String(deck.items.length).padStart(2)} items  "${deck.title}"`);
   }
   if (!deckIds.has(JUDGE_DECK_ID)) fail('JUDGE_DECK_ID is not a registered fixture deck');
-  for (const id of ['fixture-carpals', 'fixture-cranial-nerves', 'fixture-mohs', 'fixture-spanish-kitchen']) {
+  for (const id of ['fixture-carpals', 'fixture-cranial-nerves', 'fixture-mohs', 'fixture-spanish-kitchen', 'fixture-krebs']) {
     if (!deckIds.has(id)) fail(`missing fixture deck ${id}`);
   }
+  if (FIXTURE_DECKS.at(-1)?.id !== 'fixture-krebs' || FIXTURE_DECKS.at(-2)?.id !== 'fixture-spanish-kitchen') fail('fixture-krebs should be registered last, after the Spanish deck');
+  // The comparison test swaps its two materials between the palace arm and the list arm.
+  // That is only fair if a deck and its plain list are the same material (same terms, same
+  // order, same short meanings) and the two materials are matched in form.
   const Control = z.object({
     id: z.string().min(1),
     title: z.string().min(3),
     items: z.array(z.object({ term: z.string().min(1), meaning: z.string().min(1) }).strict()).length(8),
   });
-  const control = Control.safeParse(CONTROL_LIST);
-  if (!control.success) fail(`CONTROL_LIST: ${control.error.issues.map((i) => i.message).join('; ')}`);
-  else console.log(`ok  control list               ${CONTROL_LIST.items.length} items  "${CONTROL_LIST.title}"`);
+  const MEANING_WORDS = 7; // "a phrase of at most about six words"; the longest carpal gloss has seven
+  const materials = [
+    { name: 'CONTROL_LIST', list: CONTROL_LIST, deckId: 'fixture-krebs' },
+    { name: 'CARPALS_AS_LIST', list: CARPALS_AS_LIST, deckId: 'fixture-carpals' },
+  ];
+  for (const { name, list, deckId } of materials) {
+    const parsed = Control.safeParse(list);
+    if (!parsed.success) {
+      fail(`${name}: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+      continue;
+    }
+    const deck = FIXTURE_DECKS.find((d) => d.id === deckId);
+    if (!deck) {
+      fail(`${name}: its deck ${deckId} is not registered`);
+      continue;
+    }
+    if (deck.kind !== 'list' || deck.items.length !== 8) fail(`${deckId}: a comparison deck must be an ordered list of eight items`);
+    if (deck.items.some((it, i) => it.locusId !== DOMUS_META.loci[i].id)) fail(`${deckId}: a comparison deck must sit on the first eight places in order`);
+    const listTerms = list.items.map((it) => it.term).join(' | ');
+    const deckTerms = deck.items.map((it) => it.term).join(' | ');
+    if (listTerms !== deckTerms) fail(`${name}: terms differ from ${deckId}: [${listTerms}] against [${deckTerms}]`);
+    list.items.forEach((it, i) => {
+      if (it.meaning !== deck.items[i]?.meaning) fail(`${name}: the meaning of ${it.term} differs from ${deckId}`);
+      if (wordCount(it.meaning) > MEANING_WORDS) fail(`${name}: the meaning of ${it.term} is ${wordCount(it.meaning)} words, not a short phrase: ${it.meaning}`);
+    });
+    if (new Set(list.items.map((it) => it.term.toLowerCase())).size !== 8) fail(`${name}: two items share a term`);
+    const lengths = list.items.map((it) => wordCount(it.meaning));
+    console.log(`ok  ${name.padEnd(26)} 8 items, same terms and order as ${deckId}; meanings ${Math.min(...lengths)} to ${Math.max(...lengths)} words  "${list.title}"`);
+  }
+  if (CONTROL_LIST.id === CARPALS_AS_LIST.id) fail('the two plain lists share an id');
 
   const lexWords = new Set(LEXICON.map((e) => e.word));
   for (const e of LEXICON) if (!isSafeGlyph(e.emoji)) fail(`lexicon: "${e.word}" maps to an unsupported glyph ${e.emoji}`);
