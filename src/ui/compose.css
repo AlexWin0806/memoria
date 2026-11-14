@@ -75,7 +75,12 @@
 }
 .room__head .sub { margin-top: 6px; }
 .room__head .muted { margin: 6px 0 0; font-size: 16px; }
-.room__name,
+/*
+ * The name over the door, set as a heading whether it is a field or a line. The field is
+ * named through its room: this file loads before overlay.css, whose `.field { font: inherit }`
+ * would otherwise win the tie.
+ */
+.room .room__name,
 .room__title {
   font-family: var(--type-display);
   font-size: 26px;
