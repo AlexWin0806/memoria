@@ -25,8 +25,8 @@ the palace against 4.0 of 8 with a plain list"). It is not a study and we never 
 
 ## What each volunteer does
 
-- **List arm:** eight intermediates of the citric acid cycle as a numbered list for 46 seconds.
-- **Palace arm:** the eight carpal bones as a timed walk, also 46 seconds including camera travel.
+- **List arm:** eight intermediates of the citric acid cycle as a numbered list for 50 seconds.
+- **Palace arm:** the eight carpal bones as a timed walk, also 50 seconds including camera travel.
 - After each: 20 seconds of typed sums (not scored), then eight ordered multiple-choice questions.
 
 ## Afterwards
@@ -38,7 +38,7 @@ the palace against 4.0 of 8 with a plain list"). It is not a study and we never 
 ## Limits to state if asked
 
 - Different lists in each arm (the list arm's meanings are longer); same-session recall only.
-- About 18 of the palace arm's 46 seconds are camera travel, so it has less reading time.
+- About 18 of the palace arm's 50 seconds are camera travel, so it has less reading time.
 - Eight-option multiple choice allows guessing (1 in 8) and elimination, in both arms.
 - Small n; order balanced by hand, not randomised.
 - If the carpal deck was edited on this device ("Strengthen this image"), the palace arm uses

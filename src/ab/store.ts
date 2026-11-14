@@ -25,12 +25,12 @@ export const ENCODE_SECONDS_PER_STOP = JUDGE_TIMING.pitch.encodeSecondsPerStop;
 /**
  * Study time of the list arm: the measured length of the palace arm's encode walk in this
  * build, rounded to a second. Measured on the greybox theme with `node scripts/ab-smoke.mjs`,
- * which prints it: 46.0 s, that is eight stops of 3.5 s plus about 18 s of camera glides
+ * which prints it: 50.2 s, that is eight stops of 4 s plus about 18 s of camera glides
  * (the regular walk speed, not Judge Mode's brisker one). The result screen shows both
  * actual study times for every participant. Re-measure after changing the stop time, the
  * route or the camera rail.
  */
-export const LIST_STUDY_SECONDS = 46;
+export const LIST_STUDY_SECONDS = 50;
 export const DISTRACTOR_SECONDS = 20;
 
 export type Arm = 'list' | 'palace';

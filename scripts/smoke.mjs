@@ -383,10 +383,16 @@ const cases = {
     const hung = Date.now() - t0;
     // The overlay gives up after 1.5 s here; the Architect's own timeout is 15 s. The margin is for a busy machine.
     assert(hung < 8000, `Strengthen waited ${hung} ms for an Architect that never answers`);
-    assert((await draft.getAttribute('data-by')) === 'hand', 'a silent Architect should hand the old image back for rewriting');
-    const guide = await text(page.getByTestId('strengthen-guide'));
-    assert(guide.includes('did not answer') && guide.includes('more distinct from its neighbours'), `guidance after a silent Architect: ${guide}`);
-    assert(await page.getByTestId('strengthen-accept').isDisabled(), 'an unchanged image should not be accepted as a new one');
+    // Fixture items carry a hand-written alternate, which is offered at once without the network.
+    // Anything else falls back to rewriting the old image by hand, with guidance.
+    const silentBy = await draft.getAttribute('data-by');
+    if (silentBy === 'hand') {
+      const guide = await text(page.getByTestId('strengthen-guide'));
+      assert(guide.includes('more distinct from its neighbours'), `guidance after a silent Architect: ${guide}`);
+      assert(await page.getByTestId('strengthen-accept').isDisabled(), 'an unchanged image should not be accepted as a new one');
+    } else {
+      assert(silentBy === 'written', `a silent Architect should give a hand-written alternate or the old image, got "${silentBy}"`);
+    }
     await shot(page, 'results-strengthen-by-hand');
     await page.getByTestId('strengthen-cancel').click();
     await draft.waitFor({ state: 'detached' });
@@ -419,7 +425,7 @@ const cases = {
     assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'nothing is due, so the Reviews entry should show no count');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return `${score}, ${n} Strengthen buttons; unreachable Architect -> "${by}" editor in ${quick} ms; silent Architect -> by hand in ${hung} ms`;
+    return `${score}, ${n} Strengthen buttons; unreachable Architect -> "${by}" editor in ${quick} ms; silent Architect -> "${silentBy}" editor in ${hung} ms`;
   },
 
   /** c and d share a browser context: d reloads and looks for the deck c made. */

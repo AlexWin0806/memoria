@@ -1,23 +1,30 @@
-# Memoria: 2-minute pitch (draft 1)
+# Memoria: 2-minute pitch (draft 2)
 
 Hard limit is 2:00. Rehearse to 1:50. One person speaks; one person hands the laptop to the
 judge and says nothing. The judge does the demo, not us.
 
 Open the site with `?judge=pitch` before the judge arrives. It waits on the title screen with a
-"Try it in 70 seconds" button; Wi-Fi off is fine. Measured passive run: 69 seconds
-(about 40 s walking the eight places, then a spot check of four of them).
+"Try it in 80 seconds" button; Wi-Fi off is fine. Measured passive run: about 80 seconds
+(about 47 s walking the eight places at 4 s each, then a spot check of four of them).
 
 | Time | Who | What |
 |---|---|---|
 | 0:00 | Speaker | **Hook.** "Quick question: can you name the eight bones in your wrist, in order? Anatomy students have to. Most of us cram lists like that and lose them in a week." |
-| 0:10 | Speaker | **Hand over.** "Press the big button. For the next forty seconds, just walk and look. At each place there is one strange picture. Picture it happening." |
-| 0:15 | Judge | **Encode walk**, eight places, about 40 seconds. Speaker stays quiet: talking over it would make the judge worse at it. |
-| 0:55 | Speaker | "Now the pictures are gone. We will check four of the eight places. What did you leave there?" |
-| 0:58 | Judge | **Recall, spot check.** Four of the eight places, chosen at random, multiple choice, about 25 seconds. Each place takes on colour when they get it right. |
-| 1:25 | Speaker | **What just happened.** "That is the method of loci. It is about 2,100 years old in writing. Two meta-analyses find a medium-to-large gain in recall for lists like this; one warns of a high risk of bias in the studies, and a later review rates the evidence as low quality. The catch has always been setup: you need a palace, a route and a picture for every fact." |
-| 1:40 | Speaker | **What we built.** "Memoria removes the setup. Paste your notes; an AI architect picks the facts, invents the pictures and checks them against the classical rules; you read through them and can change any of them. Then it tests you instead of letting you re-read, and schedules reviews at growing intervals, which is what the research says makes memories last." |
-| 1:53 | Speaker | **Close.** "It is free, it runs from a link on an ordinary laptop, and next we want you to be able to scan your own home and use that as your palace." |
+| 0:10 | Speaker | **Hand over.** "Press the big button. For the next forty-five seconds, just walk and look. At each place there is one strange picture. Picture it happening." |
+| 0:15 | Judge | **Encode walk**, eight places, about 47 seconds. Speaker stays quiet: talking over it would make the judge worse at it. |
+| 1:02 | Speaker | "Now the pictures are gone. We will check four of the eight places. What did you leave there?" |
+| 1:05 | Judge | **Recall, spot check.** Four of the eight places, chosen at random, multiple choice, about 25 seconds. Each place takes on colour when they get it right. |
+| 1:30 | Speaker | **What just happened.** "That is the method of loci. It is about 2,100 years old in writing. Two meta-analyses find a medium-to-large gain in recall for lists like this; one warns of a high risk of bias in the studies, and a later review rates the evidence as low quality. The catch has always been setup: you need a palace, a route and a picture for every fact." |
+| 1:42 | Speaker | **What we built.** "Memoria removes the setup. Paste your notes; an AI architect picks the facts, invents the pictures and checks them against the classical rules; you read through them and can change any of them. Then it tests you instead of letting you re-read, and schedules reviews at growing intervals, which is what the research says makes memories last." |
+| 1:54 | Speaker | **Close.** "It is free, it runs from a link on an ordinary laptop, and next we want you to be able to scan your own home and use that as your palace." |
 | 2:00 | | Stop. |
+
+## Timing warning
+
+The demo now takes about 80 of the 120 seconds, which leaves roughly 15 seconds before it
+and 25 after. The two speaking blocks after the demo are written for about 30 seconds: cut
+words in rehearsal, never speed up. If the judge is slow on the spot check, drop the close
+and end on "what we built".
 
 ## If asked
 
