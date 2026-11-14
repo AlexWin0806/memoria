@@ -11,10 +11,13 @@
  *   2. The API endpoint answers with its guard rails (405 for GET, 400 for a bad body).
  *   2b. A generated palace through the deployed API, driven by the app's own client code
  *      (src/ai, loaded here through Vite): `--facts N` Spanish words under headings (up to
- *      30), then a six-step process, then an extension of it. Reports the rooms, the links,
+ *      30), then a six-step process (offered the real kits, so that it can choose the one
+ *      that suits a process), then an extension of it. Reports the rooms, the links,
  *      what the Architect says it did, and for every request when it started, how long it
  *      took and the server's own timing of each model call. Fails if the palace is not from
- *      the live Architect, if a room did not answer, or if it took more than 30 s.
+ *      the live Architect, if a room did not answer, if it took more than 30 s, if any room
+ *      of a palace of more than one fact has a single place, or if a kit comes back that
+ *      does not exist.
  *      `--no-browser` stops here.
  *   3. In a real browser: the title screen appears and the scene renders.
  *   4. In a real browser: "Build a palace" with a short list. Reports whether the plan came
@@ -134,11 +137,6 @@ const BREAD = [
   'Baking: the loaf is baked in a hot oven until the crust is brown. Baking leads to cooling.',
   'Cooling: the loaf rests on a rack before it is sliced.',
 ].join('\n');
-const KITS = [
-  { id: 'gothic', name: 'Gothic library', blurb: 'Stone vaults, lecterns, tall windows.' },
-  { id: 'zen', name: 'Zen garden', blurb: 'Raked gravel, stones, water and a tea house.' },
-  { id: 'castle', name: 'Castle', blurb: 'A keep with a great hall, armour and banners.' },
-];
 
 async function palaceCheck(facts) {
   let createServer;
@@ -186,6 +184,15 @@ async function palaceCheck(facts) {
   try {
     const { designPalace, extendPalace } = await vite.ssrLoadModule('/src/ai/architect.ts');
     const { parsePalaceId } = await vite.ssrLoadModule('/src/layouts/spec.ts');
+    // The kits that exist, as the app offers them: the Architect must choose one of these and no other.
+    const { KIT_LIST } = await vite.ssrLoadModule('/src/layouts/kits/list.ts');
+    const kitIds = KIT_LIST.map((k) => k.id);
+    /** A palace of more than one fact has no room of a single place; and its kit is one that exists. */
+    const checkRooms = (label, spec, facts, since = []) => {
+      const lone = spec.rooms.filter((r) => r.places === 1 && !since.includes(r.id));
+      if (facts > 1 && lone.length) bad(`${label}: ${lone.length === 1 ? 'a room has' : `${lone.length} rooms have`} a single place (${spec.rooms.map((r) => `${r.name}: ${r.places}`).join(', ')}). A room is a category or a phase, never one fact.`);
+      if (!kitIds.includes(spec.kit)) bad(`${label}: the kit "${spec.kit}" does not exist (the kits are ${kitIds.join(', ')})`);
+    };
     const termIn = (items) => (id) => items.find((it) => it.id === id)?.term ?? '?';
     const describe = (plan, items) => {
       const spec = parsePalaceId(plan.layoutId ?? plan.deck.layoutId);
@@ -199,7 +206,7 @@ async function palaceCheck(facts) {
     // (a) vocabulary under headings: categories become rooms.
     let started = Date.now();
     const arrivals = [];
-    const plan = await designPalace({ text: vocabulary(facts), kits: KITS }, { onProgress: (p) => arrivals.push(`${((Date.now() - started) / 1000).toFixed(1)} s: ${p.items.filter((it) => it.imago.source === 'architect').length} images`) });
+    const plan = await designPalace({ text: vocabulary(facts), kits: KIT_LIST }, { onProgress: (p) => arrivals.push(`${((Date.now() - started) / 1000).toFixed(1)} s: ${p.items.filter((it) => it.imago.source === 'architect').length} images`) });
     let wall = Date.now() - started;
     let longest = report(`${facts} facts`, started, wall);
     const drawn = plan.items.filter((it) => it.imago.source === 'architect').length;
@@ -208,6 +215,7 @@ async function palaceCheck(facts) {
       bad(`the generated palace came from the offline planner (first request: HTTP ${first?.status || 'none'} ${first?.error ?? ''}). 400 "op" means this deployment predates the outline operation; 503 means no key is set.`);
     } else {
       const spec = describe(plan, plan.items);
+      checkRooms(`the ${plan.items.length}-fact palace`, spec, plan.items.length);
       note(`  images arrived: ${arrivals.join(' | ')}`);
       for (const it of plan.items.slice(0, 5)) note(`  image: ${it.locusId} ${it.imago.glyphs.join('')} ${it.term}: ${it.imago.scene}  [${it.imago.reason ?? ''}]`);
       const wanted = Math.min(facts, 30);
@@ -223,11 +231,15 @@ async function palaceCheck(facts) {
     // (b) a process: the steps are chained, and the palace says so.
     calls.length = 0;
     started = Date.now();
-    const bread = await designPalace({ text: BREAD, kit: 'castle' });
+    const bread = await designPalace({ text: BREAD, kits: KIT_LIST });
     wall = Date.now() - started;
     report('a six-step process', started, wall);
     if (bread.source === 'api') {
-      describe(bread, bread.items);
+      const breadSpec = describe(bread, bread.items);
+      checkRooms('the process', breadSpec, bread.items.length);
+      // The steps of a process are stations along a hall: never more rooms than five steps a room need.
+      if (breadSpec.rooms.length > Math.ceil(bread.items.length / 3)) bad(`the process: ${bread.items.length} steps were spread over ${breadSpec.rooms.length} rooms`);
+      note(`  kit chosen for a process: ${bread.kit.id} (${bread.kit.chosenBy}${bread.kit.reason ? `: ${bread.kit.reason}` : ''})`);
       const chain = bread.items.slice(0, -1).every((it, i) => bread.links.some((l) => l.kind === 'becomes' && l.from === it.id && l.to === bread.items[i + 1].id));
       if (bread.focus === 'process' && chain) ok(`the six steps came back as a process, each step linked to the next (${(wall / 1000).toFixed(1)} s)`);
       else bad(`the bread notes came back as focus "${bread.focus}" with ${chain ? 'a whole' : 'a broken'} chain of steps`);
@@ -243,6 +255,13 @@ async function palaceCheck(facts) {
       const term = termIn(grown.deck.items);
       note(`  added: ${grown.added.map((it) => `${it.term} at ${it.locusId} ${it.imago.glyphs.join('')}`).join('; ') || 'nothing'}; new links: ${grown.links.map((l) => `${term(l.from)} ${l.kind} ${term(l.to)}`).join('; ') || 'none'}`);
       for (const s of grown.steps) note(`  step (${s.kind}): ${s.label}`);
+      if (grown.spec) {
+        note(`  rooms now: ${grown.spec.rooms.map((r) => `${r.name} (${r.places})`).join(', ')}`);
+        // Rooms that stood are judged as they were built; only what the extension opened is checked.
+        const opened = grown.spec.rooms.filter((r) => !breadSpec.rooms.some((old) => old.id === r.id));
+        if (grown.added.length > 1 && opened.some((r) => r.places === 1)) bad(`extension: ${grown.added.length} new facts, and a new room of a single place (${opened.map((r) => `${r.name}: ${r.places}`).join(', ')})`);
+        checkRooms('the extended palace', grown.spec, grown.deck.items.length, grown.spec.rooms.map((r) => r.id));
+      }
       if (grown.source === 'api' && grown.added.length >= 1 && kept) ok(`extended the palace with ${grown.added.length} new ${grown.added.length === 1 ? 'fact' : 'facts'}; nothing that stood was touched (${(wall / 1000).toFixed(1)} s)`);
       else bad(`extension: source ${grown.source}, ${grown.added.length} added, existing items ${kept ? 'kept' : 'CHANGED'}`);
     } else {

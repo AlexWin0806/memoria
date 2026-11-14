@@ -3,7 +3,7 @@ import { MAX_PLACES, ROOM_CAPACITY } from '@/layouts/spec';
 import type { ArchitectStep } from './architect';
 import { wordCount } from './glyphs';
 import { extractFacts, singularCounts, type ParsedFact } from './parse';
-import { cleanLinks, closesLoop, linkCap, type Outline, type OutlineCategory, type OutlineItem, type OutlineLink } from './wire';
+import { arrangeRooms, cleanLinks, closesLoop, linkCap, roomSizes, type Outline, type OutlineCategory, type OutlineItem, type OutlineLink } from './wire';
 
 /**
  * The offline outline: the same `Outline` the Architect's server returns, read from the
@@ -15,6 +15,8 @@ import { cleanLinks, closesLoop, linkCap, type Outline, type OutlineCategory, ty
  *               "A leads to B"; "A inhibits B", "A blocks B", "A prevents B"; "A requires B",
  *               "A needs B", "A depends on B"; "A <-> B", "A mirrors B".
  *   Otherwise   consecutive rooms of up to five, in the order given.
+ *   A process   when most facts are joined by arrows or "becomes": its steps are stations
+ *               along a hall, never a room each (the room rules are `arrangeRooms` in ./wire).
  *
  * It cannot tell a category from a heading that is only decoration, and it reads no link
  * that is not written in one of those forms. The trace says so.
@@ -121,6 +123,8 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
   say('fallback', 'Working offline: this is a rough draft from a built-in word list, not the Architect. Rewrite each image in your own words.');
 
   const { title, sections } = readSections(text);
+  // When a palace is extended, a lone heading names the room for these notes, not a deck.
+  if (ctx.existing && title && sections.length === 1 && !sections[0].name) sections[0].name = title;
   const standing = new Map((ctx.existing?.terms ?? []).map((t, i) => [norm(t), `e${i + 1}`] as const));
 
   // Facts in the order written, each remembering its section. A name that appears twice
@@ -177,12 +181,18 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
 
   // Categories: the headings, or plain consecutive rooms when there are none.
   const headed = sections.some((s) => s.name);
-  const categories: OutlineCategory[] = [];
-  const items: OutlineItem[] = [];
+  let categories: OutlineCategory[] = [];
+  let items: OutlineItem[] = [];
   const place = (fact: Found, category: number): void => {
     items.push({ ref: refOf.get(norm(fact.term))!, term: fact.term, ...(fact.meaning ? { meaning: fact.meaning } : {}), category });
   };
-  const wholeLoop = !headed && !ctx.existing && kept.length >= 3 && links.filter((l) => l.kind === 'becomes').length >= kept.length && closesLoop([...fresh], links);
+  // Every fact leads to the next and the last back to the first: the whole of it is a cycle.
+  const closed = !ctx.existing && kept.length >= 3 && links.filter((l) => l.kind === 'becomes').length >= kept.length && closesLoop([...fresh], links);
+  const wholeLoop = closed && !headed;
+  // A process: most of the facts are steps that an arrow or "becomes" leads to or from.
+  const stepRefs = new Set(links.filter((l) => l.kind === 'becomes').flatMap((l) => [l.from, l.to]));
+  const steppers = [...fresh].filter((ref) => stepRefs.has(ref)).length;
+  const process = !ctx.existing && kept.length >= 3 && steppers * 5 >= kept.length * 3;
   if (wholeLoop) {
     categories.push({ name: title && wordCount(title) <= 3 ? title : 'The cycle', shape: 'ring' });
     for (const fact of kept) place(fact, 0);
@@ -200,10 +210,12 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
           categories.push({ name: rooms[last].name, shape: 'hall', room: last });
           for (const fact of fill) place(fact, categories.length - 1);
         }
-        for (let k = 0; k < facts.length; k += ROOM_CAPACITY) {
-          categories.push({ name: `Part ${rooms.length + 1 + k / ROOM_CAPACITY}`, shape: 'hall' });
-          for (const fact of facts.slice(k, k + ROOM_CAPACITY)) place(fact, categories.length - 1);
-        }
+        let at = 0;
+        roomSizes(facts.length).forEach((size, part) => {
+          categories.push({ name: `Part ${rooms.length + 1 + part}`, shape: 'hall' });
+          for (const fact of facts.slice(at, at + size)) place(fact, categories.length - 1);
+          at += size;
+        });
         return;
       }
       // A heading that names a room that stands continues that room.
@@ -214,9 +226,11 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
       for (const fact of facts) place(fact, categories.length - 1);
     });
   } else {
-    for (let k = 0; k < kept.length; k += ROOM_CAPACITY) {
+    let at = 0;
+    for (const size of roomSizes(kept.length)) {
       categories.push({ name: `Part ${categories.length + 1}`, shape: 'hall' });
-      for (const fact of kept.slice(k, k + ROOM_CAPACITY)) place(fact, categories.length - 1);
+      for (const fact of kept.slice(at, at + size)) place(fact, categories.length - 1);
+      at += size;
     }
   }
   // A category whose facts lead one to the next and back to the first is a cycle: a round room.
@@ -224,6 +238,10 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
     const refs = items.filter((it) => it.category === index).map((it) => it.ref);
     if (c.room === undefined && refs.length >= 3 && closesLoop(refs, links)) c.shape = 'ring';
   });
+  // What a room is: stations of a process share halls, a lone fact shares its neighbour's room.
+  const arranged = arrangeRooms(categories, items, { focus: process ? 'process' : 'facts', closed, title: title ?? '' });
+  categories = arranged.categories;
+  items = arranged.items;
 
   const count = (k: number) => `${k} ${ctx.existing ? 'new ' : ''}${k === 1 ? 'fact' : 'facts'}`;
   if (items.length === 0) say('plan', ctx.existing && repeats > 0 ? 'Found nothing new: every fact in these notes is already in the palace.' : 'Found nothing to place. Paste one fact per line.');
@@ -234,9 +252,11 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
   if (items.length > 0) {
     const spread = categories.map((c, i) => `${c.name} (${items.filter((it) => it.category === i).length})`).join(', ');
     if (ctx.existing) say('plan', `Sorted them by heading: ${spread}. Nothing already placed moves.`.slice(0, 200));
-    else if (wholeLoop) say('plan', `These ${items.length} facts lead one to the next and back to the first: one category, "${categories[0].name}".`);
-    else if (headed) say('plan', `Read the headings as categories, one room each: ${spread}. This was mechanical: check that each heading is a real category.`.slice(0, 200));
+    else if (process) say('plan', `Set the ${items.length} steps out as stations, in order: ${spread}.`.slice(0, 200));
+    else if (headed) say('plan', `Read the headings as categories: ${spread}. This was mechanical: check that each heading is a real category.`.slice(0, 200));
     else say('plan', `Found no headings, so split the facts in order into ${categories.length} ${categories.length === 1 ? 'room' : 'rooms'} of up to ${ROOM_CAPACITY}.`);
+    for (const note of arranged.notes) say('plan', note.slice(0, 200));
+    if (closed) say('plan', `These ${items.length} facts lead one to the next and back to the first: a cycle.`);
   }
   const rings = categories.filter((c) => c.shape === 'ring').map((c) => c.name);
   if (rings.length) say('plan', `${rings.join(' and ')} ${rings.length === 1 ? 'closes on itself, so its room is' : 'close on themselves, so their rooms are'} round.`.slice(0, 200));
@@ -245,10 +265,6 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
     say('plan', `Read ${links.length} ${links.length === 1 ? 'link' : 'links'} from arrows and plain phrases ("becomes", "inhibits", "requires"): ${kinds.map(([k, n]) => `${n} ${k}`).join(', ')}. Links written any other way were not seen.`);
   }
 
-  // A process: most of the facts are steps that an arrow or "becomes" leads to or from.
-  const stepRefs = new Set(links.filter((l) => l.kind === 'becomes').flatMap((l) => [l.from, l.to]));
-  const steppers = items.filter((it) => stepRefs.has(it.ref)).length;
-  const process = !ctx.existing && items.length >= 3 && steppers * 5 >= items.length * 3;
   if (process) say('plan', `This reads as a process: ${steppers} of the ${items.length} facts are steps joined by arrows or "becomes". The walks will ask what each step becomes.`);
 
   const pairs = kept.filter((f) => f.pair).length;

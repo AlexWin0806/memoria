@@ -73,6 +73,8 @@ const RATE_WINDOW_MS = 10 * 60_000;
 const ROOM_CAPACITY = 5;
 const MAX_ROOMS = 6;
 const MAX_PLACES = ROOM_CAPACITY * MAX_ROOMS;
+/** Mirrors DEFAULT_KIT_ID in src/layouts/kits/list.ts. */
+const DEFAULT_KIT = 'gothic';
 const LINK_KINDS = ['becomes', 'needs', 'blocks', 'mirrors'] as const;
 type LinkKind = (typeof LINK_KINDS)[number];
 
@@ -675,12 +677,12 @@ const OUTLINE_RULES = `How to outline the palace:
 - kind: "list" when the order matters or each item is a standalone thing to recall at its place; "pairs" when each item is a cue with an answer (vocabulary, term and definition). If a kind is forced, use it.
 - term: the thing to remember, in the learner's own wording, five words or fewer. meaning: the answer (pairs), or a gloss of 15 words or fewer (list). Use only what the material says, plus a gloss you are certain is correct. If there is none, use an empty string. Do not add facts, and never cut a term or a meaning off in the middle: shorten by rewording, not by truncating.
 - When the lines share a generic head ("Element 1 - Hydrogen", "Step 2 - whisk"), the term is the specific part (Hydrogen), never the shared word or the number.
-- Categories become rooms: each category of the material is a physically separate room of the palace. Use the categories the material itself has: its headings, its named groups ("Past tense", "Noble gases"), the stages of a process. Name each in three words or fewer, in the material's own words where it has them. Related facts share a category. Never invent categories to decorate: if the material has no real categories, return exactly one category with an empty name, and the facts will be split in order into plain rooms.
+- Categories become rooms: each category of the material is a physically separate room of the palace. Use the categories the material itself has: its headings, its named groups ("Past tense", "Noble gases"), the stages of a process. Name each in three words or fewer, in the material's own words where it has them. Related facts share a category. Never invent categories to decorate: if the material has no real categories, return exactly one category with an empty name, and the facts will be split in order into plain rooms. A category with a single fact is not a room: put that fact in the category nearest to it.
 - A room holds at most ${ROOM_CAPACITY} facts and a palace at most ${MAX_ROOMS} rooms. A category with more than ${ROOM_CAPACITY} facts continues in a second room, which counts towards the ${MAX_ROOMS}. If the material has more categories than fit, merge the closest ones.
 - List the categories in the order they should be walked, which is the order of the material. List the items category by category in that order; inside a category keep the order of the material, so that a sequence stays in sequence.
 - cycle: true only when the facts of a category form a closed loop, each leading to the next and the last back to the first (the citric acid cycle, the water cycle). Otherwise false.
 - links: relationships between two facts, only where the material states them or plainly implies them. Never add a link because it is true in general, or to make the palace look connected: an empty list is a good answer for a plain list. Kinds: "becomes" (from turns into, leads to, or is the step before to), "needs" (from depends on to), "blocks" (from inhibits or prevents to), "mirrors" (a matched pair: opposites, counterparts, the same form in two tenses). label: four words or fewer saying how ("loses CO2"), or an empty string. At most one link for any two facts, and never more links than one and a half times the number of facts. For a cycle, link each step to the next with "becomes" and close the loop.
-- focus: "process" when the facts are the steps or stages of something that runs in order or in a cycle and the material says how one leads to the next (a pathway, an algorithm, a procedure, a chain of events). Otherwise "facts" (terms, names, vocabulary, a list whose order is only a convention). focusReason: one short line saying why. For a process the "becomes" links are the chain of steps: link every step to the one after it, in order, close the loop when the material describes a cycle, and label each link with what happens at that step where the material says ("loses CO2", "makes NADH"). The learner will be asked what each step becomes.
+- focus: "process" when the facts are the steps or stages of something that runs in order or in a cycle and the material says how one leads to the next (a pathway, an algorithm, a procedure, a chain of events). Otherwise "facts" (terms, names, vocabulary, a list whose order is only a convention). focusReason: one short line saying why. For a process the "becomes" links are the chain of steps: link every step to the one after it, in order, close the loop when the material describes a cycle, and label each link with what happens at that step where the material says ("loses CO2", "makes NADH"). The learner will be asked what each step becomes. In a process a category is a phase, never a single step: the steps are stations along one hall, in order, up to ${ROOM_CAPACITY} to a room. Use the material's own phases as categories only where a phase has at least two steps; otherwise return one category named for the process itself, in three words or fewer ("Bread making"), and it will be split into rooms if it is long. Never give each step a category of its own.
 - picture: one emoji for the concrete thing that will stand for the fact in its memory image (the images themselves are written afterwards, room by room). It shows what the fact means or does. No two facts share a picture. Use only widely supported single emoji from Unicode 13 (2020) or earlier: no skin-tone variants, no joined sequences, no flags.
 - title: six words or fewer, naming the topic.
 - grouping: one plain sentence of 20 words or fewer, saying what you did with categories and order that the learner should know. It must be true of the outline you return.`;
@@ -699,7 +701,6 @@ const LINK_PHRASE: Record<LinkKind, string> = {
 };
 
 const firstWords = (s: string, n: number): string => s.split(/\s+/).filter(Boolean).slice(0, n).join(' ');
-const roomsFor = (n: number): number => Math.ceil(n / ROOM_CAPACITY);
 const enumOf = (prefix: string, n: number): [string, ...string[]] => Array.from({ length: Math.max(1, n) }, (_, i) => `${prefix}${i + 1}`) as [string, ...string[]];
 
 /** True when `becomes` links run from fact to fact inside `refs` and come back to where they started. */
@@ -718,14 +719,121 @@ function closesLoop(refs: string[], links: { from: string; to: string; kind: Lin
   return false;
 }
 
+/**
+ * How many places each room of a run of `n` facts gets: fives, and never a last room of one
+ * (six facts are three and three, eleven are five, three and three). Mirrors `roomSizes` in
+ * src/ai/wire.ts, where the client applies the same room rules again on arrival.
+ */
+function roomSizes(n: number): number[] {
+  if (n <= 0) return [];
+  const full = Math.floor(n / ROOM_CAPACITY);
+  const rest = n % ROOM_CAPACITY;
+  const fives = (k: number): number[] => Array.from({ length: k }, () => ROOM_CAPACITY);
+  if (rest === 0) return fives(full);
+  if (rest === 1 && full >= 1) return [...fives(full - 1), 3, 3];
+  return [...fives(full), rest];
+}
+
+interface Grouped<T> {
+  name: string;
+  cycle: boolean;
+  /** Index of the existing room this category continues (extension only). */
+  room?: number;
+  items: T[];
+}
+
+/**
+ * The rooms of a process. A room is a phase, never a step: the steps are stations along a
+ * hall, up to five a room, in order. The notes' own phases are kept when each covers at
+ * least two steps (a phase of one step joins the phase beside it); otherwise there is one
+ * room named for the process, or "Steps 1 to 5", "Steps 6 to 8". This holds whatever the
+ * model returned: on the live model, six steps once came back as six rooms of one place.
+ */
+function arrangeProcess<T>(groups: Grouped<T>[], title: string, closed: boolean, notes: string[]): Grouped<T>[] {
+  const all = groups.flatMap((g) => g.items);
+  const total = all.length;
+  const before = groups.map((g) => `${g.name}:${g.items.length}`).join('|');
+  const plain = (name: string): boolean => !name || /^(?:Part|Steps) \d/.test(name);
+  const stations = (): Grouped<T>[] => {
+    const sizes = roomSizes(total);
+    const only = groups.length === 1 && !plain(groups[0].name) ? groups[0].name : '';
+    const titled = words(title) <= 3 && !plain(title) ? title : '';
+    if (sizes.length === 1) return [{ name: only || titled || (closed ? 'The cycle' : 'The process'), cycle: closed, items: all }];
+    let at = 0;
+    return sizes.map((size) => {
+      const group: Grouped<T> = { name: `Steps ${at + 1} to ${at + size}`, cycle: false, items: all.slice(at, at + size) };
+      at += size;
+      return group;
+    });
+  };
+  let phases: (Grouped<T> & { multi: boolean })[] | null =
+    groups.length >= 2 && groups.every((g) => !plain(g.name)) ? groups.map((g) => ({ ...g, items: [...g.items], multi: g.items.length >= 2 })) : null;
+  const joined: string[] = [];
+  while (phases && phases.some((p) => p.items.length === 1)) {
+    const i = phases.findIndex((p) => p.items.length === 1);
+    const single = phases[i];
+    const prev = phases[i - 1];
+    const next = phases[i + 1];
+    const host = prev?.multi && prev.items.length < ROOM_CAPACITY ? prev : next?.multi && next.items.length < ROOM_CAPACITY ? next : undefined;
+    if (!host) {
+      phases = null;
+      break;
+    }
+    if (host === prev) host.items.push(...single.items);
+    else host.items.unshift(...single.items);
+    joined.push(`"${single.name}" is a single step, so it stands in "${host.name}".`);
+    phases.splice(i, 1);
+  }
+  if (phases && phases.reduce((sum, p) => sum + roomSizes(p.items.length).length, 0) > MAX_ROOMS) phases = null;
+  const arranged = phases ?? stations();
+  if (phases) notes.push(...joined);
+  else if (arranged.map((g) => `${g.name}:${g.items.length}`).join('|') !== before) {
+    notes.push(`A room is a phase, never a single step: the ${total} steps are stations in ${arranged.length === 1 ? 'one room' : `${arranged.length} rooms`}, in order.`);
+  }
+  if (closed && total > ROOM_CAPACITY) {
+    notes.push(`A cycle of ${total} steps does not fit one round room (${ROOM_CAPACITY} places), so it runs through halls; the link from the last step back to the first closes it.`);
+  }
+  return arranged;
+}
+
+/** Facts: a category of a single fact shares the room of the category beside it, when the two fit. A palace has no rooms of one place. */
+function shareRooms<T>(input: Grouped<T>[], notes: string[]): Grouped<T>[] {
+  const groups = input.map((g) => ({ ...g, items: [...g.items] }));
+  for (let from = 0; groups.length > 1; ) {
+    const i = groups.findIndex((g, k) => k >= from && g.items.length === 1);
+    if (i < 0) break;
+    const single = groups[i];
+    const prev = groups[i - 1];
+    const next = groups[i + 1];
+    const host = prev && prev.items.length < ROOM_CAPACITY ? prev : next && next.items.length < ROOM_CAPACITY ? next : undefined;
+    // Both neighbours full: it keeps a room of its own.
+    if (!host) {
+      from = i + 1;
+      continue;
+    }
+    if (host === prev) host.items.push(...single.items);
+    else host.items.unshift(...single.items);
+    host.cycle = false;
+    notes.push(`"${single.name}" had one fact and shares a room with "${host.name}".`);
+    groups.splice(i, 1);
+    from = i;
+  }
+  return groups;
+}
+
 async function outline(input: OutlineInput, client: Anthropic, model: string, effort: Effort | null, timings: Record<string, number>) {
   const deadline = Date.now() + OUTLINE_BUDGET_MS;
   const existing = input.existing ?? null;
   const cap = Math.min(input.maxItems, MAX_PLACES);
   const kits = input.kits ?? [];
+  const listed = kits.map((k) => k.id);
   const asked = (input.kit ?? 'auto').toLowerCase();
   const choosing = !existing && asked === 'auto' && kits.length > 0;
-  const kitChoices = (choosing ? kits.map((k) => k.id) : [asked === 'auto' ? 'gothic' : asked]) as [string, ...string[]];
+  // A kit that is not in the list the app sent does not exist: the default takes its place.
+  // (With no list, as when a palace is extended, the id is the app's own and is kept.)
+  const fallbackKit = listed.length === 0 || listed.includes(DEFAULT_KIT) ? DEFAULT_KIT : listed[0];
+  const askedExists = asked !== 'auto' && (listed.length === 0 ? /^[a-z0-9-]{1,24}$/.test(asked) : listed.includes(asked));
+  const kitChoices = (choosing ? listed : [askedExists ? asked : fallbackKit]) as [string, ...string[]];
 
   const itemIds = enumOf('i', cap);
   const catIds = enumOf('c', MAX_ROOMS);
@@ -759,7 +867,7 @@ ${existing.newRooms} new ${existing.newRooms === 1 ? 'room' : 'rooms'} can still
 Nothing that stands may change. Extract only the NEW facts of the material: skip a fact that is already in the palace. Give each new fact the category of an existing room (x1, x2, ...) when it belongs to that room's category, even if the room is full (it then continues next door); otherwise a new category (c1, c2, ...), listed in "categories". List only new categories there. A link may join a new fact to one already in the palace (use its e-number), and every link must have at least one new fact.\n`
     : '';
   const kitLine = choosing
-    ? `Choose the architectural kit whose setting best suits this material, and give in kitReason one short line tied to the material itself ("A cycle that returns to its start suits a cloister."). The learner can overrule you. Kits:\n${kits.map((k) => `- ${k.id}: ${k.name}${k.blurb ? `. ${oneLine(k.blurb, 200)}` : ''}`).join('\n')}`
+    ? `Choose the architectural kit whose setting best suits this material, and give in kitReason one short line tied to the material itself ("A cycle that returns to its start suits a cloister."). A kit whose description says what kind of material it suits is the one for that kind of material: for a process, a pathway or a sequence of steps, choose a kit described as suiting them. The learner can overrule you. Kits:\n${kits.map((k) => `- ${k.id}: ${k.name}${k.blurb ? `. ${oneLine(k.blurb, 200)}` : ''}`).join('\n')}`
     : `The kit is already chosen: answer kit "${kitChoices[0]}" and an empty kitReason.`;
 
   const draft = await ask({
@@ -806,13 +914,7 @@ ${input.text}
 
   // Categories in walking order: the rooms that stand, then the new categories as listed,
   // then any the model used without listing.
-  interface Category {
-    name: string;
-    cycle: boolean;
-    /** Index of the existing room this category continues (extension only). */
-    room?: number;
-    items: typeof usable;
-  }
+  type Category = Grouped<(typeof usable)[number]>;
   const byId = new Map<string, Category>();
   existing?.rooms.forEach((r, k) => byId.set(`x${k + 1}`, { name: r.name, cycle: false, room: k, items: [] }));
   for (const c of draft.categories) {
@@ -840,31 +942,61 @@ ${input.text}
     return false;
   });
 
-  // No real categories: consecutive rooms of up to five with plain names, in the order given.
-  let parted = 0;
-  categories = categories.flatMap((c) => {
-    if (c.name || c.room !== undefined) return [c];
-    if (existing) return [{ ...c, name: 'New notes' }];
-    // A cycle with no name of its own is still one category: its rooms are round, not plain.
-    if (c.cycle && c.items.length >= 3) return [{ ...c, name: 'The cycle' }];
-    const parts: Category[] = [];
-    for (let k = 0; k < c.items.length; k += ROOM_CAPACITY) parts.push({ name: `Part ${++parted}`, cycle: false, items: c.items.slice(k, k + ROOM_CAPACITY) });
-    return parts;
-  });
+  // Links: both facts exist, never a fact with itself, one link per pair, and when extending
+  // at least one new fact. Read before the rooms are decided, because a chain of steps that
+  // returns to its start is a cycle. The `links` request checks them against the notes.
+  const order = categories.flatMap((c) => c.items.map((it) => it.id));
+  const fresh = new Set(order);
+  const pairs = new Set<string>();
+  let links: { from: string; to: string; kind: LinkKind; label?: string }[] = [];
+  for (const l of draft.links) {
+    const known = (ref: string) => fresh.has(ref) || oldRefs.includes(ref);
+    if (l.from === l.to || !known(l.from) || !known(l.to) || (!fresh.has(l.from) && !fresh.has(l.to))) continue;
+    const pair = [l.from, l.to].sort().join('|');
+    if (pairs.has(pair)) continue;
+    pairs.add(pair);
+    const label = oneLine(l.label, 60);
+    links.push({ from: l.from, to: l.to, kind: l.kind, ...(label && words(label) <= 4 ? { label } : {}) });
+  }
 
-  // Six rooms at most. First merge neighbouring categories that fit in fewer rooms together;
-  // what still does not fit is left out, and the learner is told. (When extending, the client
-  // knows the palace exactly and does this with extendSpec.)
+  const focus = !existing && draft.focus === 'process' && order.length >= 2 ? 'process' : 'facts';
+  // For a process, a cycle is the whole of it: the model says so, or its steps lead back to the first.
+  const closed = focus === 'process' && order.length >= 3 && (categories.some((c) => c.cycle) || closesLoop(order, links));
+
+  // What a room is (see `arrangeProcess` and `shareRooms`), then six rooms at most.
+  const notes: string[] = [];
   const noRoom: string[] = [];
+  let parted = 0;
   let merged = 0;
-  if (!existing) {
-    const total = () => categories.reduce((sum, c) => sum + roomsFor(c.items.length), 0);
+  if (existing) {
+    categories = categories.map((c) => (c.name || c.room !== undefined ? c : { ...c, name: 'New notes' }));
+  } else {
+    if (focus === 'process') {
+      categories = arrangeProcess(categories, oneLine(draft.title, 80), closed, notes);
+    } else {
+      // No real categories: consecutive rooms of up to five with plain names, in the order given.
+      categories = categories.flatMap((c) => {
+        if (c.name) return [c];
+        if (c.cycle && c.items.length >= 3 && c.items.length <= ROOM_CAPACITY) return [{ ...c, name: 'The cycle' }];
+        let at = 0;
+        return roomSizes(c.items.length).map((size) => {
+          const part: Category = { name: `Part ${++parted}`, cycle: false, items: c.items.slice(at, at + size) };
+          at += size;
+          return part;
+        });
+      });
+      categories = shareRooms(categories, notes);
+    }
+    // First merge neighbouring categories that fit in fewer rooms together; what still does
+    // not fit is left out, and the learner is told. (When extending, the client knows the
+    // palace exactly and does this with extendSpec.)
+    const total = () => categories.reduce((sum, c) => sum + roomSizes(c.items.length).length, 0);
     while (total() > MAX_ROOMS) {
       let best = -1;
       for (let i = 0; i + 1 < categories.length; i++) {
         const a = categories[i].items.length;
         const b = categories[i + 1].items.length;
-        if (roomsFor(a + b) < roomsFor(a) + roomsFor(b) && (best < 0 || a + b < categories[best].items.length + categories[best + 1].items.length)) best = i;
+        if (roomSizes(a + b).length < roomSizes(a).length + roomSizes(b).length && (best < 0 || a + b < categories[best].items.length + categories[best + 1].items.length)) best = i;
       }
       if (best < 0) break;
       const [a, b] = [categories[best], categories[best + 1]];
@@ -877,7 +1009,7 @@ ${input.text}
       const fits = Math.max(0, MAX_ROOMS - rooms) * ROOM_CAPACITY;
       noRoom.push(...c.items.slice(fits).map((it) => oneLine(it.term, 120)));
       c.items = c.items.slice(0, fits);
-      rooms += roomsFor(c.items.length);
+      rooms += roomSizes(c.items.length).length;
     }
     categories = categories.filter((c) => c.items.length > 0);
   }
@@ -886,48 +1018,39 @@ ${input.text}
   const items = categories.flatMap((c, index) =>
     c.items.map((it) => {
       const picture = safeGlyphs([it.picture])[0];
-      const fresh = picture && !pictures.has(picture) ? picture : undefined;
-      if (fresh) pictures.add(fresh);
+      const unused = picture && !pictures.has(picture) ? picture : undefined;
+      if (unused) pictures.add(unused);
       return {
         ref: it.id,
         term: oneLine(it.term, 120),
         ...(oneLine(it.meaning, 240) ? { meaning: oneLine(it.meaning, 240) } : {}),
         category: index,
-        ...(fresh ? { picture: fresh } : {}),
+        ...(unused ? { picture: unused } : {}),
       };
     }),
   );
 
-  // Links: both facts exist, never a fact with itself, one link per pair, a cap, and when
-  // extending at least one new fact. The `links` request checks them against the notes.
   const placed = new Set(items.map((it) => it.ref));
-  const known = (ref: string) => placed.has(ref) || oldRefs.includes(ref);
-  const pairs = new Set<string>();
+  links = links.filter((l) => (placed.has(l.from) || oldRefs.includes(l.from)) && (placed.has(l.to) || oldRefs.includes(l.to)) && (placed.has(l.from) || placed.has(l.to)));
   const maxLinks = Math.floor(items.length * 1.5);
-  let links: { from: string; to: string; kind: LinkKind; label?: string }[] = [];
-  for (const l of draft.links) {
-    if (l.from === l.to || !known(l.from) || !known(l.to) || (!placed.has(l.from) && !placed.has(l.to))) continue;
-    const pair = [l.from, l.to].sort().join('|');
-    if (pairs.has(pair)) continue;
-    pairs.add(pair);
-    const label = oneLine(l.label, 60);
-    links.push({ from: l.from, to: l.to, kind: l.kind, ...(label && words(label) <= 4 ? { label } : {}) });
-  }
 
+  // A ring closes on itself, so only a cycle that fits one room is drawn round. For a
+  // process that is the whole process in one room; for facts, a category that is a cycle.
   const shaped = categories.map((c) => {
-    const ring = c.room === undefined && c.items.length >= 3 && (c.cycle || closesLoop(c.items.map((it) => it.id), links));
-    return { name: c.name, shape: ring ? ('ring' as const) : ('hall' as const), ...(c.room !== undefined ? { room: c.room } : {}), count: c.items.length };
+    const size = c.items.length;
+    const loops = focus === 'process' ? closed && categories.length === 1 : c.cycle || closesLoop(c.items.map((it) => it.id), links);
+    const ring = c.room === undefined && size >= 3 && size <= ROOM_CAPACITY && loops;
+    return { name: c.name, shape: ring ? ('ring' as const) : ('hall' as const), ...(c.room !== undefined ? { room: c.room } : {}), count: size };
   });
 
   // A process is practised from its chain of steps ("what does this step become?"), so the
-  // chain must be whole: every step linked to the next in walking order, and the loop closed
-  // when the whole palace is a cycle. The order of the steps is itself what the notes say.
-  const focus = !existing && draft.focus === 'process' && items.length >= 2 ? 'process' : 'facts';
+  // chain must be whole: every step linked to the next in walking order, and the last back
+  // to the first when it is a cycle. The order of the steps is itself what the notes say.
   let chained = 0;
   if (focus === 'process') {
-    const order = items.map((it) => it.ref);
-    const inOrder = order.slice(1).map((to, i) => [order[i], to] as const);
-    if (order.length >= 3 && shaped.every((c) => c.shape === 'ring')) inOrder.push([order[order.length - 1], order[0]]);
+    const steps = items.map((it) => it.ref);
+    const inOrder = steps.slice(1).map((to, i) => [steps[i], to] as const);
+    if (closed && steps.length >= 3) inOrder.push([steps[steps.length - 1], steps[0]]);
     const chain = inOrder.map(([from, to]) => {
       const stated = links.find((l) => l.kind === 'becomes' && l.from === from && l.to === to);
       if (!stated) chained++;
@@ -954,19 +1077,24 @@ ${input.text}
   });
   if (repeats.length > 0) steps.push({ kind: 'plan', label: `Skipped ${repeats.length} already in the palace: ${repeats.join(', ')}.`.slice(0, 200) });
   const spread = shaped.map((c) => `${c.name} (${c.count})`).join(', ');
-  const roomCount = shaped.reduce((sum, c) => sum + roomsFor(c.count), 0);
+  const roomCount = shaped.reduce((sum, c) => sum + roomSizes(c.count).length, 0);
+  const roomWord = roomCount === 1 ? 'room' : 'rooms';
   if (existing) {
     steps.push({ kind: 'plan', label: `Sorted them by room: ${spread}. Nothing already placed moves.`.slice(0, 200) });
+  } else if (focus === 'process') {
+    steps.push({ kind: 'plan', label: `Set the ${items.length} steps out as stations, in order, in ${roomCount} ${roomWord}: ${spread}.`.slice(0, 200) });
   } else if (parted > 0) {
     steps.push({ kind: 'plan', label: `Found no categories in these notes, so split them in order into ${parted} ${parted === 1 ? 'room' : 'rooms'} of up to ${ROOM_CAPACITY}.` });
   } else {
     steps.push({
       kind: 'plan',
-      label: `Built ${roomCount} ${roomCount === 1 ? 'room' : 'rooms'} from ${shaped.length} ${shaped.length === 1 ? 'category' : 'categories'}: ${spread}.${merged ? ` Merged ${merged} to fit ${MAX_ROOMS} rooms.` : ''}`.slice(0, 200),
+      label: `Built ${roomCount} ${roomWord} from ${shaped.length} ${shaped.length === 1 ? 'category' : 'categories'}: ${spread}.${merged ? ` Merged ${merged} to fit ${MAX_ROOMS} rooms.` : ''}`.slice(0, 200),
     });
-    const note = merged === 0 && noRoom.length === 0 ? oneLine(draft.grouping, 160) : '';
-    if (note) steps.push({ kind: 'plan', label: note });
   }
+  for (const note of notes) steps.push({ kind: 'plan', label: note.slice(0, 200) });
+  // The model's own sentence about its grouping, when nothing it describes was changed.
+  const note = !existing && parted === 0 && merged === 0 && noRoom.length === 0 && notes.length === 0 ? oneLine(draft.grouping, 160) : '';
+  if (note) steps.push({ kind: 'plan', label: note });
   const rings = shaped.filter((c) => c.shape === 'ring').map((c) => c.name);
   if (rings.length) steps.push({ kind: 'plan', label: `${rings.join(' and ')} ${rings.length === 1 ? 'is a cycle, so its room is' : 'are cycles, so their rooms are'} round.`.slice(0, 200) });
   if (links.length > 0) {
