@@ -14,9 +14,9 @@ import { LocusLabel } from './LocusLabel';
 import type { Qa } from './qa';
 import type { Veil } from './veil';
 
-/** `&tokens=all`: the Judge deck's images, all visible, wherever the session is. */
-function judgeTokens(layout: PalaceLayout): SceneView['tokens'] {
-  const byLocus = new Map(getDeck(JUDGE_DECK_ID)?.items.map((it) => [it.locusId, it]));
+/** `&tokens=all`: one deck's images (the Judge deck unless `&deck=` names another), all visible, wherever the session is. */
+function allTokens(layout: PalaceLayout, deckId: string): SceneView['tokens'] {
+  const byLocus = new Map(getDeck(deckId)?.items.map((it) => [it.locusId, it]));
   return layout.loci.flatMap((l) => {
     const item = byLocus.get(l.id);
     return item ? [{ locusIndex: l.index, item, visible: true }] : [];
@@ -39,7 +39,10 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
     () => deriveSceneView({ mode, layout, deck, stops, step, arrived, results, cards }),
     [mode, layout, deck, stops, step, arrived, results, cards],
   );
-  const tokens = useMemo(() => (qa.tokensAll ? judgeTokens(layout) : view.tokens), [qa.tokensAll, layout, view.tokens]);
+  const tokens = useMemo(
+    () => (qa.tokensAll ? allTokens(layout, qa.deck ?? JUDGE_DECK_ID) : view.tokens),
+    [qa.tokensAll, qa.deck, layout, view.tokens],
+  );
   const development = useMemo(() => {
     const dev = qa.dev;
     if (!dev) return view.development;

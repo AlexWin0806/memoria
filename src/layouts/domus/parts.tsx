@@ -1,9 +1,9 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import {
+  BoxGeometry,
   type BufferGeometry,
   Euler,
   ExtrudeGeometry,
-  type InstancedMesh,
   LatheGeometry,
   Matrix4,
   Path,
@@ -12,6 +12,7 @@ import {
   Vector2,
   Vector3,
 } from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Vec3 } from '@/core/types';
 import { Surface } from '@/styles';
 
@@ -25,32 +26,39 @@ export interface Placement {
   s?: Vec3;
 }
 
-/** One draw call for a repeated part. Children are the geometry and its <Surface>. */
-export function Instanced({ items, children }: { items: Placement[]; children: ReactNode }) {
-  const ref = useRef<InstancedMesh>(null);
-  useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
+export const UNIT_BOX = () => new BoxGeometry(1, 1, 1);
+
+/**
+ * One draw call for a repeated part. The placements are baked into a single merged geometry,
+ * built once from `make` (a module-level factory for one copy); children are its <Surface>.
+ * Deliberately not an InstancedMesh: a style's shaders then need no instancing support,
+ * and the house is static anyway.
+ */
+export function Repeated({ items, make, children }: { items: Placement[]; make: () => BufferGeometry; children: ReactNode }) {
+  const geometry = useMemo(() => {
+    const base = make();
     const m = new Matrix4();
     const q = new Quaternion();
     const e = new Euler();
     const p = new Vector3();
     const s = new Vector3();
-    items.forEach((it, i) => {
+    const copies = items.map((it) => {
       e.set(...(it.r ?? [0, 0, 0]));
       q.setFromEuler(e);
       p.set(...it.p);
       s.set(...(it.s ?? [1, 1, 1]));
-      mesh.setMatrixAt(i, m.compose(p, q, s));
+      return base.clone().applyMatrix4(m.compose(p, q, s));
     });
-    mesh.instanceMatrix.needsUpdate = true;
-    // Recomputed lazily from the instance matrices on the next frustum test.
-    mesh.boundingSphere = null;
-  }, [items]);
+    const merged = mergeGeometries(copies);
+    for (const c of copies) c.dispose();
+    base.dispose();
+    return merged;
+  }, [items, make]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, items.length]} castShadow receiveShadow>
+    <mesh geometry={geometry} castShadow receiveShadow>
       {children}
-    </instancedMesh>
+    </mesh>
   );
 }
 
@@ -169,38 +177,84 @@ export function lathe(points: [number, number][], segments = 24, flat = false): 
   return f;
 }
 
-const HAND: Placement[] = [
-  { p: [0, 0.1, 0], s: [0.2, 0.2, 0.05] }, // palm
-  { p: [0, -0.03, 0], s: [0.13, 0.07, 0.05] }, // wrist
-  { p: [-0.078, 0.27, 0], s: [0.042, 0.14, 0.045] },
-  { p: [-0.026, 0.29, 0], s: [0.042, 0.18, 0.045] },
-  { p: [0.026, 0.285, 0], s: [0.042, 0.17, 0.045] },
-  { p: [0.078, 0.26, 0], s: [0.042, 0.12, 0.045] },
-  { p: [0.135, 0.125, 0], r: [0, 0, -0.6], s: [0.045, 0.15, 0.045] }, // thumb
+const _up = new Vector3(0, 1, 0);
+
+/** Places a unit cylinder (radius 1, height 1, along y) as a limb of radius `r` from a to b. */
+export function limb(a: Vec3, b: Vec3, r: number): Placement {
+  const d = new Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const len = d.length();
+  const e = new Euler().setFromQuaternion(new Quaternion().setFromUnitVectors(_up, d.normalize()));
+  return { p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], r: [e.x, e.y, e.z], s: [r, len, r] };
+}
+
+/** One finger of the hand outline: base centre, length, half width and lean (radians, towards the thumb). */
+type Finger = [x: number, y: number, length: number, half: number, lean: number];
+const FINGERS: Finger[] = [
+  [-0.066, 0.165, 0.105, 0.019, -0.2],
+  [-0.023, 0.175, 0.15, 0.02, -0.06],
+  [0.021, 0.175, 0.165, 0.02, 0.05],
+  [0.064, 0.165, 0.14, 0.019, 0.17],
 ];
+const THUMB: Finger = [0.086, 0.08, 0.115, 0.02, 0.95];
+
+let handGeometry: ExtrudeGeometry | undefined;
+
+/** An open hand, palm forward, as one flat outline about 0.2 m wide and 0.34 m tall: built once, shared. */
+function hand(): ExtrudeGeometry {
+  if (handGeometry) return handGeometry;
+  const s = new Shape();
+  const finger = ([cx, cy, len, w, lean]: Finger) => {
+    const c = Math.cos(lean);
+    const k = Math.sin(lean);
+    const to = (dx: number, dy: number) => s.lineTo(cx + dx * c + dy * k, cy - dx * k + dy * c);
+    to(-w, 0);
+    for (let i = 0; i <= 6; i++) {
+      const a = Math.PI * (1 - i / 6);
+      to(w * Math.cos(a), len - w + w * Math.sin(a));
+    }
+    to(w, 0);
+  };
+  s.moveTo(-0.046, 0);
+  s.lineTo(-0.056, 0.04);
+  s.lineTo(-0.088, 0.09);
+  FINGERS.forEach(finger);
+  finger(THUMB);
+  s.lineTo(0.052, 0.035);
+  s.lineTo(0.046, 0);
+  s.closePath();
+  handGeometry = new ExtrudeGeometry(s, { depth: 0.022, bevelEnabled: true, bevelThickness: 0.005, bevelSize: 0.004, bevelSegments: 1 });
+  handGeometry.translate(0, 0, -0.011);
+  return handGeometry;
+}
 
 /**
- * The counting marker of every fifth locus (Ad Herennium III.18): a raised golden hand
- * on a short post, turned to face the place the learner stops.
+ * The counting marker of every fifth locus (Ad Herennium III.18): a small gilded hand raised
+ * on a slim stem, turned to face the place the learner stops. It is flat, so from the side
+ * it is a sliver. `stem` is the height of the stem; give 0.1 or less to stand it on a ledge
+ * without a foot.
  */
-export function GoldenHand({ position, facing = 0 }: { position: Vec3; facing?: number }) {
+export function GoldenHand({ position, facing = 0, stem = 0.36 }: { position: Vec3; facing?: number; stem?: number }) {
+  const footed = stem > 0.15;
   return (
     <group position={position} rotation={[0, facing, 0]}>
-      <mesh position={[0, 0.47, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.12, 0.94, 0.12]} />
-        <Surface slot="stone" />
+      {footed && (
+        <mesh position={[0, 0.025, 0]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.07, 0.1, 0.05, 12]} />
+          <Surface slot="stone" />
+        </mesh>
+      )}
+      <mesh position={[0, stem / 2, 0]} castShadow>
+        <cylinderGeometry args={[0.014, 0.02, stem, 8]} />
+        <Surface slot="metal" />
       </mesh>
-      <mesh position={[0, 0.97, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.22, 0.06, 0.16]} />
-        <Surface slot="stone" />
+      <mesh position={[0, stem, 0]} castShadow>
+        <cylinderGeometry args={[0.05, 0.03, 0.03, 12]} />
+        <Surface slot="metal" accent="amber" />
       </mesh>
       {/* leaned back a little so the palm catches light from above in every style */}
-      <group position={[0, 1.065, 0]} rotation={[-0.25, 0, 0]}>
-        <Instanced items={HAND}>
-          <boxGeometry args={[1, 1, 1]} />
-          <Surface slot="metal" accent="amber" />
-        </Instanced>
-      </group>
+      <mesh geometry={hand()} position={[0, stem + 0.012, 0]} rotation={[-0.14, 0, 0]} castShadow>
+        <Surface slot="metal" accent="amber" />
+      </mesh>
     </group>
   );
 }

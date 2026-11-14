@@ -6,6 +6,8 @@
  *   npm run build && node scripts/drive-walk.mjs
  *   node scripts/drive-walk.mjs --url http://localhost:5173    # a server already running
  *   node scripts/drive-walk.mjs --shots qa/shots/drive-walk    # also save a PNG per stop
+ *   node scripts/drive-walk.mjs --theme greybox                # a cheap theme: software GL is too
+ *                                                              # slow to time the ink theme
  *
  * It loads `/?debug` (which exposes the stores, layout and camera on window.__memoria),
  * starts an encode walk over loci 0..7 with the Judge deck, steps through it, and asserts
@@ -28,6 +30,7 @@ const flag = (name) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const ARRIVE_MS = 6000;
+const theme = flag('theme');
 const shotsDir = flag('shots') ? path.resolve(flag('shots')) : null;
 if (shotsDir) mkdirSync(shotsDir, { recursive: true });
 
@@ -39,7 +42,7 @@ if (!base) {
     process.exit(1);
   }
   const port = Number(flag('port') ?? 4900 + (process.pid % 90));
-  server = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore' });
+  server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore' });
   base = `http://localhost:${port}`;
   for (let i = 0; i < 60; i++) {
     try {
@@ -92,7 +95,7 @@ async function arrive(label, pose) {
 }
 
 try {
-  await page.goto(`${base}/?debug`, { waitUntil: 'load' });
+  await page.goto(`${base}/?debug${theme ? `&theme=${theme}` : ''}`, { waitUntil: 'load' });
   await page.waitForFunction('window.__MEMORIA_READY__ === true', null, { timeout: 45000 });
   await page.waitForFunction(() => Boolean(window.__memoria?.session && window.__memoria.camera), null, { timeout: 5000 });
   const poses = await page.evaluate(() => {

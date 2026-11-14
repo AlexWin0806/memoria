@@ -17,8 +17,12 @@ const SWAY_X = 0.018;
 const SWAY_Y = 0.012;
 const PARALLAX_X = 0.04;
 const PARALLAX_Y = 0.025;
-/** Attract drift: radians of slow orbit around the overview's target. */
-const DRIFT_ANGLE = 0.16;
+/**
+ * Attract drift: a slow, small orbit around the overview's target. About 0.2 m of travel
+ * either way over a minute, so the title composition holds and the lens stays clear of walls.
+ */
+const DRIFT_ANGLE = 0.035;
+const DRIFT_RISE = 0.04;
 
 /** Pointer in -1..1, tracked on the window so it works under the 2D overlay too. */
 const pointer = { x: 0, y: 0 };
@@ -201,8 +205,8 @@ export function CameraRail({ layout, target, session, reduced, drift, qa, veil }
     // View inset: slide the picture's centre into the area the overlay leaves free.
     const { width, height } = state.size;
     const live = useSession.getState();
-    const wantInset = qa.frozen ? 0 : Math.min(live.insetRight, width * 0.7);
-    rig.inset = reduced || Math.abs(wantInset - rig.inset) < 0.5 ? wantInset : damp(rig.inset, wantInset, 7, dt);
+    const wantInset = Math.min(qa.frozen ? qa.inset : live.insetRight, width * 0.7);
+    rig.inset = reduced || qa.frozen || Math.abs(wantInset - rig.inset) < 0.5 ? wantInset : damp(rig.inset, wantInset, 7, dt);
     if (isPerspective(cam) && (rig.inset !== rig.appliedInset || width !== rig.appliedW || height !== rig.appliedH)) {
       if (rig.inset > 0) cam.setViewOffset(width, height, rig.inset / 2, 0, width, height);
       else cam.clearViewOffset();
@@ -270,7 +274,7 @@ export function CameraRail({ layout, target, session, reduced, drift, qa, veil }
       const oz = _p.z - rig.look.z;
       _p.x = rig.look.x + ox * c - oz * s;
       _p.z = rig.look.z + ox * s + oz * c;
-      _p.y += Math.sin(rig.time * 0.07 + 1) * 0.12 * rig.drift;
+      _p.y += Math.sin(rig.time * 0.07 + 1) * DRIFT_RISE * rig.drift;
     }
     if (rig.idle > 0.001) {
       _p.addScaledVector(_right, rig.idle * (Math.sin(rig.time * 0.42) * SWAY_X + rig.parX * PARALLAX_X));

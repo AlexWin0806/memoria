@@ -83,7 +83,7 @@ if (!base) {
     process.exit(1);
   }
   const port = Number(flag('port') ?? 4300 + (process.pid % 600));
-  server = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore' });
+  server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore' });
   base = `http://localhost:${port}`;
   for (let i = 0; i < 60; i++) {
     try {
