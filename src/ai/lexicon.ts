@@ -4,7 +4,9 @@
  * everywhere. Text-style symbols get the emoji variation selector when the rows are read.
  *
  * Row format: word|emoji|picture noun|why   (the last two are optional).
- * The picture noun is what the scene sentence says ("a glass of milk" for "milk").
+ * The picture noun is what the scene sentence says ("a glass of milk" for "milk"). It is
+ * always one singular thing ("a pencil on a notepad", not "a pencil and notepad"), because
+ * the scene templates give it a singular verb.
  */
 
 export interface LexEntry {
@@ -42,12 +44,12 @@ wrench|🔧 screw|🔩 bolt|🔩 ladder|🪜 hook|🪝 key|🔑 lock|🔒|padloc
 thread|🧵|spool_of_thread yarn|🧶|ball_of_yarn rope|🪢|knotted_rope knot|🪢 broom|🧹 bucket|🪣
 soap|🧼|bar_of_soap sponge|🧽 bulb|💡|light_bulb torch|🔦 bell|🔔 clock|⏰|alarm_clock watch|⌚|wristwatch
 hourglass|⏳ mirror|🪞 window|🪟 door|🚪 chair|🪑 box|📦|cardboard_box bag|👜|handbag basket|🧺
-umbrella|☔ book|📖|open_book pencil|📝|pencil_and_notepad paper|📄|sheet_of_paper scroll|📜
+umbrella|☔ book|📖|open_book pencil|📝|pencil_on_a_notepad paper|📄|sheet_of_paper scroll|📜
 mail|📬|mailbox compass|🧭 telescope|🔭 microscope|🔬 camera|📷 phone|📱 computer|💻|laptop
 radio|📻 battery|🔋 plug|🔌 coin|🪙 money|💰|bag_of_money crown|👑 ring|💍 gem|💎 diamond|💎
 trophy|🏆 medal|🏅 flag|🚩|red_flag drum|🥁 guitar|🎸 violin|🎻 trumpet|🎺 piano|🎹 horn|📯
 ball|⚽|football kite|🪁 dice|🎲 balloon|🎈 gift|🎁|wrapped_gift mask|🎭|theatre_mask tent|⛺
-anchor|⚓ bow|🏹|bow_and_arrow arrow|🏹 bomb|💣|cartoon_bomb rocket|🚀 brick|🧱 toolbox|🧰 tool|🧰|toolbox
+anchor|⚓ bow|🏹|drawn_bow arrow|🏹 bomb|💣|cartoon_bomb rocket|🚀 brick|🧱 toolbox|🧰 tool|🧰|toolbox
 syringe|💉 pill|💊 tube|🧪|test_tube abacus|🧮 ruler|📏 pin|📌|pushpin clip|📎|paper_clip
 calendar|📅 chart|📊|bar_chart
 eye|👀|pair_of_eyes ear|👂 nose|👃 mouth|👄 lip|👄|pair_of_lips tongue|👅 tooth|🦷 bone|🦴 brain|🧠
@@ -107,7 +109,7 @@ lithium|🔋|battery|Lithium_is_the_metal_in_rechargeable_batteries.
 beryllium|🟢|green_emerald|Emerald_is_a_beryllium_mineral_(beryl).
 boron|🧼|bar_of_borax_soap|Borax,_an_old_laundry_cleaner,_is_a_boron_compound.
 carbon|💎|diamond|Diamond_is_pure_carbon.
-carbon|📝|pencil_and_notepad|Pencil_lead_is_graphite,_which_is_pure_carbon.
+carbon|📝|pencil_on_a_notepad|Pencil_lead_is_graphite,_which_is_pure_carbon.
 nitrogen|🌬|gust_of_air|Nitrogen_makes_up_most_of_the_air.
 oxygen|🫁|pair_of_lungs|Oxygen_is_what_your_lungs_take_from_the_air.
 fluorine|🪥|toothbrush|Fluoride_in_toothpaste_is_a_fluorine_compound.

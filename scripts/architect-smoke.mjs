@@ -2,10 +2,12 @@
 /**
  * Smoke test for the Palace Architect.  Run: node scripts/architect-smoke.mjs
  *
- *  1. Validates every fixture deck (and the control list) against a schema.
+ *  1. Validates every fixture deck against a schema, and the two plain lists of the
+ *     comparison test against the decks they are derived from.
  *  2. Runs the local planner on three sample inputs and prints the plans, then asserts
  *     its behaviour on the four inputs from QA review 1 (planets, Spanish vocabulary,
- *     Krebs-cycle prose, "Element n - name" lines) and on offline "Strengthen".
+ *     Krebs-cycle prose, "Element n - name" lines), on the card names and vocabulary
+ *     variety asked for in QA review 2 (issue 7), and on offline "Strengthen".
  *  3. Exercises the API handler's guard rails without a network (405, 400, 503, 429),
  *     then its plan/regenerate logic against canned answers from a localhost stand-in
  *     for the Messages API (no real model involved).
@@ -37,11 +39,12 @@ const vite = await createServer({
 const load = (path) => vite.ssrLoadModule(path);
 
 try {
-  const { FIXTURE_DECKS, CONTROL_LIST, JUDGE_DECK_ID } = await load('/src/ai/fixtures/index.ts');
+  const { FIXTURE_DECKS, CONTROL_LIST, CARPALS_AS_LIST, JUDGE_DECK_ID } = await load('/src/ai/fixtures/index.ts');
   const { DOMUS_META } = await load('/src/layouts/domus/meta.ts');
   const { planPalace, planPalaceLocal, regenerateImago, isNoStrongerSuggestion, parseLine } = await load('/src/ai/architect.ts');
   const { isSafeGlyph, wordCount, IMAGO_ACTIONS } = await load('/src/ai/glyphs.ts');
   const { LEXICON } = await load('/src/ai/lexicon.ts');
+  const { nameSentences, deriveTerm, singularCounts } = await load('/src/ai/parse.ts');
 
   // ── 1. Fixtures ────────────────────────────────────────────────────────────
   section('Fixture decks');
@@ -123,22 +126,55 @@ try {
     console.log(`ok  ${deck.id.padEnd(26)} ${deck.kind.padEnd(5)} ${String(deck.items.length).padStart(2)} items  "${deck.title}"`);
   }
   if (!deckIds.has(JUDGE_DECK_ID)) fail('JUDGE_DECK_ID is not a registered fixture deck');
-  for (const id of ['fixture-carpals', 'fixture-cranial-nerves', 'fixture-mohs', 'fixture-spanish-kitchen']) {
+  for (const id of ['fixture-carpals', 'fixture-cranial-nerves', 'fixture-mohs', 'fixture-spanish-kitchen', 'fixture-krebs']) {
     if (!deckIds.has(id)) fail(`missing fixture deck ${id}`);
   }
+  if (FIXTURE_DECKS.at(-1)?.id !== 'fixture-krebs' || FIXTURE_DECKS.at(-2)?.id !== 'fixture-spanish-kitchen') fail('fixture-krebs should be registered last, after the Spanish deck');
+  // The comparison test swaps its two materials between the palace arm and the list arm.
+  // That is only fair if a deck and its plain list are the same material (same terms, same
+  // order, same short meanings) and the two materials are matched in form.
   const Control = z.object({
     id: z.string().min(1),
     title: z.string().min(3),
     items: z.array(z.object({ term: z.string().min(1), meaning: z.string().min(1) }).strict()).length(8),
   });
-  const control = Control.safeParse(CONTROL_LIST);
-  if (!control.success) fail(`CONTROL_LIST: ${control.error.issues.map((i) => i.message).join('; ')}`);
-  else console.log(`ok  control list               ${CONTROL_LIST.items.length} items  "${CONTROL_LIST.title}"`);
+  const MEANING_WORDS = 7; // "a phrase of at most about six words"; the longest carpal gloss has seven
+  const materials = [
+    { name: 'CONTROL_LIST', list: CONTROL_LIST, deckId: 'fixture-krebs' },
+    { name: 'CARPALS_AS_LIST', list: CARPALS_AS_LIST, deckId: 'fixture-carpals' },
+  ];
+  for (const { name, list, deckId } of materials) {
+    const parsed = Control.safeParse(list);
+    if (!parsed.success) {
+      fail(`${name}: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+      continue;
+    }
+    const deck = FIXTURE_DECKS.find((d) => d.id === deckId);
+    if (!deck) {
+      fail(`${name}: its deck ${deckId} is not registered`);
+      continue;
+    }
+    if (deck.kind !== 'list' || deck.items.length !== 8) fail(`${deckId}: a comparison deck must be an ordered list of eight items`);
+    if (deck.items.some((it, i) => it.locusId !== DOMUS_META.loci[i].id)) fail(`${deckId}: a comparison deck must sit on the first eight places in order`);
+    const listTerms = list.items.map((it) => it.term).join(' | ');
+    const deckTerms = deck.items.map((it) => it.term).join(' | ');
+    if (listTerms !== deckTerms) fail(`${name}: terms differ from ${deckId}: [${listTerms}] against [${deckTerms}]`);
+    list.items.forEach((it, i) => {
+      if (it.meaning !== deck.items[i]?.meaning) fail(`${name}: the meaning of ${it.term} differs from ${deckId}`);
+      if (wordCount(it.meaning) > MEANING_WORDS) fail(`${name}: the meaning of ${it.term} is ${wordCount(it.meaning)} words, not a short phrase: ${it.meaning}`);
+    });
+    if (new Set(list.items.map((it) => it.term.toLowerCase())).size !== 8) fail(`${name}: two items share a term`);
+    const lengths = list.items.map((it) => wordCount(it.meaning));
+    console.log(`ok  ${name.padEnd(26)} 8 items, same terms and order as ${deckId}; meanings ${Math.min(...lengths)} to ${Math.max(...lengths)} words  "${list.title}"`);
+  }
+  if (CONTROL_LIST.id === CARPALS_AS_LIST.id) fail('the two plain lists share an id');
 
   const lexWords = new Set(LEXICON.map((e) => e.word));
   for (const e of LEXICON) if (!isSafeGlyph(e.emoji)) fail(`lexicon: "${e.word}" maps to an unsupported glyph ${e.emoji}`);
   console.log(`ok  lexicon                    ${LEXICON.length} entries (${lexWords.size} distinct words)`);
   if (LEXICON.length < 200) fail(`lexicon has only ${LEXICON.length} entries`);
+  // The scene templates give the picture a singular verb, so every picture noun is one thing.
+  for (const e of LEXICON) if (/ and /.test(e.noun)) fail(`lexicon: "${e.noun}" is a compound subject: "a ${e.noun} swells" does not agree`);
   if (parseLine('1. scaphoid - boat')?.meaning !== 'boat') fail('parseLine no longer splits "term - meaning"');
 
   // ── 2. Local planner ───────────────────────────────────────────────────────
@@ -258,6 +294,96 @@ try {
   const steps3 = planPalaceLocal({ ...base, text: 'Step 1 - whisk the eggs\nStep 2 - chop an onion\nStep 3 - fry the bacon\nStep 4 - pour the wine' });
   if (steps3.items.map((it) => it.term).join('|') !== 'whisk the eggs|chop an onion|fry the bacon|pour the wine') fail(`numbered steps: wrong terms ${steps3.items.map((it) => it.term).join('|')}`);
   if (new Set(steps3.items.map((it) => it.imago.glyphs[0])).size !== 4) fail('numbered steps: duplicated hero glyphs');
+
+  // ── 2c. QA review 2, issue 7: card names for notes, variety for vocabulary ──
+  section('Local planner: card names and vocabulary variety (QA review 2, issue 7)');
+  // The reviewer's kind of notes: every sentence ends in a participle clause about NADH or CO2.
+  const krebsNotes = [
+    'The citric acid cycle takes place in the mitochondrial matrix. Acetyl-CoA combines with oxaloacetate to form citrate, a six-carbon molecule. Citrate is then rearranged into isocitrate by the enzyme aconitase.',
+    'Isocitrate is oxidised to alpha-ketoglutarate, releasing carbon dioxide and producing NADH. Alpha-ketoglutarate is then converted to succinyl-CoA, again releasing carbon dioxide and producing NADH. Succinyl-CoA is converted to succinate, which generates one GTP.',
+    'Succinate is oxidised to fumarate, producing FADH2. Fumarate is hydrated to malate. Finally, malate is oxidised to regenerate oxaloacetate, producing the final NADH of the cycle.',
+  ].join('\n\n');
+  // What a name may not start with: an adverb, or an "-ing" or "-ed" form (a piece of the verb phrase).
+  const OPENERS = /^(?:again|then|finally|also|next|later|still|already|thus|therefore|however|\p{L}+ly|\p{L}{3,}ing|\p{L}{3,}ed)\b/iu;
+  const GENERIC = new Set(['final', 'first', 'last', 'next', 'new', 'the', 'a', 'an']);
+  const coreOf = (term) => term.toLowerCase().split(/\s+/).filter((w) => !GENERIC.has(w) && !/(?:ing|ed)$/.test(w)).join(' ');
+  const checkNames = (label, terms) => {
+    if (new Set(terms.map((t) => t.toLowerCase())).size !== terms.length) fail(`${label}: two cards share a name: ${terms.join(' | ')}`);
+    if (new Set(terms.map(coreOf)).size !== terms.length) fail(`${label}: two card names differ only by a generic word or a participle: ${terms.join(' | ')}`);
+    for (const t of terms) {
+      if (OPENERS.test(t)) fail(`${label}: "${t}" begins with an adverb or a participle`);
+      if (wordCount(t) > 5) fail(`${label}: "${t}" is longer than five words`);
+    }
+  };
+  for (const [label, text, expected] of [['Krebs notes (review 2)', krebsNotes, 9], ['Krebs notes (review 1)', krebs, 8]]) {
+    const plan = planPalaceLocal({ ...base, text });
+    const terms = plan.items.map((it) => it.term);
+    console.log(`\n[${label}]  ${terms.join(' | ')}`);
+    if (terms.length !== expected) fail(`${label}: expected ${expected} cards, got ${terms.length}`);
+    checkNames(label, terms);
+    // Neighbours never lean on the same word of their sentences (two carbon pictures in a row).
+    plan.items.forEach((it, i) => {
+      const next = plan.items[i + 1];
+      if (next && /carbon/i.test(it.imago.reason) && /carbon/i.test(next.imago.reason)) fail(`${label}: ${it.term} and ${next.term} are neighbours both justified by carbon`);
+    });
+    const flagged = plan.items.filter((it) => isWeak(it.imago)).length;
+    const cautioned = plan.items.filter((it) => /only one part of the fact|does not show the meaning/.test(it.imago.reason)).length;
+    const check = plan.steps.find((s) => s.kind === 'check')?.label ?? '';
+    if (flagged > 0 && !check.includes(`${flagged} of ${plan.items.length}`)) fail(`${label}: the trace does not count the ${flagged} flagged cards: ${check}`);
+    if (cautioned > 0 && !check.includes(`${cautioned} more`)) fail(`${label}: the trace does not count the ${cautioned} cards tied by sound or by one word: ${check}`);
+  }
+  {
+    const terms = planPalaceLocal({ ...base, text: krebsNotes }).items.map((it) => it.term);
+    for (const bad of ['Acetyl-CoA combines', 'Producing NADH', 'Again releasing carbon dioxide', 'Producing FADH2', 'Final NADH']) {
+      if (terms.includes(bad)) fail(`Krebs notes (review 2): still names a card "${bad}"`);
+    }
+    if (!terms.includes('Isocitrate') || !terms.includes('Malate')) fail(`Krebs notes (review 2): cards are not named after the subject of their sentence: ${terms.join(' | ')}`);
+  }
+  {
+    // Names that would collide are lengthened with a detail of their own sentence; if that
+    // is not enough they carry their position.
+    const twins = nameSentences(['Glucose is split into two pyruvate molecules during glycolysis.', 'Glucose is stored as glycogen in the liver and the muscles.']);
+    const steps = nameSentences(['The first oxidation produces NADH in the matrix of the cell.', 'The next oxidation produces NADH in the matrix of the cell.', 'Fumarate is hydrated to malate by the enzyme fumarase.']);
+    const adj = nameSentences(['Saturated fats are solid at room temperature in most kitchens.', 'Unsaturated fats are liquid at room temperature in most kitchens.']);
+    console.log(`\n[collisions]  ${twins.join(' | ')}  ·  ${steps.join(' | ')}  ·  ${adj.join(' | ')}`);
+    checkNames('colliding subjects', twins);
+    if (!twins.every((t) => /^Glucose, \S/.test(t))) fail(`colliding subjects: expected both names lengthened with their own detail, got ${twins.join(' | ')}`);
+    if (!/^Step 1: /.test(steps[0]) || !/^Step 2: /.test(steps[1]) || /^Step/.test(steps[2])) fail(`identical sentences: expected "Step 1: …", "Step 2: …" and an untouched third name, got ${steps.join(' | ')}`);
+    if (adj.join(' | ') !== 'Saturated fats | Unsaturated fats') fail(`a participle that tells two names apart should be put back: ${adj.join(' | ')}`);
+    const again = deriveTerm('Producing the final NADH takes one more oxidation.', new Set(['nadh']));
+    if (/^(?:producing|final) nadh$/i.test(again)) fail(`deriveTerm: "${again}" differs from the used name "NADH" by one generic word`);
+  }
+  // Vocabulary: still the meaning as the picture and the word in the scene, but not one sentence ten times.
+  {
+    const scenes = plans.b.items.map((it) => it.imago.scene.replace(/"[^"]*"/, '"…"').replace(/^(?:An?|The) .*? (?=(?:circles|drops|swings|rattles|spins|floats|swells)\b)/, ''));
+    const constructions = new Set(plans.b.items.map((it) => it.imago.reason.split(': ').pop()));
+    const badges = plans.b.items.map((it) => it.imago.glyphs[1]);
+    console.log(`\n[vocabulary]  ${constructions.size} constructions, badges ${badges.join(' ')}`);
+    if (constructions.size < 5) fail(`vocabulary: only ${constructions.size} different constructions in ten images`);
+    if (new Set(plans.b.items.map((it) => it.imago.action)).size < 5) fail('vocabulary: fewer than five different actions in ten images');
+    if (badges.includes('💬')) fail('vocabulary: the speech bubble is still a second glyph');
+    if (new Set(badges).size < 5) fail(`vocabulary: only ${new Set(badges).size} different second glyphs`);
+    plans.b.items.forEach((it, i) => {
+      const next = plans.b.items[i + 1];
+      if (next && next.imago.glyphs[1] === it.imago.glyphs[1]) fail(`vocabulary: ${it.term} and ${next.term} are neighbours with the same second glyph`);
+      if (next && scenes[i] === scenes[i + 1]) fail(`vocabulary: ${it.term} and ${next.term} are neighbours with the same sentence pattern`);
+    });
+  }
+  // Subject and verb agree, and counts agree with their nouns.
+  {
+    const pencil = planPalaceLocal({ ...base, text: 'lápiz - pencil\narco - bow\ncarbono - carbon' });
+    for (const it of pencil.items) {
+      console.log(`     ${it.imago.scene}`);
+      if (/\band \w+ (?:swells|swings|spins|floats|circles|rattles|drops|hops|races)\b/.test(it.imago.scene)) fail(`agreement: ${it.imago.scene}`);
+    }
+    const single = planPalaceLocal({ ...base, text: 'Helium' });
+    const labels = single.steps.map((s) => s.label).join(' ');
+    console.log(`     ${single.steps.find((s) => s.kind === 'generate')?.label}`);
+    if (/\b1 (?:images|facts|lines|sentences|places)\b/.test(labels)) fail(`counts: a step says "1" with a plural noun: ${labels}`);
+    if (singularCounts('Drafted 1 images, each acting on the feature of its place.') !== 'Drafted 1 image, each acting on the feature of its place.') fail('singularCounts does not fix "1 images"');
+    if (singularCounts('Checked 11 images against the image rules.') !== 'Checked 11 images against the image rules.') fail('singularCounts changed "11 images"');
+  }
+
   // Regenerate offline never loops (issue 18): a finite number of new images, then the flag.
   {
     let item = plans.b.items.find((it) => it.term === 'horno');

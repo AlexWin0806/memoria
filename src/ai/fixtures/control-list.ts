@@ -1,15 +1,24 @@
+import type { Deck } from '@/core/types';
+import { CARPALS } from './carpals';
+import { KREBS } from './krebs';
+
 /**
- * The "without a palace" arm of the in-app A/B test: an ordered eight-item list studied
- * as plain text, to compare with the eight carpal bones learned in the palace.
+ * The "without a palace" arm of the in-app comparison test: an ordered eight-item list
+ * studied as plain text, with no images and no places.
  *
- * Chosen list: the eight intermediates of the citric acid (Krebs) cycle, in order,
- * starting from citrate. Like the carpals it is exactly eight unfamiliar technical
- * names in a fixed, standard order, from the same pre-medical domain, and it contains
- * a confusable pair (succinyl-CoA / succinate) as the carpals do (trapezium / trapezoid).
- * The short-lived, enzyme-bound cis-aconitate is left out, as in the standard eight-item list.
+ * There are two materials, each in two forms, so that the test can be counterbalanced:
+ *   the carpal bones             CARPALS (palace deck)  and  CARPALS_AS_LIST (plain list)
+ *   the citric acid cycle        KREBS   (palace deck)  and  CONTROL_LIST    (plain list)
+ * Half the volunteers can learn the carpals in the palace and the cycle as a list, the other
+ * half the reverse. Both materials are eight unfamiliar technical names in a fixed, standard
+ * order, from the same pre-medical domain, and each holds confusable names (trapezium /
+ * trapezoid; citrate / isocitrate, succinyl-CoA / succinate).
  *
- * No images and no loci on purpose. This is a demonstration, not a controlled study:
- * the two lists differ, and one learner is not a sample.
+ * Each plain list is derived from its deck, so the terms, their order and the short meanings
+ * can never drift apart: the only difference between a deck and its list is the images.
+ *
+ * This is a demonstration, not a controlled study: the two materials still differ in
+ * difficulty, and a handful of volunteers is not a sample.
  */
 export interface ControlList {
   id: string;
@@ -17,17 +26,14 @@ export interface ControlList {
   items: { term: string; meaning: string }[];
 }
 
-export const CONTROL_LIST: ControlList = {
-  id: 'control-krebs',
-  title: 'The eight intermediates of the citric acid cycle',
-  items: [
-    { term: 'Citrate', meaning: 'Six carbons: made when acetyl-CoA joins oxaloacetate. Named after citrus fruit.' },
-    { term: 'Isocitrate', meaning: 'An isomer of citrate: the same atoms, rearranged.' },
-    { term: 'Alpha-ketoglutarate', meaning: 'Five carbons: what is left after the first carbon dioxide is released.' },
-    { term: 'Succinyl-CoA', meaning: 'Four carbons bound to coenzyme A, after the second carbon dioxide is released.' },
-    { term: 'Succinate', meaning: 'Four carbons with coenzyme A removed. Named after amber (Latin succinum).' },
-    { term: 'Fumarate', meaning: 'Made by oxidising succinate.' },
-    { term: 'Malate', meaning: 'Made by adding water to fumarate. Named after apples (Latin malum).' },
-    { term: 'Oxaloacetate', meaning: 'Four carbons: made by oxidising malate, ready to join the next acetyl-CoA.' },
-  ],
-};
+const asList = (id: string, title: string, deck: Deck): ControlList => ({
+  id,
+  title,
+  items: deck.items.map((item) => ({ term: item.term, meaning: item.meaning ?? '' })),
+});
+
+/** The citric acid cycle as a plain list: the same terms and meanings as the KREBS deck. */
+export const CONTROL_LIST: ControlList = asList('control-krebs', 'The eight intermediates of the citric acid cycle', KREBS);
+
+/** The carpal bones as a plain list: the same terms and meanings as the CARPALS deck. */
+export const CARPALS_AS_LIST: ControlList = asList('control-carpals', CARPALS.title, CARPALS);
