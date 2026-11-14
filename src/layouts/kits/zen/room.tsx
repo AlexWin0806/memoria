@@ -69,6 +69,8 @@ const ROOF_HALF = 1.95;
 /** Gravel before the front gate: the walk begins 8 m out. The front hedge is this wide either side, so nothing shows past its ends. */
 const FORECOURT = 10;
 const FRONT_REACH = 13;
+/** How far past the middle of a gap between two places the trees and bamboo beyond the wall stand. */
+const PAST = 0.45;
 /** Width of a raked line: thin enough to draw as one quiet ink line. */
 const LINE = 0.035;
 
@@ -237,10 +239,13 @@ function buildCourt({ index, plan, plots, open }: KitRoomProps): Parts {
   }
 
   // Beyond the side walls: what looks over them, behind stretches of wall no place stands by.
+  // A place is looked at from a little nearer the entrance, so what is behind its memory image
+  // is the wall just past it: these stand a step further on than the middle of the gap.
   if (v.beyond === 'trees') {
     // Two clipped trees, one behind each wall, at opposite ends of the court.
     for (const i of [0, 3]) {
-      const [x, z] = across(i, -T - SETBACK - 1.5);
+      const [x, mid] = across(i, -T - SETBACK - 1.5);
+      const z = mid - PAST;
       const s = Math.sign(x);
       parts.foliage.push(mound([x, 2.9, z], [1.3, 1.05, 1.25]));
       parts.foliage.push(mound([x + s * 0.7, 3.45, z + (i ? 0.8 : -0.8)], [0.85, 0.7, 0.85]));
@@ -248,13 +253,14 @@ function buildCourt({ index, plan, plots, open }: KitRoomProps): Parts {
   } else if (v.beyond === 'bamboo') {
     // A clump of bamboo across from every side place: slim culms, each ending in a plume of leaves that nods outwards.
     for (let i = 0; i < 4; i++) {
-      const [x, z] = across(i, -T - SETBACK - 0.9);
+      const [x, mid] = across(i, -T - SETBACK - 0.9);
+      const z = mid - PAST;
       const s = Math.sign(x);
       for (let c = 0; c < 7; c++) {
         const k = i * 7 + c;
-        const foot: [number, number, number] = [x + s * 0.5 * scatter(k, 7), 0, z + (c - 3) * 0.34 + 0.12 * scatter(k, 6)];
+        const foot: [number, number, number] = [x + s * 0.5 * scatter(k, 7), 0, z + (c - 3) * 0.28 + 0.1 * scatter(k, 6)];
         const h = 3.7 + 0.9 * scatter(k, 8);
-        const nod = (c - 3) * 0.16;
+        const nod = (c - 3) * 0.1;
         const head: [number, number, number] = [foot[0] - s * 0.25, h, foot[2] + nod];
         const culm = limb(foot, head, 0.04);
         parts.foliage.push(at(new CylinderGeometry(1, 1, 1, 6), culm.p, culm.r, culm.s));

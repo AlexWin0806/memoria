@@ -272,13 +272,18 @@ const BRIDGE_POSTS: Placement[] = [-1, 1].flatMap((sz) => [
   ...[-1.02, 1.02].map((x): Placement => ({ p: [x, 0.41, sz * 0.36], s: [0.1, 0.82, 0.1] })),
 ]);
 const BRIDGE_KNOBS: Placement[] = [-1, 1].flatMap((sz) => [-1.02, 1.02].map((x): Placement => ({ p: [x, 0.82, sz * 0.36] })));
+/** The dry stream under it winds a little: in plan, x against -z. */
+const BRIDGE_STREAM: [number, number][] = Array.from({ length: 15 }, (_, i): [number, number] => {
+  const y = -0.68 + (1.36 * i) / 14;
+  return [0.13 * Math.sin(y * 3.4), y];
+});
 const KNOB = () => turned([[0, 0], [0.06, 0.02], [0.075, 0.08], [0.04, 0.14], [0, 0.2]], 10);
 
 function ArchedBridge({ accent }: Props) {
   const deck = useGeometry(() => plate(BRIDGE_DECK, 0.8));
   const rail = useGeometry(() => plate(BRIDGE_RAIL, 0.04));
   // Drawn in plan (x, -z), then laid flat.
-  const bed = useGeometry(() => ribbonGeometry([[0.2, -0.68], [-0.06, -0.3], [0.1, 0.08], [-0.12, 0.42], [0.04, 0.68]], 0.62, 0.02));
+  const bed = useGeometry(() => ribbonGeometry(BRIDGE_STREAM, 0.6, 0.02));
   return (
     <group>
       {/* the dry stream it crosses: a bed of pebbles running out towards the viewer */}
