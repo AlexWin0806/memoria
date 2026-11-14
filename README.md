@@ -18,7 +18,7 @@ Press "Try it in 2 minutes" on the title screen. That is Judge Mode: it loads th
 
 1. **Paste.** A list (one item per line, optionally `term - meaning`) or raw notes.
 2. **The Architect proposes.** The Palace Architect picks the facts, drafts one image per fact, and assigns each to a place on a fixed route through the palace, keeping related items in the same room.
-3. **You approve or edit.** Every image is yours to accept, rewrite or regenerate before anything is placed.
+3. **You read through and edit.** You see every image before anything is placed and can rewrite or regenerate any of them. Nothing forces an edit.
 4. **Familiarize.** The first time you use a palace you take a short walk of the empty route, so you know the places before anything is put in them.
 5. **Encode walk.** The camera glides from place to place. At each one the image appears in the room with its term, meaning and scene. You set the pace.
 6. **Recall walk.** The same route with the images hidden. You answer at each place, typed or multiple choice, before anything is revealed. You get a score at the end, and for anything you missed you can ask the Architect for a stronger image.
@@ -42,7 +42,7 @@ What we do not claim:
 - The evidence is mostly short laboratory studies with university students memorizing word lists. Classroom evidence is thin.
 - Loci suit ordered, discrete facts. They do not teach understanding.
 - A browser is the desktop condition. The one head-to-head study we found reported head-mounted VR better than desktop, and other work suggests navigation itself may not be the active ingredient. The 3D walk is there for structure and engagement, not as a proven memory boost.
-- AI-supplied images are not known to work as well as images the learner invents. The research on supplied versus self-made mnemonics is mixed, which is why you approve or edit every image.
+- AI-supplied images are not known to work as well as images the learner invents. The research on supplied versus self-made mnemonics is mixed, which is why you can rewrite every image.
 - The large gains in training studies followed about six weeks of daily practice in young adult men. We do not promise general memory improvement, only what is practised.
 - Other AI-assisted memory palace tools exist. Memoria is not the first.
 
@@ -99,7 +99,8 @@ For the live Architect, copy `.env.example` to `.env.local` and set `ANTHROPIC_A
 | Parameter | Effect |
 |---|---|
 | `?judge` | Starts Judge Mode (about 2 minutes) |
-| `?judge=pitch` | The pitch variant: waits on the title screen, then eight places encoded and a spot check of four, about 70 seconds |
+| `?compare` | The list-against-palace comparison test for volunteers (protocol in `docs/venue-test.md`) |
+| `?judge=pitch` | The pitch variant: waits on the title screen, then eight places encoded and a spot check of four, about 80 seconds |
 | `?lab` | Theme Lab: a panel for tuning the active theme's tokens live |
 | `?perf` | Frame-rate overlay |
 | `?theme=<id>` | Use a theme by id, for example `?theme=ink-sanguine` |
@@ -132,8 +133,8 @@ What exists today:
 
 - The live Architect path is built but has not been tested against the real model. It will be once an API key is configured. The offline planner works.
 - Frame rate has not been measured on a real laptop yet. The target is 60 fps at 1440×900 on an integrated GPU.
-- The half-learned look of the palace (between line drawing and full colour) is still being tuned, and so is the Sanguine variant.
-- The Theme Lab panel is built; its copy and download buttons are not yet verified.
+- Motion (camera glides, the recall flourish, the results tour) has been checked as still frames and offline-rendered footage only, not live on a real GPU.
+- The Theme Lab's copy, download and reset buttons work from script; a click-through with a real pointer is being fixed.
 - Moving an item to a different place by hand is not built.
 - Not deployed yet.
 
@@ -141,12 +142,13 @@ What exists today:
 
 Stretch goals, in order:
 
-1. A built-in A/B mini-test: memorize one list with the palace and one without, then compare the two scores.
-2. A second layout and theme, and ambient audio.
-3. AI-drawn images for the memory tokens.
-4. A palace editor: click to place or reorder places in a layout.
-5. A shareable palace link, with the palace encoded in the URL.
-6. A WebXR mode.
+1. A second palace layout (so a second topic gets its own route) and ambient audio.
+2. AI-drawn images for the memory tokens.
+3. A palace editor: click to place or reorder places in a layout.
+4. A shareable palace link, with the palace encoded in the URL.
+5. A WebXR mode.
+
+Already built beyond the first plan: a comparison test (`?compare`) in which a volunteer learns one list as plain text and one in the palace and is tested on both the same way.
 
 Later:
 
