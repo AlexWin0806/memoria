@@ -37,7 +37,8 @@ export function developmentFloor(values: ArrayLike<number>, count: number): numb
 }
 
 /**
- * GLSL: `float developmentAt(vec3 worldPos)` returns 0..1. With no loci set it returns 1,
+ * GLSL: `float developmentAt(vec3 worldPos)` returns 0..1, and
+ * `vec2 developmentField(vec3 worldPos)` returns (reach, strength) for staged painting. With no loci set it returns 1,
  * so a scene without a development field renders fully developed.
  * Requires the uniforms above and a world-space position in the fragment shader.
  */
@@ -58,6 +59,30 @@ export const DEVELOPMENT_GLSL = /* glsl */ `
       rest *= 1.0 - k * uDevValues[i];
     }
     return max(1.0 - rest, uDevFloor);
+  }
+
+  // The same field split in two, for styles that paint in stages:
+  //   x = reach    (0..1): is this point inside the area of a locus that has been touched
+  //                 at all? Depends on distance, not on how well the locus is learned,
+  //                 so a half-learned room is covered evenly instead of in islands.
+  //   y = strength (0..1): how well the nearby loci are learned (distance-weighted mean).
+  // Use reach for where paint goes and strength for how much.
+  vec2 developmentField(vec3 wp) {
+    if (uDevCount == 0) return vec2(1.0);
+    float rest = 1.0;
+    float wsum = 0.0;
+    float vsum = 0.0;
+    for (int i = 0; i < ${MAX_LOCI}; i++) {
+      if (i >= uDevCount) break;
+      float k = 1.0 - smoothstep(uDevRadius * 0.4, uDevRadius, distance(wp, uDevPoints[i]));
+      float v = uDevValues[i];
+      rest *= 1.0 - k * smoothstep(0.2, 0.45, v);
+      wsum += k;
+      vsum += k * v;
+    }
+    float reach = max(1.0 - rest, uDevFloor);
+    float strength = max(wsum > 1e-4 ? vsum / wsum : 0.0, uDevFloor);
+    return vec2(reach, strength);
   }
 `;
 
