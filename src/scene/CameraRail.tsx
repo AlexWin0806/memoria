@@ -248,15 +248,10 @@ export function CameraRail({ layout, target, session, reduced, drift, tour, qa, 
     rig.settle = 0;
   };
 
-  useFrame((state, delta) => {
-    const cam = state.camera;
-    const dt = Math.min(delta, 0.5);
-
-    // View inset: slide the picture's centre into the area the overlay leaves free.
-    const { width, height } = state.size;
-    const live = useSession.getState();
-    const wantInset = Math.min(qa.frozen ? qa.inset : live.insetRight, width * 0.7);
-    const wantInsetY = Math.min(qa.frozen ? qa.insetBottom : live.insetBottom, height * 0.7);
+  /** View inset: slide the picture's centre into the area the overlay leaves free. */
+  const frameView = (cam: Camera, width: number, height: number, right: number, bottom: number, dt: number) => {
+    const wantInset = Math.min(right, width * 0.7);
+    const wantInsetY = Math.min(bottom, height * 0.7);
     // A cut often comes with a new panel (title to walk): the picture keeps its framing while
     // the veil closes and has the new one when it lifts, instead of sliding sideways through both.
     const snap = reduced || qa.frozen || rig.cuts !== veil.cuts;
@@ -275,8 +270,18 @@ export function CameraRail({ layout, target, session, reduced, drift, tour, qa, 
       rig.appliedW = width;
       rig.appliedH = height;
     }
+  };
 
-    if (qa.frozen) return;
+  useFrame((state, delta) => {
+    const cam = state.camera;
+    const dt = Math.min(delta, 0.5);
+    const { width, height } = state.size;
+    const live = useSession.getState();
+
+    if (qa.frozen) {
+      frameView(cam, width, height, qa.inset, qa.insetBottom, dt);
+      return;
+    }
 
     if (rig.planned === null) {
       cutTo(target);
@@ -349,6 +354,9 @@ export function CameraRail({ layout, target, session, reduced, drift, tour, qa, 
     }
 
     if (fresh && rig.phase === 'rest' && !live.arrived) live.setArrived(true);
+
+    // After the plan above, so that a cut decided on this frame already holds the framing.
+    frameView(cam, width, height, live.insetRight, live.insetBottom, dt);
 
     // Compose: base pose, then settle, drift and idle motion layered on by weight.
     const resting = rig.phase === 'rest' && !reduced;

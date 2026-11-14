@@ -15,8 +15,9 @@
  * locus's viewpoint. Then it checks a step back, a far jump (cut + lead-in), steps taken
  * mid-flight, reduced motion, the flourish at the moment of recall (one right answer, one
  * wrong: it plays and clears), the results tour (a still view under reduced motion, then
- * three stops reached in order, then it stops when results is left), the familiarization
- * name plates and the view insets (docked panel, bottom sheet).
+ * three stops reached in order, then it stops when results is left; a second, two-place
+ * tour starts at the place the camera is at and goes round to its first stop by a cut,
+ * not a glide), the familiarization name plates and the view insets (docked panel, bottom sheet).
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -201,6 +202,24 @@ try {
   const after = await page.evaluate(() => ({ ...window.__memoria.tour }));
   const overviewOff = await cameraOff(poses.overview);
   check(after.active === false && after.at === -1 && overviewOff < 0.5, 'tour stopped: camera still at the overview 3.6 s later', `${overviewOff.toFixed(3)} m from pose`);
+
+  // A tour starts where the camera is (results open on the place just answered) and goes
+  // round from its last stop to its first by a cut under the veil: the camera is on the move
+  // for a moment, where a glide back through the rooms took seconds.
+  await session((s, a) => s.startWalk('recall', { stops: a }), [2, 3]);
+  await arrive('recall of two places (locus 2)', poses.loci[2]);
+  await session((s) => s.next());
+  await arrive('recall of two places (locus 3)', poses.loci[3]);
+  await session((s) => s.toResults());
+  const startsHere = await tourAt(3, 1000);
+  const startIndex = await page.evaluate(() => window.__memoria.tour.index);
+  check(startsHere && startIndex === 1 && (await cameraOff(poses.loci[3])) < 0.2, 'results tour starts at the place the camera is at (locus 3, its last stop)');
+  const left = await page.waitForFunction(() => window.__memoria.tour.at === -1, null, { timeout: 6000, polling: 16 }).then(() => Date.now(), () => 0);
+  const wrapped = await tourAt(2, 6000);
+  const moving = Date.now() - left;
+  check(left > 0 && wrapped && moving < 1500 && (await cameraOff(poses.loci[2])) < 0.2, 'tour wrap (locus 3 -> 2): a cut, not a glide back', `on the move for ${moving} ms`);
+  await session((s) => s.toAttract());
+  await arrive('leave the second tour (overview)');
 
   // No walk behind the results (a review dashboard path): the overview, as before.
   await session((s) => s.toResults());

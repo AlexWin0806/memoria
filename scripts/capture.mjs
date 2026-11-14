@@ -75,12 +75,12 @@
  *
  * Two things the script does to the page, neither of which changes what is drawn in a
  * recorded frame:
- *   1. Resolution. The app lowers its pixel ratio when frames come slowly (drei's
- *      PerformanceMonitor reads `performance.now`), and a 15 fps virtual clock looks slow to
- *      it. With --zoom 0.75 or less the ratio has nowhere to go (the app's floor is 0.75), so
- *      one canvas pixel is one frame pixel. With a larger zoom the script first lets the
- *      monitor run down on the title screen (about a minute of virtual time, in big steps);
- *      after that it never changes again, and the next resize puts the ratio back to 1.
+ *   1. Resolution. The app lowers its pixel ratio when frames come slowly (it times its
+ *      frames, on the virtual clock here), and a 15 fps virtual clock looks slow to it. With
+ *      --zoom 0.75 or less the ratio has nowhere to go (the app's floor is 0.75), so one
+ *      canvas pixel is one frame pixel. With a larger zoom the script first lets the ratio
+ *      run down on the title screen (a few seconds of virtual time); it then stays at the
+ *      floor for as long as frames come at the capture rate, through resizes too.
  *   2. Fast-forward. While nothing is being recorded the canvas host is shrunk to a thumbnail,
  *      because software rendering is priced per pixel. It is restored two virtual seconds
  *      before the next recorded frame, long enough for the view inset to ease back.
@@ -138,7 +138,7 @@ const POINTER_SECONDS = 0.5;
 const LEAD_SECONDS = 2;
 /** The canvas host while nothing is recorded. */
 const THUMB = { width: 192, height: 120 };
-/** drei's PerformanceMonitor neither raises nor lowers the resolution between these rates. */
+/** At this frame rate or above the app's adaptive resolution (src/scene/PalaceCanvas.tsx) does not lower the pixel ratio. */
 const MONITOR_SLOW_FPS = 48;
 
 // The fixture is the answer key: which term sits at which named place.
@@ -954,7 +954,7 @@ try {
       if (++steps > 600) throw new Error(`the adaptive resolution did not settle (canvas ratio ${rec.s.ratio})`);
       await rec.clock(300);
     }
-    console.log(`  resolution monitor run down in ${steps} steps (${Math.round((Date.now() - began) / 1000)} s); a resize now puts the ratio back to 1`);
+    console.log(`  resolution monitor run down in ${steps} steps (${Math.round((Date.now() - began) / 1000)} s); it stays there at this frame rate`);
   }
   if (scenario.recordAll) rec.arm();
   await rec.setSmall(!rec.needsFull(1));
