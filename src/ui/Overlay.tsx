@@ -11,6 +11,7 @@ import { useActiveTheme } from '@/themes/active';
 import { Compare } from '@/ab/Compare';
 import { Compose } from './Compose';
 import { installDebugHook } from './debug';
+import { Exam } from './Exam';
 import { Progress } from './Progress';
 import { Recall } from './Recall';
 import { Results } from './Results';
@@ -109,6 +110,8 @@ function OverlayRoot() {
       )}
       {confirmLeave && <LeaveConfirm mode={mode} />}
       <Compare />
+      {/* Exam Mode: a sheet over everything else, closed until a palace's "Exam" is pressed. */}
+      <Exam />
     </main>
   );
 }

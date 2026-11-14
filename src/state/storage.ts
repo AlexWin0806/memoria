@@ -48,7 +48,7 @@ const oneOf = <T extends string>(v: unknown, all: readonly T[]): v is T => (all 
 const ACTIONS = ['spin', 'bob', 'pulse', 'shake', 'orbit', 'swing', 'hop'] as const;
 const SOURCES = ['architect', 'learner', 'fixture', 'fallback'] as const;
 const STEP_KINDS = ['plan', 'generate', 'check', 'revise', 'fallback'] as const;
-const WALK_KINDS = ['survey', 'recall', 'review'] as const;
+const WALK_KINDS = ['survey', 'recall', 'review', 'exam'] as const;
 const SURVEY_OUTCOMES = ['known', 'unknown'] as const;
 
 /** Cleans every element; returns the same array when nothing changed, so a clean value is left untouched. */

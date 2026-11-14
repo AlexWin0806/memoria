@@ -283,8 +283,18 @@ export interface RecallResult {
   unknown?: boolean;
 }
 
-/** What kind of walk a score came from. `survey` is the diagnostic taken before any study. */
-export type WalkKind = 'survey' | 'recall' | 'review';
+/**
+ * What kind of walk a score came from. `survey` is the diagnostic taken before any study.
+ * `exam` is not a walk at all: the same facts asked with no palace on screen, in shuffled
+ * order. It is kept in the same history so that the Progress view can list it, apart from the walks.
+ */
+export type WalkKind = 'survey' | 'recall' | 'review' | 'exam';
+
+/**
+ * Which way an exam asked: the meaning shown and the term asked for, the term shown and the
+ * meaning asked for, or (a list with no meanings) each item asked for by its position.
+ */
+export type ExamDirection = 'meaning-term' | 'term-meaning' | 'position';
 
 /** One finished walk, kept so that the learner can see how their scores change over time. */
 export interface WalkRecord {
@@ -308,6 +318,11 @@ export interface WalkRecord {
    * how many of the `total` steps followed their true predecessor.
    */
   order?: { total: number; correct: number };
+  /**
+   * An exam only (`kind: 'exam'`): which way it asked, and whether the learner marked their own
+   * typed meanings (no grader can), in which case `correct` is their count, not the palace's.
+   */
+  exam?: { direction: ExamDirection; selfMarked?: boolean };
 }
 
 // ───────────────────────── Session ─────────────────────────

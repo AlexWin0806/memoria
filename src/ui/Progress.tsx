@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import type { Deck, ReviewCard, WalkKind, WalkRecord } from '@/core/types';
+import { canExam, startExam } from '@/flows/exam';
 import { closeProgress } from '@/flows/flow';
 import { plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
 import { getLayout } from '@/layouts';
 import { useAllDecks } from '@/state/decks';
-import { isSectionWalk, isSkippedSurvey, useHistory, walksOf, weakestPlaces } from '@/state/history';
+import { isExam, isSectionWalk, isSkippedSurvey, useHistory, walksOf, weakestPlaces } from '@/state/history';
 import { repairCounts, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { RepairLegend } from './Legend';
@@ -17,7 +18,14 @@ const KIND_NAME: Record<WalkKind, string> = {
   survey: 'Before study (survey)',
   recall: 'Recall walk',
   review: 'Review',
+  exam: 'Exam',
 };
+
+/** Which way an exam asked, and whether its score is the learner's own marking. */
+function examName(r: WalkRecord): string {
+  const way = r.exam?.direction === 'term-meaning' ? 'term to meaning' : r.exam?.direction === 'position' ? 'by position' : 'meaning to term';
+  return `Exam · ${way}${r.exam?.selfMarked ? ' (self-marked)' : ''}`;
+}
 
 const when = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const day = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
@@ -25,7 +33,7 @@ const score = (r: { correct: number; total: number }) => `${r.correct} of ${r.to
 const share = (r: WalkRecord) => (r.total > 0 ? r.correct / r.total : 0);
 /** The kind of a walk as the table names it. A walk of a section says that it covered only new places. */
 const kindName = (r: WalkRecord) =>
-  `${isSkippedSurvey(r) ? 'Before study (survey skipped)' : KIND_NAME[r.kind]}${isSectionWalk(r) ? ` · ${plural(r.total, 'new place')}` : ''}`;
+  `${isSkippedSurvey(r) ? 'Before study (survey skipped)' : isExam(r) ? examName(r) : KIND_NAME[r.kind]}${isSectionWalk(r) ? ` · ${plural(r.total, 'new place')}` : ''}`;
 
 /**
  * Progress: for each palace, its score on every finished walk, the latest against the
@@ -88,10 +96,13 @@ export function Progress() {
 function PalaceProgress({ deck, walks: all, cards, now }: { deck: Deck; walks: WalkRecord[]; cards: Record<string, ReviewCard>; now: number }) {
   // The line and the summary follow walks of the whole palace. A walk of a section (only the places
   // that were added) scores a different set of places, so it is listed in the table, labelled, and
-  // kept out of the line. A palace that has only section walks so far shows those.
-  const whole = all.filter((r) => !isSectionWalk(r));
+  // kept out of the line. So is an exam: it asked with no palace on screen, which is a different
+  // kind of answer from a recall walk's, and the two are never read as one trend. A palace that
+  // has only such records so far shows those.
+  const whole = all.filter((r) => !isSectionWalk(r) && !isExam(r));
   const walks = whole.length > 0 ? whole : all;
-  const sections = all.length - whole.length;
+  const sections = all.filter(isSectionWalk).length;
+  const exams = all.filter(isExam).length;
   const first = walks[0];
   const latest = walks[walks.length - 1];
   // A process deck counts its links and its order apart from the places: two more columns, when there is something in them.
@@ -106,9 +117,9 @@ function PalaceProgress({ deck, walks: all, cards, now }: { deck: Deck; walks: W
     const name = placeOf(p.itemId);
     return name ? [{ ...p, name }] : [];
   });
-  const tested = all.some((r) => r.kind !== 'survey');
+  const tested = all.some((r) => r.kind === 'recall' || r.kind === 'review');
   const repair = deck.surveyedAt !== undefined ? repairCounts(deck, cards) : null;
-  const firstName = first.kind === 'survey' ? (isSkippedSurvey(first) ? 'Before study (survey skipped)' : 'Before study') : 'First walk';
+  const firstName = first.kind === 'survey' ? (isSkippedSurvey(first) ? 'Before study (survey skipped)' : 'Before study') : isExam(first) ? 'First exam' : 'First walk';
 
   return (
     <section className="palace" aria-labelledby={`pp-${deck.id}`} data-testid="progress-palace">
@@ -128,9 +139,22 @@ function PalaceProgress({ deck, walks: all, cards, now }: { deck: Deck; walks: W
           {plural(sections, 'more walk')} of new places only: in the table, not on the line.
         </p>
       )}
+      {exams > 0 && whole.length > 0 && (
+        <p className="body" data-testid="progress-exams">
+          {plural(exams, 'exam')}, taken without the palace: in the table, not on the line.
+        </p>
+      )}
       {repair && (
         <p className="body" data-testid="progress-repair">
           Now: {repair.whole} restored, {repair.repair} under repair, {repair.damaged} needing another repair, {repair.ruins} in ruins.
+        </p>
+      )}
+      {canExam(deck, cards) && (
+        <p className="palace__exam">
+          <button type="button" className="link" onClick={() => startExam(deck.id)} aria-label={`Exam on ${deck.title}`} data-testid="progress-exam">
+            Exam
+          </button>
+          <span className="muted"> the same facts with no palace on screen, in shuffled order.</span>
         </p>
       )}
       <ScoreChart walks={walks} label={`${deck.title}: score on each of ${plural(walks.length, 'walk')}. ${firstName}: ${score(first)}. Latest: ${score(latest)}.`} />
@@ -246,7 +270,7 @@ function ScoreChart({ walks, label }: { walks: WalkRecord[]; label: string }) {
   const survey = walks.find((r) => r.kind === 'survey');
   const last = points[points.length - 1];
   const shown = active ?? walks.length - 1;
-  const kinds = (['survey', 'recall', 'review'] as const).filter((k) => walks.some((r) => r.kind === k));
+  const kinds = (['survey', 'recall', 'review', 'exam'] as const).filter((k) => walks.some((r) => r.kind === k));
 
   // The nearest walk to the pointer, so that no one has to land on a 10 px dot.
   const onMove = (e: PointerEvent<SVGSVGElement>) => {
@@ -339,14 +363,18 @@ function ScoreChart({ walks, label }: { walks: WalkRecord[]; label: string }) {
   );
 }
 
-/** Survey: an open ring. Recall: a dot. Review: a diamond. Each has a ring of the paper colour, so the line never touches it. */
+/**
+ * Survey: an open ring. Recall: a dot. Review: a diamond. Exam: an open square (drawn only for a
+ * palace with nothing but exams; otherwise exams are off the chart). Each has a ring of the
+ * paper colour, so the line never touches it.
+ */
 function Marker({ kind, cx, cy, active }: { kind: WalkKind; cx: number; cy: number; active: boolean }) {
   const cls = `chart__mark chart__mark--${kind}`;
   return (
     <g data-active={active ? 'true' : undefined}>
       {active && <circle className="chart__halo" cx={cx} cy={cy} r={MARK + 6} />}
-      {kind === 'review' ? (
-        <rect className={cls} x={cx - MARK} y={cy - MARK} width={MARK * 2} height={MARK * 2} transform={`rotate(45 ${cx} ${cy})`} />
+      {kind === 'review' || kind === 'exam' ? (
+        <rect className={cls} x={cx - MARK} y={cy - MARK} width={MARK * 2} height={MARK * 2} transform={kind === 'review' ? `rotate(45 ${cx} ${cy})` : undefined} />
       ) : (
         <circle className={cls} cx={cx} cy={cy} r={kind === 'survey' ? MARK : MARK + 0.5} />
       )}
