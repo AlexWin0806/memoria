@@ -12,7 +12,9 @@
   { "name": "repair-shelf-06", "query": "shot=8&integrity=0.6&dev=0.65" },
   { "name": "repair-shelf-1", "query": "shot=8&integrity=1&dev=1" },
   { "name": "repair-arch-0", "query": "shot=3&integrity=0&dev=0.18" },
+  { "name": "repair-arch-03", "query": "shot=3&integrity=0.3&dev=0.3" },
   { "name": "repair-window-0", "query": "shot=11&integrity=0&dev=0.18" },
+  { "name": "repair-window-06", "query": "shot=11&integrity=0.6&dev=0.65" },
   { "name": "repair-overview-mix", "query": "shot=overview&integrity=1,1,1,1,0.6,0,1,0,0.3,0.6,0,1&dev=1,1,1,1,0.65,0.18,1,0.18,0.3,0.65,0.18,1" },
   { "name": "repair-statue-sill-a", "query": "shot=6&dev=1" },
   { "name": "repair-statue-sill-b", "query": "rail=5&t=0.96&dev=1" }

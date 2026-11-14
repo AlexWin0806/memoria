@@ -21,7 +21,7 @@ import {
   Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { Vec3 } from '@/core/types';
+import type { Theme, Vec3 } from '@/core/types';
 import type { PalaceLayout } from '@/layouts/types';
 import { Surface, useTheme } from '@/styles';
 import { FeatureLayout, integrityField } from './integrity';
@@ -66,8 +66,8 @@ const REACH = 0.6;
 const SPREAD = (130 * Math.PI) / 180;
 /** Height above the floor at which the way is probed for walls. */
 const PROBE_HEIGHT = 0.2;
-/** Clear floor kept on each side of the camera's path. */
-const WALKWAY = 0.45;
+/** Clear floor kept on each side of the camera's path: wide enough that nothing lands in a doorway it walks through. */
+const WALKWAY = 0.7;
 const TRIES = 10;
 const GHOST_OPACITY = 0.85;
 
@@ -275,6 +275,16 @@ function clearance(site: Site, x: number, z: number, dx: number, dz: number, far
   return _hits.length ? _hits[0].distance : far;
 }
 
+/** Height of whatever lies under a point (a ledge, a sill) between `top` and the site's floor; the floor if nothing does. */
+function standing(site: Site, x: number, z: number, top: number): number {
+  if (!site.obstacles.length || top <= site.y) return site.y;
+  _ray.set(_origin.set(x, top, z), _dir.set(0, -1, 0));
+  _ray.far = top - site.y;
+  _hits.length = 0;
+  _ray.intersectObjects(site.obstacles, false, _hits);
+  return _hits.length ? _hits[0].point.y : site.y;
+}
+
 /** Room between a thing lying at (x, z) along (tx, tz) and what already lies there; negative when they overlap. */
 function elbowRoom(site: Site, x: number, z: number, tx: number, tz: number, long: number, cross: number): number {
   const t = site.taken;
@@ -355,6 +365,12 @@ function place(site: Site, rand: () => number, slot: number, long: number, cross
 function layDown(out: Quaternion, q: Quaternion, half: Vector3, yaw: number, rand: () => number): void {
   const size = [half.x, half.y, half.z];
   const order = [0, 1, 2].sort((i, j) => size[j] - size[i]);
+  if (size[order[2]] > 0.6 * size[order[0]]) {
+    // About as wide as it is tall (an urn, a block): it is already "lying" as it stands and
+    // would only look moved. Lay its upright side down instead, so that it has plainly fallen over.
+    const rise = (i: number) => Math.abs(_v.copy(AXES[i]).applyQuaternion(q).y);
+    order.sort((i, j) => rise(j) - rise(i));
+  }
   _along.copy(AXES[order[0]]).applyQuaternion(q);
   _upright.copy(AXES[order[2]]).applyQuaternion(q);
   _across.crossVectors(_upright, _along);
@@ -492,6 +508,8 @@ function measure(rig: Rig, root: Group, content: Group, layout: PalaceLayout, in
   for (const block of blocks) block.dispose();
 
   // The scaffold: four poles round the feature, tied at the top and half way up the short sides.
+  // The ties hang from the feature's own height; each pole runs down to whatever is under it
+  // (the floor, or the sill a statue stands on), so that a window's scaffold does not float.
   const pad = 0.13;
   const x0 = rig.box.min.x - pad;
   const x1 = rig.box.max.x + pad;
@@ -505,22 +523,29 @@ function measure(rig: Rig, root: Group, content: Group, layout: PalaceLayout, in
   };
   const cx = (x0 + x1) / 2;
   const cz = (z0 + z1) / 2;
-  for (const x of [x0, x1]) for (const z of [z0, z1]) beam(x, height / 2, z, 0.05, height, 0.05);
+  let lowest = foot;
+  for (const x of [x0, x1]) {
+    for (const z of [z0, z1]) {
+      const drop = foot - standing(site, x, z, foot + 0.05);
+      lowest = Math.min(lowest, foot - drop);
+      beam(x, (height - drop) / 2, z, 0.05, height + drop, 0.05);
+    }
+  }
   for (const z of [z0, z1]) beam(cx, height - 0.1, z, x1 - x0 + 0.22, 0.04, 0.04);
   for (const x of [x0, x1]) beam(x, height - 0.16, cz, 0.04, 0.04, z1 - z0 + 0.22);
   if (x1 - x0 < z1 - z0) for (const z of [z0, z1]) beam(cx, height * 0.5, z, x1 - x0 + 0.22, 0.04, 0.04);
   else for (const x of [x0, x1]) beam(x, height * 0.5, cz, 0.04, 0.04, z1 - z0 + 0.22);
   rig.scaffold = mergeGeometries(beams);
   for (const b of beams) b.dispose();
-  rig.base = _v.set(cx, foot, cz).applyMatrix4(rig.rootInverse).y;
+  rig.base = _v.set(cx, lowest, cz).applyMatrix4(rig.rootInverse).y;
 }
 
 // ───────────────────────── The ghost ─────────────────────────
 
 /**
  * The dashed outline of the whole form. An engine material, not a Surface, so that it is the
- * same pen in every style: the theme's ink, drawn in the colour pass only (the ink style's
- * line pass skips what is not an ink surface, so it gets no second outline).
+ * same pen in every style (see `pen`), drawn in the colour pass only (the ink style's line
+ * pass skips what is not an ink surface, so it gets no second outline).
  * How: the feature's shape is first written to the depth buffer alone (the mask), then its back
  * faces are drawn pushed outwards on screen by the width of the line; what shows is the rim.
  */
@@ -529,6 +554,23 @@ const ghostShared = {
   /** Frame height over frame width. */
   uAspect: { value: 1 },
 };
+
+const _tone = new Color();
+function tone(hex: string): number {
+  _tone.set(hex);
+  return 0.2126 * _tone.r + 0.7152 * _tone.g + 0.0722 * _tone.b;
+}
+
+/**
+ * The pen the outline is drawn with: the theme's ink. A night theme's ink is darker than its
+ * night, and a dark line on a dark wall is no landmark, so where the paper stands out more
+ * against the scene's ground tone (the fog colour) than the ink does, the paper is the pen.
+ */
+function pen(theme: Theme): string {
+  const { ink, paper, fog } = theme.palette;
+  const ground = tone(fog);
+  return Math.abs(tone(ink) - ground) >= Math.abs(tone(paper) - ground) ? ink : paper;
+}
 
 const GHOST_VERT = /* glsl */ `
   attribute vec3 aSmooth;
@@ -556,7 +598,7 @@ const GHOST_FRAG = /* glsl */ `
     // tilted two ways, so no upright or level edge runs along both and comes out solid or blank.
     float a = fract(dot(vWorld, vec3(0.6, 0.64, 0.48)) * 5.5);
     float b = fract(dot(vWorld, vec3(-0.48, 0.6, 0.64)) * 2.1);
-    if (a > 0.7 || b > 0.86 || uOpacity < 0.004) discard;
+    if (a > 0.76 || b > 0.9 || uOpacity < 0.004) discard;
     gl_FragColor = vec4(uColor, uOpacity);
     #include <colorspace_fragment>
   }
@@ -673,9 +715,11 @@ function ensureGhost(rig: Rig, root: Group): void {
   rig.mask = new Mesh(geometry, mask);
   rig.line = new Mesh(geometry, material);
   rig.mask.visible = rig.line.visible = false;
-  // Before the floor ring (6) and the memory images (8 and up), mask before line.
-  rig.mask.renderOrder = 2;
-  rig.line.renderOrder = 3;
+  // Last of all, after the memory images (8 to 11) and the name plate (20): the mask would
+  // otherwise bite its shape out of any image drawn after it and standing behind it.
+  // All masks before all lines, so that ghosts in front of each other hide each other.
+  rig.mask.renderOrder = 30;
+  rig.line.renderOrder = 31;
   root.add(rig.mask, rig.line);
 }
 
@@ -800,7 +844,7 @@ export function LocusFeature({ index, ground, reach, children }: { index: number
     return () => dispose(rig);
   }, [rig]);
   useEffect(() => {
-    ghostShared.uColor.value.set(theme.palette.ink);
+    ghostShared.uColor.value.set(pen(theme));
   }, [theme]);
 
   useFrame((state, delta) => {
@@ -822,6 +866,8 @@ export function LocusFeature({ index, ground, reach, children }: { index: number
       }
     }
     if (!rig.pieces.length) return;
+    // The frame can change shape while a ruin stands still.
+    if (rig.line?.visible) ghostShared.uAspect.value = state.size.height / state.size.width;
 
     const veil = integrityField.veil;
     const cut = veil !== null && veil.cuts !== rig.cuts;
@@ -833,7 +879,6 @@ export function LocusFeature({ index, ground, reach, children }: { index: number
     if (!rig.active && !rig.first && rig.warm === 0) return;
     rig.first = false;
 
-    ghostShared.uAspect.value = state.size.height / state.size.width;
     const before = rig.build;
     rig.active = advance(rig, delta, snap);
 
@@ -842,6 +887,7 @@ export function LocusFeature({ index, ground, reach, children }: { index: number
     if (rig.line && rig.mask) {
       rig.line.visible = rig.mask.visible = ghost > 0.004 || rig.warm > 0;
       rig.opacity.value = ghost * GHOST_OPACITY;
+      ghostShared.uAspect.value = state.size.height / state.size.width;
     }
 
     // Rubble comes down with the pieces and sinks into the floor when they go back up.
