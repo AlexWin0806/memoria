@@ -25,6 +25,9 @@ declare global {
  *   ?rail=<from>&t=<0..1>                freeze the camera that fraction of the way along the
  *                                        path from locus <from> (or `entry`) to the next one
  *   &tokens=all                          show the Judge deck's images at all loci
+ *   &deck=<id>                           with tokens=all: show that deck's images instead
+ *   &inset=<px>                          with shot/rail: shift the view as a docked panel that wide does
+ *   &veil=hold                           keep the loading veil up (to look at it)
  *   &dev=0.2 | &dev=1,0.2,…              override development (one value for all, or per locus)
  *   &debug                               posts at the locus anchors; stores on window.__memoria
  *   ?perf                                frame-time overlay
@@ -36,6 +39,11 @@ export interface Qa {
   /** True when the camera is pinned and nothing may move (deterministic screenshots). */
   frozen: boolean;
   tokensAll: boolean;
+  /** Deck shown by `tokens=all`; null = the Judge deck. */
+  deck: string | null;
+  /** Width in px of an imagined panel docked on the right, for frozen views. */
+  inset: number;
+  holdVeil: boolean;
   dev: number[] | null;
   debug: boolean;
   perf: boolean;
@@ -65,6 +73,9 @@ export function readQa(lociCount: number, search = location.search): Qa {
     rail,
     frozen: shot !== null || rail !== null,
     tokensAll: q.get('tokens') === 'all',
+    deck: q.get('deck'),
+    inset: Math.max(0, Number(q.get('inset')) || 0),
+    holdVeil: q.get('veil') === 'hold',
     dev: dev && dev.length ? dev : null,
     debug: q.has('debug'),
     perf: q.has('perf'),

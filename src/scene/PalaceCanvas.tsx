@@ -5,24 +5,28 @@ import { getLayout } from '@/layouts';
 import { useDecks } from '@/state/decks';
 import { useReview } from '@/state/review';
 import { useSession } from '@/state/session';
-import { useSettings } from '@/state/settings';
+import { prefersReducedMotion, useSettings } from '@/state/settings';
 import { STYLES, StyleEnvironment, StylePost, StyleProvider } from '@/styles';
 import { getTheme } from '@/themes';
 import { PalaceScene } from './PalaceScene';
+import { PerfLog } from './PerfLog';
 import { readQa } from './qa';
 import { Ready } from './shot';
-import { VeilPainter, createVeil } from './veil';
+import { VeilPainter, VeilSheet, createVeil, finishRule } from './veil';
 
 // Dev dependency, loaded only for `?perf`, so it never reaches the main bundle.
 const Perf = lazy(() => import('r3f-perf').then((m) => ({ default: m.Perf })));
 
 /**
  * Adaptive resolution: step the pixel ratio down while frames are slow and back up
- * when they are fast again. Never below 0.6 of a CSS pixel.
+ * when they are fast again. Never below 0.75 of a CSS pixel: under that the ink style's
+ * one-pixel lines break up, and a slow frame is the lesser evil.
  */
+const MIN_DPR = 0.75;
+
 function AdaptiveResolution({ max }: { max: number }) {
   const setDpr = useThree((s) => s.setDpr);
-  const min = Math.max(0.6, max * 0.4);
+  const min = Math.max(MIN_DPR, max * 0.4);
   return (
     <PerformanceMonitor
       factor={1}
@@ -43,7 +47,8 @@ export function PalaceCanvas() {
   const qa = useMemo(() => readQa(layout.loci.length), [layout]);
   const theme = getTheme(qa.theme ?? themeId);
   const style = STYLES[theme.style] ?? STYLES.greybox;
-  const veil = useMemo(() => createVeil(qa.frozen), [qa]);
+  const reduced = prefersReducedMotion(useSettings((s) => s.reducedMotion));
+  const veil = useMemo(() => createVeil(qa.frozen, qa.holdVeil), [qa]);
   const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
 
   useEffect(() => {
@@ -67,17 +72,16 @@ export function PalaceCanvas() {
             <Perf position="top-left" />
           </Suspense>
         )}
-        <VeilPainter veil={veil} />
-        <Ready onReady={() => (veil.ready = true)} />
+        {qa.perf && <PerfLog label={`${qa.rail ? 'rail' : (qa.shot ?? 'overview')} ${theme.id}`} />}
+        <VeilPainter veil={veil} reduced={reduced} />
+        <Ready
+          onReady={() => {
+            veil.ready = true;
+            finishRule(veil);
+          }}
+        />
       </Canvas>
-      <div
-        aria-hidden
-        ref={(el) => {
-          veil.el = el;
-          if (el) el.style.opacity = String(veil.shown);
-        }}
-        style={{ position: 'absolute', inset: 0, background: theme.palette.paper, pointerEvents: 'none' }}
-      />
+      <VeilSheet veil={veil} theme={theme} reduced={reduced} />
     </div>
   );
 }

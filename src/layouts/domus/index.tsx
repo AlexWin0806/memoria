@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
+import { CylinderGeometry } from 'three';
 import type { PalaceLayout } from '@/layouts/types';
 import { Surface } from '@/styles';
 import { Features, NICHE, WINDOW } from './features';
 import { DOMUS_META } from './meta';
-import { Instanced, type Placement, T, wallGeometry } from './parts';
+import { type Placement, Repeated, T, UNIT_BOX, wallGeometry } from './parts';
 
 /**
  * The house, front to back along -z. Partition walls are centred on z = 0 and z = -12.
@@ -31,6 +32,7 @@ const SCREEN_H = 3.5;
 
 const COLUMN_X = [-2.8, -1.2, 1.2, 2.8];
 const SHAFTS: Placement[] = COLUMN_X.map((x) => ({ p: [x, 0.22 + (SCREEN_H - 0.44) / 2, Z_SCREEN] }));
+const SHAFTS_GEOMETRY = () => new CylinderGeometry(0.2, 0.24, SCREEN_H - 0.44, 20);
 const BASES: Placement[] = COLUMN_X.map((x) => ({ p: [x, 0.11, Z_SCREEN], s: [0.6, 0.22, 0.6] }));
 const CAPITALS: Placement[] = COLUMN_X.map((x) => ({ p: [x, SCREEN_H - 0.11, Z_SCREEN], s: [0.64, 0.22, 0.64] }));
 
@@ -144,24 +146,20 @@ function Shell() {
           <Surface slot="ceiling" />
         </mesh>
       ))}
-      <Instanced items={OPENING_BEAMS}>
-        <boxGeometry args={[1, 1, 1]} />
+      <Repeated items={OPENING_BEAMS} make={UNIT_BOX}>
         <Surface slot="wood" />
-      </Instanced>
+      </Repeated>
 
       {/* the row of columns between atrium and study */}
-      <Instanced items={SHAFTS}>
-        <cylinderGeometry args={[0.2, 0.24, SCREEN_H - 0.44, 20]} />
+      <Repeated items={SHAFTS} make={SHAFTS_GEOMETRY}>
         <Surface slot="stone" />
-      </Instanced>
-      <Instanced items={BASES}>
-        <boxGeometry args={[1, 1, 1]} />
+      </Repeated>
+      <Repeated items={BASES} make={UNIT_BOX}>
         <Surface slot="stone" />
-      </Instanced>
-      <Instanced items={CAPITALS}>
-        <boxGeometry args={[1, 1, 1]} />
+      </Repeated>
+      <Repeated items={CAPITALS} make={UNIT_BOX}>
         <Surface slot="stone" />
-      </Instanced>
+      </Repeated>
 
       {/* study */}
       {[-1, 1].map((s) => (
@@ -177,10 +175,9 @@ function Shell() {
         <boxGeometry args={[2 * SX + 2 * T, 0.2, Z_SCREEN - HALF_T - Z_BACK]} />
         <Surface slot="ceiling" />
       </mesh>
-      <Instanced items={STUDY_BEAMS}>
-        <boxGeometry args={[1, 1, 1]} />
+      <Repeated items={STUDY_BEAMS} make={UNIT_BOX}>
         <Surface slot="wood" />
-      </Instanced>
+      </Repeated>
     </group>
   );
 }

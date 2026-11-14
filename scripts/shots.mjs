@@ -8,7 +8,10 @@
  *   npm run shots -- --url http://localhost:5173   # use a server that is already running
  *   npm run shots -- --out qa/shots/proto          # fixed output directory
  *
- * Each bookmark is { name, query, width?, height?, waitMs? }. The page is loaded at
+ * Each bookmark is { name, query, width?, height?, waitMs?, timeoutMs? }. `timeoutMs` (default
+ * 90 s) bounds the wait for readiness and the screenshot call: software GL draws the ink theme
+ * at a few frames a second. `--theme <id>` appends `&theme=<id>` to every query, and
+ * `--log` prints the page's console (for the `?perf` report). The page is loaded at
  * `${base}/?${query}` and the script waits for `window.__MEMORIA_READY__ === true`.
  * Playwright is expected to be installed globally (it is in the build container);
  * on a laptop run `npm i -D playwright && npx playwright install chromium` first.
@@ -34,6 +37,8 @@ const flag = (name) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const only = flag('only');
+const theme = flag('theme');
+const log = args.includes('--log');
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const outDir = path.resolve(flag('out') ?? path.join('qa', 'shots', stamp));
 const bookmarksPath = path.resolve(flag('bookmarks') ?? 'qa/bookmarks.json');
@@ -83,14 +88,18 @@ try {
     });
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-    const url = `${base}/?${b.query ?? ''}`;
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+      else if (log && m.text().startsWith('[memoria')) console.log(`     ${m.text()}`);
+    });
+    const url = `${base}/?${b.query ?? ''}${theme ? `&theme=${theme}` : ''}`;
+    const timeout = b.timeoutMs ?? 90000;
     try {
       await page.goto(url, { waitUntil: 'load' });
-      await page.waitForFunction('window.__MEMORIA_READY__ === true', null, { timeout: 45000 });
+      await page.waitForFunction('window.__MEMORIA_READY__ === true', null, { timeout });
       await page.waitForTimeout(b.waitMs ?? 600);
       const file = path.join(outDir, `${b.name}.png`);
-      await page.screenshot({ path: file });
+      await page.screenshot({ path: file, timeout });
       console.log(`ok   ${b.name}  ->  ${path.relative(process.cwd(), file)}`);
     } catch (e) {
       failed++;

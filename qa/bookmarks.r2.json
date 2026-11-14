@@ -1,0 +1,10 @@
+[
+  { "name": "overview", "query": "shot=overview", "timeoutMs": 180000 },
+  { "name": "locus-01", "query": "shot=0&tokens=all&deck=fixture-cranial-nerves&inset=380", "timeoutMs": 180000 },
+  { "name": "locus-04", "query": "shot=3&tokens=all&deck=fixture-cranial-nerves&inset=380", "timeoutMs": 180000 },
+  { "name": "locus-05", "query": "shot=4&tokens=all&deck=fixture-cranial-nerves&inset=380", "timeoutMs": 180000 },
+  { "name": "locus-07", "query": "shot=6&tokens=all&deck=fixture-cranial-nerves&inset=380", "timeoutMs": 180000 },
+  { "name": "locus-10", "query": "shot=9&tokens=all&deck=fixture-cranial-nerves&inset=380", "timeoutMs": 180000 },
+  { "name": "loading-veil", "query": "veil=hold", "waitMs": 1500, "timeoutMs": 180000 },
+  { "name": "perf-overview", "query": "perf&shot=overview", "waitMs": 45000, "timeoutMs": 240000 }
+]
