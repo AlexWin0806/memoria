@@ -225,7 +225,16 @@ async function legible(page) {
   assert(problems.length === 0, `not legible: ${problems.join('; ')}`);
 }
 
-const pdfRequests = (requests) => requests.filter((u) => /\/pdf[-.][^/]*$/.test(new URL(u).pathname) || /pdfjs-dist/.test(u));
+/**
+ * PDF.js itself or its worker, as the build emits them (/assets/pdf.min-<hash>.mjs) and as the
+ * dev server serves them. Not the dev server's "?url" modules, which only hold their addresses.
+ */
+const isPdfJs = (u, name = /^pdf(\.worker)?\.min/) => {
+  const url = new URL(u);
+  const file = url.pathname.split('/').pop();
+  return name.test(file) && file.endsWith('.mjs') && !url.searchParams.has('url');
+};
+const pdfRequests = (requests) => requests.filter((u) => isPdfJs(u));
 
 /* ───────── Cases ───────── */
 
@@ -457,7 +466,7 @@ const cases = {
     // Hold PDF.js itself back, so that the reading is still under way when Stop is pressed.
     let release;
     const held = new Promise((resolve) => (release = resolve));
-    const READER = /\/pdf\.min[^/]*\.mjs/;
+    const READER = (url) => isPdfJs(url.href, /^pdf\.min/);
     await page.route(READER, async (route) => {
       await held;
       await route.continue();
