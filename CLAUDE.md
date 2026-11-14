@@ -119,16 +119,29 @@ geometry, no allocations inside `useFrame`, adaptive DPR. Initial load under abo
 
 ## Research-backed design principles
 
-Provisional until `docs/research.md` lands; the Researcher's verified list replaces this.
+From `docs/research.md` (sources checked through search extracts and abstracts; see the
+caveats there). Every feature must respect these.
 
-1. Every locus is visually distinct in shape, colour and light, well spaced, in a fixed order.
-2. First-time users take a short familiarization walk of the empty route.
-3. Memory images are vivid, active, unusual and tied to the meaning.
-4. The learner always approves or edits the Architect's image (generation effect).
-5. Recall is tested, not re-read: every session ends with retrieval practice.
-6. Reviews are spaced, and driven by what the learner got wrong.
-7. One list per palace route at a time; say so honestly (interference).
-8. Claims in the product and pitch are sourced and modest.
+1. Every palace is a fixed route with one fact per locus, and the order of loci never changes.
+2. Every locus is visually distinct in shape, colour and light, moderately lit, evenly
+   spaced and free of clutter, and every fifth locus carries a landmark.
+3. First-time users take a short familiarization walk of the empty route, and pass a quick
+   route check, before any image is placed.
+4. The Architect proposes; the learner always approves, edits or replaces each image and
+   confirms where it sits.
+5. Every image is concrete, doing something, different from its neighbours, and tied to the
+   meaning of the fact by a one-line reason. Weirdness alone is not enough.
+6. Every encoding walk is followed by a recall walk with images hidden, and the learner
+   must answer before anything is revealed.
+7. Every review is a retrieval attempt scheduled at expanding intervals, and success is
+   judged on delayed recall.
+8. One route per topic: never load a second, confusable list onto a route that is still
+   being learned.
+
+Claims rule: nothing goes into the README, Devpost, pitch or UI copy unless it is in
+`docs/research.md`. Do not claim "first AI memory palace" (others exist), do not say
+self-made images are proven better than provided ones (evidence is mixed), and always
+pair the effect sizes with the bias caveat. We have not run an efficacy study of Memoria.
 
 ## Coding conventions
 
