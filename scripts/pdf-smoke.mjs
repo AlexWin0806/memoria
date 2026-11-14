@@ -371,7 +371,7 @@ const cases = {
   },
 
   async c() {
-    const { context, page, errors, box } = await open();
+    const { context, page, errors, box, workers } = await open();
     const KEPT = 'Atlas - the first vertebra';
     await box.fill(KEPT);
     const refused = async (file, test, what) => {
@@ -407,6 +407,9 @@ const cases = {
     const half = await text(page.getByTestId('pdf-status'));
     assert((await box.inputValue()) === '# Tarsal bones\nTalus - ankle bone\nCalcaneus - heel bone\nNavicular - boat-shaped', `a PDF that is half scan gave:\n${await box.inputValue()}`);
     assert(half === `half-scanned.pdf: 2 pages, ${(await box.inputValue()).length} characters. 1 heading marked with #. 1 page had no text and was left out.`, `half a scan: "${half}"`);
+    // All of these were read by one worker: a second PDF does not fetch the reader again.
+    const started = workers.filter((u) => /pdf\.worker/.test(u)).length;
+    assert(started === 1, `${started} PDF.js workers were started on one page`);
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return 'a scan, a text file, a picture named .pdf, a damaged PDF, a locked PDF, 101 pages and 20 MB are each refused in words, and the notes are left alone; of a half-scanned PDF the text page is read and the other is named';
@@ -494,7 +497,7 @@ const cases = {
     await upload(fresh.page, files.list);
     const alert = fresh.page.getByTestId('pdf-error');
     await alert.waitFor();
-    assert((await text(alert)) === 'The PDF reader could not be loaded. Check your connection and try again, or paste the text instead.', `offline: "${await text(alert)}"`);
+    assert((await text(alert)) === 'The PDF reader could not be loaded. Check your connection and try again; if that does not help, reload the page. Or paste the text instead.', `offline: "${await text(alert)}"`);
     // Back online, trying again works without a reload: the failed load is not held against the page.
     await fresh.context.setOffline(false);
     await upload(fresh.page, files.list);
