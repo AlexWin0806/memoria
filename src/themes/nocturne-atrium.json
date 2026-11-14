@@ -1,0 +1,94 @@
+{
+  "id": "nocturne-atrium",
+  "name": "Nocturne Atrium",
+  "style": "nocturne",
+  "palette": {
+    "paper": "#efe7d6",
+    "ink": "#0c1526",
+    "inkSoft": "#5b6880",
+    "surfaces": {
+      "floor": "#b9b4aa",
+      "wall": "#c9c3b8",
+      "ceiling": "#a9a49b",
+      "trim": "#8f8b84",
+      "stone": "#d2ccc0",
+      "wood": "#5c5650",
+      "metal": "#7e7b76",
+      "water": "#0d2a3a",
+      "foliage": "#767b72",
+      "cloth": "#9a958d",
+      "glow": "#ffb869"
+    },
+    "accents": {
+      "red": "#d0553f",
+      "amber": "#f0a94a",
+      "green": "#6fae7a",
+      "teal": "#4fb3b0",
+      "blue": "#5f8fe0",
+      "plum": "#a070c0"
+    },
+    "sky": ["#27406b", "#0f1a2e"],
+    "fog": "#1b2c4c"
+  },
+  "light": {
+    "ambient": 0.55,
+    "keyColor": "#a9c4ff",
+    "keyIntensity": 3.2,
+    "keyDirection": [0.14, -1, 0.1],
+    "fillColor": "#5876ad",
+    "fillIntensity": 1.0,
+    "locusGlow": 1
+  },
+  "fog": {
+    "near": 16,
+    "far": 80
+  },
+  "post": {
+    "exposure": 1.2,
+    "msaa": 0,
+    "bloomThreshold": 1.05,
+    "bloomIntensity": 0.55,
+    "bloomRadius": 0.7,
+    "vignetteOffset": 0.3,
+    "vignetteDarkness": 0.6,
+    "lampPower": 1.9,
+    "lampRange": 3.3,
+    "lampDrop": 0.82,
+    "lampFlame": 7,
+    "glowPower": 1.5,
+    "skyGain": 1.6,
+    "skyPool": 1.0,
+    "shaftX": 0,
+    "shaftZ": 0,
+    "shaftTop": 4.3,
+    "shaftSize": 3.4,
+    "shaftOpacity": 0.07,
+    "motes": 90,
+    "moteSize": 5,
+    "moteGain": 0.7,
+    "stars": 520,
+    "starGain": 1.5,
+    "hazeDensity": 0.07,
+    "hazeHeight": 0.42,
+    "veinAmount": 0.65,
+    "veinScale": 1,
+    "tileSize": 1.25,
+    "undevDim": 0.42,
+    "ripple": 0.05,
+    "waterReflect": 1.1
+  },
+  "type": {
+    "display": "'Cormorant Garamond', Georgia, serif",
+    "text": "'Alegreya Sans', 'Gill Sans', sans-serif"
+  },
+  "ui": {
+    "bg": "#0f1a2e",
+    "panel": "#16233d",
+    "fg": "#efe7d6",
+    "muted": "#9aa7c0",
+    "accent": "#ffb869",
+    "success": "#6fae7a",
+    "danger": "#d0553f",
+    "radius": 2
+  }
+}

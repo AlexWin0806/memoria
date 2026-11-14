@@ -1,0 +1,6 @@
+[
+  { "name": "nocturne-wide", "query": "proto=1&theme=nocturne-atrium&shot=wide" },
+  { "name": "nocturne-fountain", "query": "proto=1&theme=nocturne-atrium&shot=fountain" },
+  { "name": "nocturne-door", "query": "proto=1&theme=nocturne-atrium&shot=door" },
+  { "name": "nocturne-develop", "query": "proto=1&theme=nocturne-atrium&shot=wide&dev=0.05,1,0.45" }
+]
