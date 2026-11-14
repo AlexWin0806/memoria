@@ -84,7 +84,8 @@ export interface RegenerateRequest {
 /** Longer than the server's own deadline, so a slow answer still arrives before we give up. */
 const PLAN_TIMEOUT_MS = 55_000;
 const REGENERATE_TIMEOUT_MS = 24_000;
-const MAX_TEXT = 12_000;
+/** The most text the Architect reads in one request. The PDF reader (src/flows/pdf.ts) and the overlay use this same number. */
+export const MAX_TEXT = 12_000;
 
 /** Validates a server plan against the request it answers. Null = fall back to the local planner. */
 function toPlan(raw: unknown, req: ArchitectRequest): ArchitectPlan | null {

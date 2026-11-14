@@ -6,7 +6,7 @@ import { formatWhen, plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
 import { JUDGE_PROMISE } from '@/flows/timing';
 import { getDeck, useAllDecks, useDecks } from '@/state/decks';
-import { hasDraft, useDraft } from '@/state/draft';
+import { EDIT_PREFIX, hasExtensionDraft, hasNewPalaceDraft, openEditor, openExtension, openNewPalace, useDraft } from '@/state/draft';
 import { useHistory } from '@/state/history';
 import { deckProgress, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
@@ -15,6 +15,8 @@ import { savedDataWasSetAside } from '@/state/storage';
 import { useThemeLab } from '@/state/themeLab';
 import { getTheme, THEMES } from '@/themes';
 import { useActiveTheme } from '@/themes/active';
+import { palaceStyleLine } from './palaceWords';
+import './compose.css';
 
 /**
  * "8 places · not started", "8 places · 3 due now" or "8 places · next review tomorrow".
@@ -47,12 +49,17 @@ export function Title() {
   // A walk that a reload cut short, and a Compose draft that is waiting to be placed.
   const saved = useFlow((s) => s.savedWalk);
   const savedDeck = saved ? getDeck(saved.deckId) : undefined;
-  const drafting = useDraft((d) => hasDraft(d));
+  const drafting = useDraft((d) => hasNewPalaceDraft(d));
+  // Notes waiting to be added to a palace are kept with that palace.
+  const adding = useDraft((d) => decks.filter((deck) => hasExtensionDraft(deck.id, d)).map((deck) => deck.id).join(' '));
+  // Edits begun and not saved are kept with their palace too.
+  const editing = useDraft((d) => decks.filter((deck) => d.parked[EDIT_PREFIX + deck.id] !== undefined).map((deck) => deck.id).join(' '));
 
   const remove = (deckId: string) => {
     useDecks.getState().remove(deckId);
     useReview.getState().resetDeck(deckId);
     useHistory.getState().removeDeck(deckId);
+    useDraft.getState().forget(deckId);
     setDeleting(null);
   };
 
@@ -86,7 +93,7 @@ export function Title() {
         <button type="button" className={saved && savedDeck ? 'btn' : 'btn btn--primary'} onClick={() => startJudge()} data-testid="title-judge">
           {promise}
         </button>
-        <button type="button" className="btn" onClick={() => useSession.getState().toCompose()} data-testid="title-build">
+        <button type="button" className="btn" onClick={openNewPalace} data-testid="title-build">
           {drafting ? 'Continue your draft' : 'Build a palace'}
         </button>
       </div>
@@ -106,11 +113,21 @@ export function Title() {
           </span>
         </div>
         <ul className="decks">
-          {decks.map((deck) => (
+          {decks.map((deck) => {
+            // A generated palace says what it is built as and how many rooms it has; it can also be added to.
+            const style = palaceStyleLine(deck.layoutId);
+            return (
             <li key={deck.id} className="deck" data-testid="deck-row">
               <div className="deck__text">
                 <span className="deck__title">{deck.title}</span>
-                <span className="deck__meta">{deckStatus(deck, cards, now)}</span>
+                <span className="deck__line">
+                  {style && (
+                    <span className="deck__palace" data-testid="deck-palace">
+                      {style} ·{' '}
+                    </span>
+                  )}
+                  <span className="deck__meta">{deckStatus(deck, cards, now)}</span>
+                </span>
               </div>
               {deleting === deck.id ? (
                 <div className="deck__actions">
@@ -130,6 +147,17 @@ export function Title() {
                   <button type="button" className="link" onClick={() => startRecall(deck.id, 'all')} aria-label={`Recall ${deck.title}`}>
                     Recall
                   </button>
+                  {!deck.fixture && style && (
+                    <button type="button" className="link" onClick={() => openExtension(deck.id)} aria-label={`Add to ${deck.title}`} data-testid="deck-extend">
+                      {adding.split(' ').includes(deck.id) ? 'Add (draft)' : 'Add'}
+                    </button>
+                  )}
+                  {/* A built-in deck is changed only as before: one image at a time, from its results. */}
+                  {!deck.fixture && (
+                    <button type="button" className="link" onClick={() => openEditor(deck.id)} aria-label={`Edit ${deck.title}`} data-testid="deck-edit">
+                      {editing.split(' ').includes(deck.id) ? 'Edit (draft)' : 'Edit'}
+                    </button>
+                  )}
                   {!deck.fixture && (
                     <button type="button" className="link" onClick={() => setDeleting(deck.id)} aria-label={`Delete ${deck.title}`}>
                       Delete
@@ -138,7 +166,8 @@ export function Title() {
                 </div>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       </section>
 

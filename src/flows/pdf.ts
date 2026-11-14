@@ -11,11 +11,12 @@
  * be a year behind. The legacy build carries its own polyfills and costs about 60 kB more,
  * none of it on first load.
  */
+import { MAX_TEXT } from '@/ai/architect';
 import readerUrl from 'pdfjs-dist/legacy/build/pdf.min.mjs?url';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
-/** The most text the Architect accepts. Mirrors MAX_TEXT in src/ai/architect.ts and api/architect.ts. */
-export const ARCHITECT_MAX_CHARS = 12_000;
+/** The most text the Architect accepts: MAX_TEXT in src/ai/architect.ts (api/architect.ts keeps its own copy). */
+export const ARCHITECT_MAX_CHARS = MAX_TEXT;
 /** Caps on what is read. Lecture notes and handouts sit far below both. */
 export const PDF_MAX_BYTES = 20 * 1024 * 1024;
 export const PDF_MAX_PAGES = 100;

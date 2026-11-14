@@ -9,7 +9,9 @@ import { useNow } from '@/flows/hooks';
 import { isNoStrongerSuggestion, NO_MORE_OFFLINE } from '@/flows/suggest';
 import { JUDGE_REGENERATE_TIMEOUT_MS, JUDGE_STARTS_IN_RUINS, REGENERATE_TIMEOUT_MS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
+import { parsePalaceId } from '@/layouts/spec';
 import { useDeck, useDecks } from '@/state/decks';
+import { openExtension } from '@/state/draft';
 import { compareWalks, compareWithSurveys, isSectionWalk, previousWalk, useHistory } from '@/state/history';
 import { useReview } from '@/state/review';
 import { useSession } from '@/state/session';
@@ -196,6 +198,12 @@ export function Results() {
         {!judge && (
           <button type="button" className="btn" onClick={openProgress} data-testid="results-progress">
             Progress
+          </button>
+        )}
+        {/* Only a generated palace of the learner's own can grow: a handcrafted route is fixed. */}
+        {!judge && !deck.fixture && parsePalaceId(deck.layoutId) && (
+          <button type="button" className="btn" onClick={() => openExtension(deck.id)} data-testid="results-extend">
+            Add to this palace
           </button>
         )}
         <button type="button" className="btn" onClick={leave} data-testid="results-home">

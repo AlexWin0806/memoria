@@ -49,7 +49,9 @@ export function normalizeSpec(spec: PalaceSpec): PalaceSpec {
 
 export function palaceLayoutId(spec: PalaceSpec): string {
   const s = normalizeSpec(spec);
-  const rooms = s.rooms.map((r) => [r.id, r.places, r.shape === 'ring' ? 'ring' : 'hall', encodeURIComponent(r.name)].join('~'));
+  // `~` separates the fields and encodeURIComponent leaves it alone, so it is escaped by hand:
+  // a room called "Cells ~ tissues" would otherwise be cut short when the id is read back.
+  const rooms = s.rooms.map((r) => [r.id, r.places, r.shape === 'ring' ? 'ring' : 'hall', encodeURIComponent(r.name).replace(/~/g, '%7E')].join('~'));
   return `${GENERATED_PREFIX}${s.kit};${rooms.join(';')}`;
 }
 
