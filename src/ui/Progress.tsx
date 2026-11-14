@@ -142,7 +142,7 @@ function PalaceProgress({ deck, walks: all, cards, now }: { deck: Deck; walks: W
               <th scope="col">Walk</th>
               <th scope="col">When</th>
               <th scope="col">Kind</th>
-              <th scope="col">{hasLinks || hasOrder ? 'Places right' : 'Right'}</th>
+              <th scope="col">{hasLinks || hasOrder ? 'Places' : 'Right'}</th>
               <th scope="col">No answer</th>
               {hasLinks && <th scope="col">Links</th>}
               {hasOrder && <th scope="col">Order</th>}

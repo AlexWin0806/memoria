@@ -65,6 +65,23 @@ export function studyLines(deck: Deck, item: MemoryItem, walk: string[]): string
   return lines;
 }
 
+/**
+ * What led to a step, for the recall walk, said once the step's own place has been answered:
+ * the links that arrive at it from steps the learner has already answered on this walk (or
+ * that are not on it). It is where a missed question about a link gets its answer: the
+ * question was asked at the earlier step, and naming this one there would have given away a
+ * place that had not been asked yet. Nothing about a step still ahead is said.
+ */
+export function arrivalLines(deck: Deck, item: MemoryItem, behind: (itemId: string) => boolean): string[] {
+  if (!isProcessDeck(deck)) return [];
+  const into = linksOf(deck).filter((l) => l.to === item.id && behind(l.from));
+  return [
+    ...into.filter((l) => l.kind === 'becomes').map((l) => said(`Comes from ${termOf(deck, l.from)}`, l.label)),
+    ...into.filter((l) => l.kind === 'needs').map((l) => said(`${termOf(deck, l.from)} needs it`, l.label)),
+    ...into.filter((l) => l.kind === 'blocks').map((l) => said(`Blocked by ${termOf(deck, l.from)}`, l.label)),
+  ];
+}
+
 /** The kinds of link the recall walk asks about, in the order they are asked. Never `mirrors`. */
 const ASKED: readonly Exclude<LinkKind, 'mirrors'>[] = ['becomes', 'blocks', 'needs'];
 const VERB: Record<Exclude<LinkKind, 'mirrors'>, [ask: string, tell: string]> = {
@@ -82,8 +99,12 @@ export interface LinkQuestion {
   kind: Exclude<LinkKind, 'mirrors'>;
   /** "What does Citrate become?" */
   prompt: string;
-  /** Every right answer: the term at the other end of each such link, with what the link says. */
-  answers: { term: string; label?: string; sentence: string }[];
+  /**
+   * Every right answer: the term at the other end of each such link, with what the link says
+   * (`sentence`: "Citrate becomes Isocitrate: rearranged."). `held` says the same without the
+   * term, for a step the walk has still to ask about at its own place (see LinkStop).
+   */
+  answers: { itemId: string; term: string; label?: string; sentence: string; held: string }[];
 }
 
 /**
@@ -101,7 +122,14 @@ export function linkQuestions(deck: Deck | undefined, item: MemoryItem | undefin
       .filter((l) => l.kind === kind && !seen.has(l.to) && seen.add(l.to))
       .map((l) => {
         const term = termOf(deck, l.to);
-        return { term, ...(l.label?.trim() ? { label: l.label.trim() } : {}), sentence: said(`${answerOf(item)} ${VERB[kind][1]} ${term}`, l.label) };
+        const start = `${answerOf(item)} ${VERB[kind][1]}`;
+        return {
+          itemId: l.to,
+          term,
+          ...(l.label?.trim() ? { label: l.label.trim() } : {}),
+          sentence: said(`${start} ${term}`, l.label),
+          held: said(`${start} a step further along the route`, l.label),
+        };
       });
     if (answers.length) questions.push({ id: `${item.id}:${kind}`, from: item.id, kind, prompt: `What does ${answerOf(item)} ${VERB[kind][0]}?`, answers });
   }

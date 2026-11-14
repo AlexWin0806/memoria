@@ -3,7 +3,7 @@ import { answerOf, buildChoices, typedMatches } from '@/flows/answers';
 import { advanceRecall, answerRecall, itemAt, judgeTiming, markRight, useFlow } from '@/flows/flow';
 import { termLength } from '@/flows/format';
 import { useTimedStop, useWalkKeys } from '@/flows/hooks';
-import { buildLinkChoices, linkQuestions, orderTask } from '@/flows/process';
+import { arrivalLines, buildLinkChoices, linkQuestions, orderTask } from '@/flows/process';
 import { LinkStop, OrderTask } from './Process';
 import { ADVANCE_KEYS, ProgressBar } from './Walk';
 import { getLayout } from '@/layouts';
@@ -36,7 +36,10 @@ export function Recall() {
   const linkAt = useFlow((s) => s.linkAt);
   const questions = judge ? [] : linkQuestions(deck, item);
   const question = result ? questions[linkAt - 1] : undefined;
-  const task = judge || !deck ? null : orderTask(deck, stops.flatMap((index) => itemAt(deck, layout.loci[index])?.id ?? []));
+  const walkItems = stops.flatMap((index) => itemAt(deck, layout.loci[index])?.id ?? []);
+  const task = judge || !deck ? null : orderTask(deck, walkItems);
+  // The places of this walk that have not been answered: nothing asked about a link may name what is at them.
+  const ahead = new Set(walkItems.filter((id) => !results.some((r) => r.itemId === id)));
   const ordering = useFlow((s) => s.phase) === 'order' && task !== null;
   const aside = ordering || question !== undefined;
 
@@ -129,10 +132,12 @@ export function Recall() {
         choices={linkChoices}
         input={input}
         onward={!lastQuestion ? 'Next question' : last ? afterWalk : 'Next place'}
+        ahead={ahead}
       />
     );
   }
   const right = answerOf(item);
+  const ledHere = judge || !result ? [] : arrivalLines(deck, item, (id) => !ahead.has(id));
   // Only a typed answer can be overruled: the grader may be wrong about wording, never about a picked option.
   const canOverrule = input === 'typed' && result !== undefined && !result.correct && result.given.trim() !== '';
 
@@ -236,6 +241,14 @@ export function Recall() {
             </p>
             {item.meaning && <p className="body">{item.meaning}</p>}
             <p className="scene">{item.imago.scene}</p>
+            {/* A process deck: what led here, from the steps already answered. A question about a link that was missed back there gets its answer now. */}
+            {ledHere.length > 0 && (
+              <ul className="links links--reveal" data-testid="recall-links">
+                {ledHere.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
             {/* In a surveyed palace the answer also decides the state of the place (a timed Judge run has no time for the line). */}
             {!judge && deck.surveyedAt !== undefined && (
               <p className="state" data-testid="recall-place-state">

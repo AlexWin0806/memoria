@@ -27,6 +27,8 @@ interface LinkStopProps {
   input: 'choice' | 'typed';
   /** What the button that moves on says: the next question, the next place, or what follows the walk. */
   onward: string;
+  /** The items this walk has still to ask about at their own places. */
+  ahead: ReadonlySet<string>;
 }
 
 /**
@@ -34,8 +36,14 @@ interface LinkStopProps {
  * been answered and its item revealed. Answered in the same way as the place (picked or
  * typed), with "I don't know" always there and never preselected; nothing about the answer
  * is shown before the learner commits.
+ *
+ * The feedback is the right answer and what the link says. One case holds the name back: the
+ * learner missed, and the right answer is a step whose own place this walk has not asked yet.
+ * Naming it would answer that place for them, and the place is what sets the review. They
+ * are told what the link does; the name follows at its own place, once that is answered
+ * (arrivalLines).
  */
-export function LinkStop({ question, index, count, choices, input, onward }: LinkStopProps) {
+export function LinkStop({ question, index, count, choices, input, onward, ahead }: LinkStopProps) {
   const { stops, step } = useSession();
   const answer = useFlow((s) => s.linkAnswers.find((a) => a.id === question.id));
   const [typed, setTyped] = useState('');
@@ -65,9 +73,13 @@ export function LinkStop({ question, index, count, choices, input, onward }: Lin
     back: backRecall,
   });
 
-  const right = new Set(question.answers.map((a) => a.term));
+  // After a miss, a right answer that is still to be asked at its own place is not named.
+  const shown = question.answers.filter((a) => answer?.correct || !ahead.has(a.itemId));
+  const held = question.answers.filter((a) => !shown.includes(a));
+  const right = new Set(shown.map((a) => a.term));
   // Only a typed answer can be overruled: the grader may be wrong about wording, never about a picked option.
-  const canOverrule = input === 'typed' && answer !== undefined && !answer.correct && !answer.unknown && answer.given.trim() !== '';
+  // And only against an answer that is shown: there is nothing to compare a held-back one with.
+  const canOverrule = input === 'typed' && answer !== undefined && !answer.correct && !answer.unknown && answer.given.trim() !== '' && held.length === 0;
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (typed.trim()) commit(typed);
@@ -161,11 +173,21 @@ export function LinkStop({ question, index, count, choices, input, onward }: Lin
             </p>
             {input === 'typed' && answer.given && (answer.selfMarked || !answer.correct) && <p className="muted">You wrote: {answer.given}</p>}
             {/* The right answer, and what the link says about it. */}
-            {question.answers.map((a) => (
+            {shown.map((a) => (
               <p key={a.term} className="link__fact" data-testid="link-fact">
                 {a.sentence}
               </p>
             ))}
+            {held.map((a) => (
+              <p key={a.term} className="link__fact" data-testid="link-fact" data-held="true">
+                {a.held}
+              </p>
+            ))}
+            {held.length > 0 && (
+              <p className="state" data-testid="link-held">
+                Its name waits at its own place, which you have not been asked about yet.
+              </p>
+            )}
           </div>
         )}
       </div>

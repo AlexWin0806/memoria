@@ -682,7 +682,8 @@ export function resumeWalk(): void {
     order: null,
     progress: false,
     recallStartedAt: Date.now() - w.recallSpentMs,
-    recallMs: 0,
+    // On the ordering task the recall walk is already over: its time is the time it took.
+    recallMs: w.phase === 'order' ? w.recallSpentMs : 0,
     savedWalk: null,
   });
   useSession.setState({

@@ -24,6 +24,20 @@
   border-left: 3px solid var(--rule-strong);
 }
 
+/* Recall walk: what led to the step just recalled, under what its place revealed. */
+.reveal .links--reveal {
+  margin: 10px 0 0;
+  padding: 8px 0 0;
+  list-style: none;
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+.reveal .links--reveal li {
+  margin: 0 0 2px;
+  padding-left: 0;
+  border-left: 0;
+}
+
 /* Recall walk: the right answer to a question about a link, as one sentence. */
 .reveal .link__fact {
   margin: 4px 0 0;
@@ -37,14 +51,13 @@
 .order .order__steps .choice[aria-disabled='true'] {
   border-left-color: var(--ui-fg);
   background: var(--wash);
-  color: var(--ui-muted);
   cursor: default;
 }
 .order__nth {
   font-variant-numeric: lining-nums;
   white-space: nowrap;
 }
-.order__head { margin-top: 22px; }
+.order .order__head { margin-top: 22px; }
 .order__seq {
   margin: 4px 0 0;
   padding-left: 30px;
