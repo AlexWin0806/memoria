@@ -26,6 +26,7 @@ to 30 places; past scores and trends. The build that was demo-ready before Part 
 | Links drawn between places; Zen garden and workshop kits (Alex, 3:00 PM: workshop instead of castle, it suits processes) | Engine | todo | After the generator lands |
 | Process mode: a process deck's walk asks how each step leads on and has the learner reorder the steps (confirmed by Alex) | App, AI | todo | `Deck.focus`; the citric acid cycle is the showcase |
 | QA review 4; pitch, README, Devpost, Doc, media for Part 2 | QA, Scribe | todo | |
+| Parked by Alex (Sat 3:00 PM), keep in mind: an optional "things you know well" field (basketball, cooking) that the Architect draws memory images from, with no named people, characters, teams or titles | AI, App | parked | Not to be built unless Alex asks; roadmap material for the pitch |
 
 ## Status at Sat 12:55 PM ET
 
