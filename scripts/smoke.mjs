@@ -1653,6 +1653,34 @@ const cases = {
     await page.keyboard.press('Escape');
     await page.getByTestId('leave-yes').click();
     await page.getByTestId('title').waitFor();
+
+    // 4. Typed answers: graded as on the recall walk; Enter on an empty field answers nothing; a question mark there is "I don't know".
+    await page.getByTestId('settings').locator('summary').click();
+    await page.locator('#set-recall').selectOption('typed');
+    await page.getByRole('button', { name: 'Walk The Mohs hardness scale' }).click();
+    const field = page.getByTestId('survey-input');
+    await field.waitFor();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'survey-input');
+    await page.keyboard.press('Enter');
+    assert((await page.getByTestId('survey-ack').count()) === 0, 'typed survey: Enter on an empty field answered');
+    await page.keyboard.type('TALK');
+    await page.keyboard.press('Enter');
+    await page.getByTestId('survey-ack').waitFor();
+    const typedAck = await page.getByTestId('survey').evaluate((el) => el.innerText);
+    assert(typedAck.includes('You wrote: TALK') && !/Talc|Correct|Not this time/.test(typedAck), `typed survey: the acknowledgement reveals something: ${typedAck}`);
+    assert((await page.evaluate(() => window.__memoriaApp.view())).integrity[0] === 1, 'typed survey: a right answer with a typo did not keep the place whole');
+    await shot(page, 'survey-typed');
+    await page.getByTestId('survey-next').click();
+    await page.locator('[data-testid=survey] [data-testid=walk-label]:has-text("Place 2 of 10")').waitFor();
+    await field.waitFor();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'survey-input');
+    await page.keyboard.type('?');
+    await page.getByTestId('survey-ack').waitFor();
+    assert((await page.evaluate(() => window.__memoriaApp.view())).integrity[1] === 0, 'typed survey: "I don\'t know" did not put the place in ruins');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    assert((await storedProgress(page)).surveyed.includes('fixture-mohs') === false, 'a survey that was left half way was saved');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `unsurveyed decks unchanged; a surveyed deck opens on the study walk; Progress empty and with three walks; skip leaves ten places in ruins; the right slot over 3000 questions: at most ${dealt.worst} in ten, never three running`;

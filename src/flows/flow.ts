@@ -553,7 +553,13 @@ if (typeof window !== 'undefined') {
     const walkPop = ignoreNextPop;
     ignoreNextPop = false;
     if (popDelegate?.(walkPop) || walkPop) return;
-    if (!isWalking(useSession.getState().mode)) return;
+    const { mode } = useSession.getState();
+    if (!isWalking(mode)) return;
+    // Back from the survey's summary leaves at once: the survey is over and saved, so there is nothing to ask about.
+    if (mode === 'survey' && useFlow.getState().phase === 'summary') {
+      leave();
+      return;
+    }
     try {
       history.pushState({ [HISTORY_MARK]: true }, '');
     } catch {

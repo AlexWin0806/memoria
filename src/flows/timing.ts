@@ -62,8 +62,10 @@ export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; labe
 /**
  * A Judge run starts with every place of its deck in ruins (the judge has not learned the list
  * yet): a place goes under repair when its image is placed on the study walk, and is restored
- * or left damaged by the answer on the recall walk. Set to false and a Judge run looks as it
- * did before: every place whole throughout. Read in src/state/sceneView.ts and nowhere else.
+ * or left needing repair by the answer on the recall walk. Set to false and a Judge run looks
+ * as it did before: every place whole throughout, and its results say nothing about repair.
+ * Read in src/state/sceneView.ts (the scene) and src/ui/Results.tsx (the legend and the rows).
+ * It sets no timer: every stop lasts as long with it on as with it off.
  */
 export const JUDGE_STARTS_IN_RUINS = true;
 

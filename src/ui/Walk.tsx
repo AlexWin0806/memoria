@@ -300,7 +300,7 @@ export function Encode() {
             {card?.survey && (
               <p className="state" data-testid="encode-survey" data-outcome={card.survey}>
                 {card.surveyGiven === undefined
-                  ? 'The survey did not reach this place.'
+                  ? 'You skipped this place in the survey.'
                   : card.surveyGiven === ''
                     ? 'In the survey you said: I don’t know.'
                     : `In the survey you answered: ${card.surveyGiven}.`}
