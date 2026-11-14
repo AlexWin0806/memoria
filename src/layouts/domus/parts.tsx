@@ -194,7 +194,8 @@ export function GoldenHand({ position, facing = 0 }: { position: Vec3; facing?: 
         <boxGeometry args={[0.22, 0.06, 0.16]} />
         <Surface slot="stone" />
       </mesh>
-      <group position={[0, 1.065, 0]}>
+      {/* leaned back a little so the palm catches light from above in every style */}
+      <group position={[0, 1.065, 0]} rotation={[-0.25, 0, 0]}>
         <Instanced items={HAND}>
           <boxGeometry args={[1, 1, 1]} />
           <Surface slot="metal" accent="amber" />

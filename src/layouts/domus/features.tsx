@@ -171,7 +171,7 @@ function Fountain() {
         <ringGeometry args={[2.05, 2.2, 8]} />
         <Surface slot="trim" />
       </mesh>
-      <GoldenHand position={[-1.75, 0, 1.3]} facing={0.8} />
+      <GoldenHand position={[2.0, 0, -0.6]} facing={-0.1} />
     </group>
   );
 }
@@ -204,6 +204,11 @@ function Sundial() {
         <cylinderGeometry args={[0.5, 0.5, 0.04, 32]} />
         <Surface slot="stone" />
       </mesh>
+      {/* the hour plate: an amber face that catches the light from above */}
+      <mesh position={[0, 1.045, 0]}>
+        <cylinderGeometry args={[0.43, 0.43, 0.012, 32]} />
+        <Surface slot="metal" accent="amber" />
+      </mesh>
       <mesh geometry={gnomon} position={[0, 1.04, -0.0175]} castShadow>
         <Surface slot="metal" accent="amber" />
       </mesh>
@@ -219,8 +224,8 @@ function Statue({ wallX }: { wallX: number }) {
   const body = useMemo(
     () =>
       lathe([
-        [0, 0], [0.27, 0], [0.28, 0.05], [0.2, 0.3], [0.17, 0.55], [0.2, 0.78], [0.22, 0.9],
-        [0.15, 1.0], [0.06, 1.05], [0.05, 1.08], [0, 1.08],
+        [0, 0], [0.29, 0], [0.27, 0.06], [0.2, 0.34], [0.165, 0.62], [0.18, 0.84], [0.2, 0.94],
+        [0.11, 1.01], [0.05, 1.05], [0.045, 1.09], [0, 1.09],
       ], 12, true),
     [],
   );
@@ -244,8 +249,12 @@ function Statue({ wallX }: { wallX: number }) {
         <mesh geometry={body} castShadow>
           <Surface slot="stone" accent="blue" />
         </mesh>
-        <mesh position={[0, 1.17, 0]} castShadow>
-          <sphereGeometry args={[0.105, 16, 12]} />
+        <mesh position={[0, 1.19, 0]} scale={[1, 1.3, 1]} castShadow>
+          <sphereGeometry args={[0.1, 16, 12]} />
+          <Surface slot="stone" accent="blue" />
+        </mesh>
+        <mesh position={[-0.06, 1.22, -0.46]} castShadow>
+          <sphereGeometry args={[0.055, 12, 8]} />
           <Surface slot="stone" accent="blue" />
         </mesh>
         {/* the fold of the mantle across the body, and one raised arm */}
@@ -253,8 +262,8 @@ function Statue({ wallX }: { wallX: number }) {
           <torusGeometry args={[0.2, 0.04, 8, 24]} />
           <Surface slot="stone" accent="blue" />
         </mesh>
-        <mesh position={[-0.1, 1.0, -0.26]} rotation={[0.75, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.035, 0.05, 0.46, 8]} />
+        <mesh position={[-0.06, 1.02, -0.27]} rotation={[-0.75, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.035, 0.05, 0.5, 8]} />
           <Surface slot="stone" accent="blue" />
         </mesh>
       </group>
@@ -263,10 +272,10 @@ function Statue({ wallX }: { wallX: number }) {
 }
 
 const LAUREL_CROWN: Placement[] = [
-  { p: [0, 1.42, 0], s: [0.34, 0.32, 0.34] },
-  { p: [-0.17, 1.58, 0.12], s: [0.23, 0.22, 0.23] },
-  { p: [0.18, 1.56, -0.1], s: [0.22, 0.21, 0.22] },
-  { p: [0.02, 1.7, 0.02], s: [0.19, 0.17, 0.19] },
+  { p: [0, 1.32, 0], s: [0.34, 0.32, 0.34] },
+  { p: [-0.17, 1.48, 0.12], s: [0.23, 0.22, 0.23] },
+  { p: [0.18, 1.46, -0.1], s: [0.22, 0.21, 0.22] },
+  { p: [0.02, 1.6, 0.02], s: [0.19, 0.17, 0.19] },
 ];
 
 /** 8. The Laurel: a small round-headed tree standing in a wide urn. */
@@ -284,8 +293,8 @@ function Laurel() {
       <mesh geometry={urn} castShadow receiveShadow>
         <Surface slot="stone" />
       </mesh>
-      <mesh position={[0, 0.95, 0]} castShadow>
-        <cylinderGeometry args={[0.035, 0.05, 0.56, 8]} />
+      <mesh position={[0, 0.9, 0]} castShadow>
+        <cylinderGeometry args={[0.035, 0.05, 0.46, 8]} />
         <Surface slot="wood" />
       </mesh>
       <Instanced items={LAUREL_CROWN}>
@@ -326,8 +335,9 @@ for (let row = 0; row < SHELF_ROWS; row++) {
       // Scrolls are pushed in to slightly different depths so the ends do not line up.
       const out = ((k * 7 + col * 3 + row) % 4) * 0.012;
       SCROLLS.push({ p: [0.25 + out, y + dy, z + dz], r: [0, 0, Math.PI / 2] });
-      CORDS.push({ p: [0.415 + out, y + dy, z + dz], r: [0, 0, Math.PI / 2] });
-      if (k < 3) CORD_TAILS.push({ p: [0.452 + out, y + dy - 0.05, z + dz + 0.02], s: [0.012, 0.11, 0.022] });
+      // The cord sits back from the end so the pale scroll end still shows inside its red ring.
+      CORDS.push({ p: [0.385 + out, y + dy, z + dz], r: [0, 0, Math.PI / 2] });
+      if (k < 3) CORD_TAILS.push({ p: [0.42 + out, y + dy - 0.06, z + dz + 0.02], s: [0.012, 0.1, 0.022] });
     }
   }
 }
@@ -393,7 +403,7 @@ function Lectern() {
       <mesh geometry={cloth} position={[0.25, 0, 0]} rotation={[0, -Math.PI / 2, 0]} castShadow>
         <Surface slot="cloth" accent="plum" />
       </mesh>
-      <GoldenHand position={[-0.95, 0, 0.1]} />
+      <GoldenHand position={[-0.95, 0, 0.1]} facing={-0.33} />
     </group>
   );
 }
