@@ -7,7 +7,7 @@ import { useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { STYLES, StyleEnvironment, StylePost, StyleProvider } from '@/styles';
-import { getTheme } from '@/themes';
+import { useActiveTheme } from '@/themes/active';
 import { PalaceScene } from './PalaceScene';
 import { readQa } from './qa';
 import { Ready } from './shot';
@@ -38,10 +38,9 @@ function AdaptiveResolution({ max }: { max: number }) {
  * It reads the stores and writes back only `session.arrived`. QA switches: see ./qa.ts.
  */
 export function PalaceCanvas() {
-  const themeId = useSettings((s) => s.themeId);
   const layout = getLayout(useSession((s) => s.layoutId));
   const qa = useMemo(() => readQa(layout.loci.length), [layout]);
-  const theme = getTheme(qa.theme ?? themeId);
+  const theme = useActiveTheme();
   const style = STYLES[theme.style] ?? STYLES.greybox;
   const veil = useMemo(() => createVeil(qa.frozen), [qa]);
   const maxDpr = Math.min(window.devicePixelRatio || 1, 2);

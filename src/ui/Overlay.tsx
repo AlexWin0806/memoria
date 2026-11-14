@@ -3,7 +3,7 @@ import { leave, requestLeave, startJudge, useFlow } from '@/flows/flow';
 import { useArrivedFallback, useReducedMotion } from '@/flows/hooks';
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
-import { getTheme } from '@/themes';
+import { useActiveTheme } from '@/themes/active';
 import { Compose } from './Compose';
 import { Recall } from './Recall';
 import { Results } from './Results';
@@ -27,15 +27,15 @@ export function Overlay() {
 
 function OverlayRoot() {
   const mode = useSession((s) => s.mode);
-  const themeId = useSettings((s) => s.themeId);
+  const theme = useActiveTheme();
   const reduced = useReducedMotion(useSettings((s) => s.reducedMotion));
   const confirmLeave = useFlow((s) => s.confirmLeave);
   useArrivedFallback();
 
   // Before first paint, so the overlay never flashes unstyled.
   useLayoutEffect(() => {
-    applyThemeVars(getTheme(query().get('theme') ?? themeId));
-  }, [themeId]);
+    applyThemeVars(theme);
+  }, [theme]);
 
   useEffect(() => {
     if (query().has('judge')) startJudge();
