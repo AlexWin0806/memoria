@@ -18,7 +18,7 @@ Judge Mode shows the whole loop in about two minutes with the eight carpal bones
 
 React Three Fiber and three.js: a static site with one serverless function. Layout, Theme (JSON tokens) and Style (shader code) are separate, so any palace works with any look. The look is a custom non-photorealistic pipeline: watercolour washes, ink outlines found from depth and surface direction, and paper grain. A shared "development field" tells every material how well the nearest place has been learned.
 
-The Architect is a small agent loop on the Claude API. It **plans** (which facts, which room), **acts** (drafts an image for each fact), **checks** (a second, strict pass tests every image for concreteness, action, distinctness and a stated link to the meaning, and rewrites the ones that fail) and **adapts** (when you miss an item, it proposes a stronger image). The key stays on the server. If the function cannot be reached, a deterministic offline planner takes over. The live model path is built; the demo runs on the offline planner. <!-- Before submitting: the live model path is built but had not been run with a real key when this was drafted. Once it has been tested, delete this comment. If it has not, add the sentence: "The live model path is built; the demo runs on the offline planner." -->
+The Architect is a small agent loop on the Claude API, built to **plan** (which facts, which room), **act** (draft an image for each fact), **check** (a second, strict pass tests every image for concreteness, action, distinctness and a stated link to the meaning, and rewrites the ones that fail) and **adapt** (when you miss an item, it proposes a stronger image). The key stays on the server. If the function cannot be reached, a deterministic offline planner drafts the images instead, and says so. Judge Mode uses neither: it runs on built-in decks whose images we wrote by hand, so the demo never depends on the network. The model loop has been tested against a stand-in for the API, not yet against the live model. <!-- Before submitting: once the live model path has been run with a real key, replace the last sentence with what you saw (for example how long a twelve-item plan took). If it has not been run, leave the sentence as it is. -->
 
 The code was written with Claude Code agents under the team's direction during the hackathon window, and checked by two independent QA reviews and automated end-to-end tests. Not yet checked: frame rate and motion on a real laptop, and screen readers.
 
@@ -72,7 +72,7 @@ TypeScript, React, three.js, React Three Fiber, drei, postprocessing, GLSL, WebG
 ## Before submitting (delete this section)
 
 1. Inspiration: add Alex's two sentences.
-2. How we built it: resolve the note about the live model path.
+2. How we built it: update the last sentence about the live model path if it has been tested with a real key.
 3. What we learned: add the venue test sentence, or leave it out.
 4. Links: live demo URL and video link.
 5. On Devpost itself: track Education; special tracks Amazon Best Practical AI Innovation and ChatOverflow Agent Leaderboard; all four Discord usernames.
