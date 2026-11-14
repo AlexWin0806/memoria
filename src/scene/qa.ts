@@ -35,7 +35,8 @@ declare global {
  *                                        path from locus <from> (or `entry`) to the next one
  *   &tokens=all                          show the Judge deck's images at all loci
  *   &deck=<id>                           with tokens=all: show that deck's images instead
- *   &links=all                           draw every link of that deck on the floor at once (with or without tokens=all)
+ *   &links=all | &links=<0..1>           draw every link of that deck on the floor at once (with or without
+ *                                        tokens=all); a number holds each that far through being drawn in
  *   &eye=x,y,z&look=x,y,z                with shot: look from that point at that point instead (down at the floor, say)
  *   &inset=<px>                          with shot/rail: shift the view as a docked panel that wide does
  *   &insetBottom=<px>                    with shot/rail: lift the view as a bottom sheet that tall does
@@ -58,8 +59,8 @@ export interface Qa {
   tokensAll: boolean;
   /** Deck shown by `tokens=all`; null = the Judge deck. */
   deck: string | null;
-  /** Every link of that deck is drawn, whatever images are shown. */
-  linksAll: boolean;
+  /** Every link of that deck is drawn, whatever images are shown: this far through being drawn in (1 = whole). null = as the session says. */
+  links: number | null;
   /** With `shot`: a camera pose given outright (`eye` and `look`); null = the pose of the shot. */
   pose: CameraPose | null;
   /** Width in px of an imagined panel docked on the right, for frozen views. */
@@ -118,7 +119,7 @@ export function readQa(lociCount: number, search = location.search): Qa {
     frozen: shot !== null || rail !== null,
     tokensAll: q.get('tokens') === 'all',
     deck: q.get('deck'),
-    linksAll: q.get('links') === 'all',
+    links: q.get('links') === 'all' ? 1 : q.has('links') ? Math.min(1, Math.max(0, Number(q.get('links')) || 0)) : null,
     pose,
     inset: Math.max(0, Number(q.get('inset')) || 0),
     insetBottom: Math.max(0, Number(q.get('insetBottom')) || 0),

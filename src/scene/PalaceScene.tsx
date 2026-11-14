@@ -107,7 +107,8 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
     [tokens, layout],
   );
   const [leaving, drop] = useLeaving(shown, !still);
-  const linked = qa.tokensAll || qa.linksAll ? (getDeck(qa.deck ?? JUDGE_DECK_ID) ?? deck) : deck;
+  // The deck whose links are drawn: the session's, or the one a QA switch puts on show.
+  const linked = useDeck(qa.tokensAll || qa.links !== null ? (qa.deck ?? JUDGE_DECK_ID) : null) ?? deck;
   const current = typeof view.camera === 'number' ? layout.loci[view.camera] : undefined;
 
   // Results: a tour of the places just walked, in place of the overview.
@@ -161,7 +162,7 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
         </FlourishPulse>
       ))}
       {/* The links between the facts, on the floor: those of the deck whose images are in the scene. */}
-      <PalaceLinks layout={layout} deck={linked} tokens={tokens} all={qa.linksAll} still={still} veil={veil} />
+      <PalaceLinks layout={layout} deck={linked} tokens={tokens} held={qa.links} still={still} veil={veil} />
       <FlourishRing flourish={flourish} layout={layout} />
       {view.labels && current && arrived && !qa.frozen && (
         <LocusLabel

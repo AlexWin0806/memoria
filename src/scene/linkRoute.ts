@@ -11,13 +11,16 @@ import { viaBetween } from './rail';
  *
  * The route on the floor is a small graph, the trunk:
  *   a generated hall     its axis, from doorway to doorway; each place joins it square-on
- *   a generated ring     a circle round the room, inside the ring of places, with a stub to
- *                        each doorway: a link runs round it as an arc
+ *   a generated ring     the circle the places themselves stand on, with a stub to each
+ *                        doorway: a link runs round it as an arc from the side of one place to
+ *                        the side of the next, where the learner standing in the middle of the
+ *                        room sees it (the floor in front of a place is below the picture)
  *   any other palace     the line from place to place in route order, through the layout's
- *                        `via` waypoints, bent round every place's footprint
- * Links that share a stretch of trunk run side by side in lanes, one lane per link for its
- * whole length, so two never lie on top of each other; where several links meet one place,
- * their last stretches (the spurs) run side by side too.
+ *                        `via` waypoints
+ * A link runs from the edge of one place's footprint to the edge of the other's and bends
+ * round the footprint of every place it passes. Links that share a stretch of trunk run side
+ * by side in lanes, one lane per link for its whole length, so two never lie on top of each
+ * other; where several links meet one place, their last stretches (the spurs) run side by side too.
  *
  * Pure numbers (x, z pairs on the floor): no three, nothing measured in the scene.
  */
@@ -26,23 +29,30 @@ import { viaBetween } from './rail';
 export const MAX_LINKS = 48;
 /** Distance between two lanes, centre to centre, when there is room for it. */
 export const LANE = 0.24;
-/** The lanes of one stretch stay within this distance of the trunk: a doorway is 2.2 m wide. */
-const MAX_SPREAD = 0.82;
+/** The lanes of one stretch are no wider than this together: a doorway is 2.2 m wide. */
+const MAX_SPREAD = 1.2;
 /** Distance between the spurs of two links at one place. */
 const SLOT = 0.3;
-/** A spur ends this far outside the footprint of its place, and is never shorter than MIN_SPUR. */
+/** A link ends this far outside the footprint of its place. */
 const SPUR_GAP = 0.12;
-const MIN_SPUR = 0.5;
 /** Generated rooms: the trunk comes this close to the wall a doorway is in. */
 const DOOR_IN = 0.5;
-/** A ring's trunk circle, as a share of the distance from the centre of the room to its sides. */
-const RING_TRUNK = 0.62;
+/** A ring's trunk circle runs this far in from the sides of the room: through the middle of the plots. */
+const RING_IN = 1;
 const RING_STEPS = 72;
+/**
+ * A thing on the wall covers little floor, however wide it is: a link comes this close to the
+ * point under its image (which hangs 0.75 m out from the wall).
+ */
+const WALL_FOOT = 0.3;
 /** A flow (`becomes`) goes the way the route goes round a ring unless that is this many times longer. */
 const AGAINST_FLOW = 1.9;
-/** Other palaces: the trunk passes this far outside the footprint of the place it serves, and of every other. */
+/** Other palaces: the trunk passes this far outside the footprint of the place it serves. */
 const STATION_OUT = 0.55;
-const KEEP_CLEAR = 0.32;
+/** A link that passes a place it does not belong to keeps this far outside its footprint. */
+const KEEP_CLEAR = 0.3;
+/** The longest step that counts as a jog between two lanes and not as a turn of the route. */
+const JOG = 0.9;
 /** Corners are rounded with this radius. */
 const FILLET = 0.2;
 
@@ -59,6 +69,8 @@ interface Stop {
   x: number;
   z: number;
   footprint: number;
+  /** A link that passes this place goes round it on the side of this point (the middle of a ring room). */
+  inside?: [number, number];
 }
 
 interface Net {
@@ -67,16 +79,19 @@ interface Net {
   /** The direction lanes are set off in at each vertex: a unit vector (longer at a sharp corner, to keep lanes apart). */
   nx: number[];
   nz: number[];
+  /** True where the trunk is the axis of the palace: the lanes there are centred on it. Elsewhere they lie to one side. */
+  axial: boolean[];
   edges: Edge[][];
   /** By locus index. */
   stops: (Stop | undefined)[];
 }
 
-function vert(net: Net, x: number, z: number, nx: number, nz: number): number {
+function vert(net: Net, x: number, z: number, nx: number, nz: number, axial = false): number {
   net.x.push(x);
   net.z.push(z);
   net.nx.push(nx);
   net.nz.push(nz);
+  net.axial.push(axial);
   net.edges.push([]);
   return net.x.length - 1;
 }
@@ -98,7 +113,7 @@ function generatedNet(layout: PalaceLayout): Net | null {
   if (!spec) return null;
   const plan = planLayout(spec);
   if (plan.meta.loci.length !== layout.loci.length) return null;
-  const net: Net = { x: [], z: [], nx: [], nz: [], edges: [], stops: [] };
+  const net: Net = { x: [], z: [], nx: [], nz: [], axial: [], edges: [], stops: [] };
   /** The end of the trunk of the room before, by its far doorway. */
   let last = -1;
   for (const room of plan.rooms) {
@@ -106,14 +121,19 @@ function generatedNet(layout: PalaceLayout): Net | null {
     const { length, halfWidth } = room.plan;
     const loci = layout.loci.filter((l) => l.roomId === room.spec.id);
     const more = room.index < plan.rooms.length - 1;
+    const stop = (index: number, v: number, inside?: [number, number]): void => {
+      const [x, z] = spotOf(layout, index);
+      const onWall = plan.places[index]?.feature.mount === 'wall';
+      net.stops[index] = { vert: v, x, z, footprint: onWall ? WALL_FOOT : (layout.footprint?.[index] ?? 0.5), inside };
+    };
     let prev = last;
     if (last >= 0) {
-      prev = vert(net, x0, z0 - DOOR_IN, 1, 0);
+      prev = vert(net, x0, z0 - DOOR_IN, 1, 0, true);
       join(net, last, prev);
     }
     if (room.shape === 'ring') {
       const cz = z0 - halfWidth;
-      const r = halfWidth * RING_TRUNK;
+      const r = halfWidth - RING_IN;
       const first = net.x.length;
       for (let j = 0; j < RING_STEPS; j++) {
         const a = (j / RING_STEPS) * Math.PI * 2;
@@ -123,7 +143,7 @@ function generatedNet(layout: PalaceLayout): Net | null {
       for (let j = 0; j < RING_STEPS; j++) join(net, first + j, first + ((j + 1) % RING_STEPS), 1);
       if (prev >= 0) {
         // The stub from the entrance keeps its own lanes right up to the circle.
-        const foot = vert(net, x0, cz + r, 1, 0);
+        const foot = vert(net, x0, cz + r, 1, 0, true);
         join(net, prev, foot);
         join(net, foot, first);
       }
@@ -131,26 +151,25 @@ function generatedNet(layout: PalaceLayout): Net | null {
         const [sx, sz] = spotOf(layout, l.index);
         const a = Math.atan2(-(sx - x0), sz - cz);
         const j = ((Math.round((a / (Math.PI * 2)) * RING_STEPS) % RING_STEPS) + RING_STEPS) % RING_STEPS;
-        net.stops[l.index] = { vert: first + j, x: sx, z: sz, footprint: layout.footprint?.[l.index] ?? 0.5 };
+        stop(l.index, first + j, [x0, cz]);
       }
       last = -1;
       if (more) {
-        const foot = vert(net, x0, cz - r, 1, 0);
+        const foot = vert(net, x0, cz - r, 1, 0, true);
         join(net, first + RING_STEPS / 2, foot);
-        last = vert(net, x0, z0 - length + DOOR_IN, 1, 0);
+        last = vert(net, x0, z0 - length + DOOR_IN, 1, 0, true);
         join(net, foot, last);
       }
     } else {
       for (const l of loci) {
-        const [sx, sz] = spotOf(layout, l.index);
-        const v = vert(net, x0, sz, 1, 0);
+        const v = vert(net, x0, spotOf(layout, l.index)[1], 1, 0, true);
         if (prev >= 0) join(net, prev, v);
         prev = v;
-        net.stops[l.index] = { vert: v, x: sx, z: sz, footprint: layout.footprint?.[l.index] ?? 0.5 };
+        stop(l.index, v);
       }
       last = -1;
       if (more && prev >= 0) {
-        last = vert(net, x0, z0 - length + DOOR_IN, 1, 0);
+        last = vert(net, x0, z0 - length + DOOR_IN, 1, 0, true);
         join(net, prev, last);
       }
     }
@@ -158,56 +177,88 @@ function generatedNet(layout: PalaceLayout): Net | null {
   return net;
 }
 
-interface Waypoint {
-  x: number;
-  z: number;
-  /** The locus this point is the station of, or -1. */
-  stop: number;
+/** Where the stretch from point `i` of a line to the next crosses a circle: the fractions along it, or null if it does not. */
+function crossings(line: number[], i: number, cx: number, cz: number, radius: number): [number, number] | null {
+  const dx = line[i + 2] - line[i];
+  const dz = line[i + 3] - line[i + 1];
+  const fx = line[i] - cx;
+  const fz = line[i + 1] - cz;
+  const qa = dx * dx + dz * dz;
+  const qb = 2 * (fx * dx + fz * dz);
+  const disc = qb * qb - 4 * qa * (fx * fx + fz * fz - radius * radius);
+  if (qa < 1e-9 || disc <= 0) return null;
+  const root = Math.sqrt(disc);
+  return [(-qb - root) / (2 * qa), (-qb + root) / (2 * qa)];
 }
 
-/** Bends a line round a disc it would cross: the stretch inside is replaced by the shorter way round the rim. */
-function roundDisc(line: Waypoint[], cx: number, cz: number, radius: number): Waypoint[] {
-  const out: Waypoint[] = [];
-  for (let i = 0; i < line.length; i++) {
-    const a = line[i];
-    out.push(a);
-    const b = line[i + 1];
-    if (!b) break;
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const fx = a.x - cx;
-    const fz = a.z - cz;
-    const qa = dx * dx + dz * dz;
-    const qb = 2 * (fx * dx + fz * dz);
-    const qc = fx * fx + fz * fz - radius * radius;
-    const disc = qb * qb - 4 * qa * qc;
-    if (qa < 1e-9 || disc <= 0) continue;
-    const root = Math.sqrt(disc);
-    const t1 = (-qb - root) / (2 * qa);
-    const t2 = (-qb + root) / (2 * qa);
-    // Only a line that goes in and comes out again: one that starts or ends inside has business there.
-    if (t1 <= 0 || t2 >= 1) continue;
-    const a1 = Math.atan2(fz + dz * t1, fx + dx * t1);
-    let turn = Math.atan2(fz + dz * t2, fx + dx * t2) - a1;
+/**
+ * Bends a line round a disc it would cross: the part inside is replaced by a way round the
+ * rim, the shorter one, or the one on the side of `inside` when that is given.
+ */
+function roundDisc(line: number[], cx: number, cz: number, radius: number, inside?: [number, number]): number[] {
+  const n = line.length / 2;
+  const within = (k: number) => Math.hypot(line[k * 2] - cx, line[k * 2 + 1] - cz) < radius;
+  // A line that starts or ends inside has business there.
+  if (n < 2 || within(0) || within(n - 1)) return line;
+  const out = [line[0], line[1]];
+  const at = (k: number, t: number): [number, number] => [line[k * 2] + (line[k * 2 + 2] - line[k * 2]) * t, line[k * 2 + 1] + (line[k * 2 + 3] - line[k * 2 + 1]) * t];
+  const arc = (from: [number, number], to: [number, number]) => {
+    const a1 = Math.atan2(from[1] - cz, from[0] - cx);
+    let turn = Math.atan2(to[1] - cz, to[0] - cx) - a1;
     if (turn > Math.PI) turn -= Math.PI * 2;
     if (turn < -Math.PI) turn += Math.PI * 2;
-    const steps = Math.max(1, Math.ceil(Math.abs(turn) / 0.3));
-    for (let k = 0; k <= steps; k++) {
-      const at = a1 + (turn * k) / steps;
-      out.push({ x: cx + Math.cos(at) * radius, z: cz + Math.sin(at) * radius, stop: -1 });
+    if (inside) {
+      const side = (t: number) => Math.hypot(cx + Math.cos(a1 + t / 2) * radius - inside[0], cz + Math.sin(a1 + t / 2) * radius - inside[1]);
+      const other = turn - Math.sign(turn || 1) * Math.PI * 2;
+      if (side(other) < side(turn)) turn = other;
     }
+    const steps = Math.max(1, Math.ceil(Math.abs(turn) / 0.3));
+    for (let k = 0; k <= steps; k++) out.push(cx + Math.cos(a1 + (turn * k) / steps) * radius, cz + Math.sin(a1 + (turn * k) / steps) * radius);
+  };
+  for (let k = 1; k < n; k++) {
+    if (!within(k)) {
+      // Both ends outside: it may still cut a chord off the disc.
+      const hit = crossings(line, (k - 1) * 2, cx, cz, radius);
+      if (hit && hit[0] > 0 && hit[1] < 1) arc(at(k - 1, hit[0]), at(k - 1, hit[1]));
+      out.push(line[k * 2], line[k * 2 + 1]);
+      continue;
+    }
+    const enter = crossings(line, (k - 1) * 2, cx, cz, radius);
+    let m = k;
+    while (within(m)) m++;
+    const leave = crossings(line, (m - 1) * 2, cx, cz, radius);
+    if (enter && leave) arc(at(k - 1, Math.min(1, Math.max(0, enter[0]))), at(m - 1, Math.min(1, Math.max(0, leave[1]))));
+    out.push(line[m * 2], line[m * 2 + 1]);
+    k = m;
   }
   return out;
 }
 
+/**
+ * Cuts the start of a line back to the rim of a disc it starts inside. One that starts
+ * outside is given a short stub from the rim instead (a lane that passes in front of its place).
+ */
+function clipStart(line: number[], cx: number, cz: number, radius: number): number[] {
+  const d = Math.hypot(line[0] - cx, line[1] - cz);
+  if (d >= radius) return d - radius < 0.06 ? line : [cx + ((line[0] - cx) / d) * radius, cz + ((line[1] - cz) / d) * radius, ...line];
+  for (let i = 2; i < line.length; i += 2) {
+    if (Math.hypot(line[i] - cx, line[i + 1] - cz) < radius) continue;
+    const hit = crossings(line, i - 2, cx, cz, radius);
+    const t = hit ? Math.min(1, Math.max(0, hit[1])) : 1;
+    return [line[i - 2] + (line[i] - line[i - 2]) * t, line[i - 1] + (line[i + 1] - line[i - 1]) * t, ...line.slice(i)];
+  }
+  return line;
+}
+
 /** Any other palace: from place to place in route order, as the camera rail goes. */
 function routeNet(layout: PalaceLayout): Net {
-  const net: Net = { x: [], z: [], nx: [], nz: [], edges: [], stops: [] };
+  const net: Net = { x: [], z: [], nx: [], nz: [], axial: [], edges: [], stops: [] };
   const spots = layout.loci.map((l) => {
     const [x, z] = spotOf(layout, l.index);
     return { x, z, footprint: layout.footprint?.[l.index] ?? 0.5 };
   });
-  let line: Waypoint[] = [];
+  let line: number[] = [];
+  const stations: [number, number][] = [];
   layout.loci.forEach((l, i) => {
     const s = spots[i];
     // The station of a place: just outside its footprint, on the side the learner looks at it from.
@@ -222,29 +273,30 @@ function routeNet(layout: PalaceLayout): Net {
       dz = 1;
     }
     const out = Math.min(s.footprint + STATION_OUT, Math.max(0.2, d - 0.3));
-    if (i > 0) for (const v of viaBetween(layout, i - 1, i)) line.push({ x: v[0], z: v[2], stop: -1 });
-    line.push({ x: s.x + dx * out, z: s.z + dz * out, stop: i });
+    if (i > 0) for (const v of viaBetween(layout, i - 1, i)) line.push(v[0], v[2]);
+    stations.push([s.x + dx * out, s.z + dz * out]);
+    line.push(s.x + dx * out, s.z + dz * out);
   });
+  // The trunk itself keeps clear of every place: of the pool it would otherwise cross.
   for (const s of spots) line = roundDisc(line, s.x, s.z, s.footprint + KEEP_CLEAR);
-  line = line.filter((p, i) => i === 0 || p.stop >= 0 || Math.hypot(p.x - line[i - 1].x, p.z - line[i - 1].z) > 0.05);
-  line.forEach((p, i) => {
-    const a = line[Math.max(0, i - 1)];
-    const b = line[Math.min(line.length - 1, i + 1)];
+  const n = line.length / 2;
+  const side = (i: number, j: number): [number, number] => {
+    const len = Math.hypot(line[j * 2] - line[i * 2], line[j * 2 + 1] - line[i * 2 + 1]) || 1;
+    return [(line[j * 2 + 1] - line[i * 2 + 1]) / len, -(line[j * 2] - line[i * 2]) / len];
+  };
+  for (let i = 0; i < n; i++) {
     // The left-hand side of each neighbouring stretch, averaged; lengthened at a corner so lanes keep their distance.
-    const side = (from: Waypoint, to: Waypoint): [number, number] => {
-      const len = Math.hypot(to.x - from.x, to.z - from.z) || 1;
-      return [(to.z - from.z) / len, -(to.x - from.x) / len];
-    };
-    const [ax, az] = i > 0 ? side(a, p) : side(p, b);
-    const [bx, bz] = i < line.length - 1 ? side(p, b) : [ax, az];
+    const [ax, az] = i > 0 ? side(i - 1, i) : side(i, Math.min(n - 1, i + 1));
+    const [bx, bz] = i < n - 1 ? side(i, i + 1) : [ax, az];
     const len = Math.hypot(ax + bx, az + bz);
     const nx = len > 1e-3 ? (ax + bx) / len : ax;
     const nz = len > 1e-3 ? (az + bz) / len : az;
     const mitre = 1 / Math.max(0.5, nx * ax + nz * az);
-    const v = vert(net, p.x, p.z, nx * mitre, nz * mitre);
+    const v = vert(net, line[i * 2], line[i * 2 + 1], nx * mitre, nz * mitre);
     if (i > 0) join(net, v - 1, v);
-    if (p.stop >= 0) net.stops[p.stop] = { vert: v, ...spots[p.stop] };
-  });
+    const at = stations.findIndex(([x, z]) => x === line[i * 2] && z === line[i * 2 + 1]);
+    if (at >= 0 && !net.stops[at]) net.stops[at] = { vert: v, ...spots[at] };
+  }
   return net;
 }
 
@@ -279,9 +331,6 @@ function walk(net: Net, from: number, to: number, flow: boolean): number[] | nul
   }
   return out.reverse();
 }
-
-/** Lane number to signed steps from the trunk: 0, 1, -1, 2, -2, ... */
-const laneStep = (lane: number) => ((lane + 1) >> 1) * (lane % 2 ? 1 : -1);
 
 const FLOW_FIRST: Record<LinkKind, number> = { becomes: 0, mirrors: 1, needs: 2, blocks: 3 };
 
@@ -325,7 +374,11 @@ export function shortened(line: number[], start: number, end: number): number[] 
   return end > 0 ? reversed(trimStart(reversed(cut), end)) : cut;
 }
 
-/** Drops the points at which a line doubles back on itself (where two stretches of trunk with different lanes meet). */
+/**
+ * Drops the points at which a line doubles back on itself over a short step: the jog where two
+ * stretches of trunk with different lanes meet. A sharp turn between two long stretches is the
+ * route's own (round a corner, back from a place) and stays.
+ */
 function untangle(line: number[]): number[] {
   const out = line.slice();
   for (let pass = 0; pass < 8; pass++) {
@@ -335,8 +388,8 @@ function untangle(line: number[]): number[] {
       const az = out[i + 1] - out[i - 1];
       const bx = out[i + 2] - out[i];
       const bz = out[i + 3] - out[i + 1];
-      const tiny = Math.hypot(ax, az) < 1e-3;
-      if (tiny || ax * bx + az * bz < 0) {
+      const short = Math.min(Math.hypot(ax, az), Math.hypot(bx, bz));
+      if (short < 1e-3 || (short < JOG && ax * bx + az * bz < 0)) {
         out.splice(i, 2);
         changed = true;
         i -= 2;
@@ -456,16 +509,17 @@ export function routeLinks(layout: PalaceLayout, deck: Deck | undefined): Routed
     let lane = 0;
     while (taken.has(lane)) lane++;
     d.lane = lane;
-    widest = Math.max(widest, Math.abs(laneStep(lane)));
+    widest = Math.max(widest, lane);
   }
   const spacing = widest > 0 ? Math.min(LANE, MAX_SPREAD / widest) : LANE;
   const scale = Math.max(0.45, spacing / LANE);
+  /** How far a lane lies from the trunk at a vertex: to one side, or about the axis where the trunk is one. */
+  const offset = (lane: number, v: number) => (net.axial[v] ? lane - widest / 2 : lane) * spacing;
 
   // The trunk part of each link, set off into its lane.
   const trunks = drafts.map((d) => {
-    const off = laneStep(d.lane) * spacing;
     const line: number[] = [];
-    for (const v of d.path) line.push(net.x[v] + net.nx[v] * off, net.z[v] + net.nz[v] * off);
+    for (const v of d.path) line.push(net.x[v] + net.nx[v] * offset(d.lane, v), net.z[v] + net.nz[v] * offset(d.lane, v));
     return untangle(line);
   });
 
@@ -491,7 +545,7 @@ export function routeLinks(layout: PalaceLayout, deck: Deck | undefined): Routed
       const heading = (line[j] - line[k]) * tx + (line[j + 1] - line[k + 1]) * tz >= 0 ? 1 : -1;
       const ux = stop.x - net.x[v];
       const uz = stop.z - net.z[v];
-      const near = laneStep(d.lane) * (net.nx[v] * ux + net.nz[v] * uz);
+      const near = offset(d.lane, v) * (net.nx[v] * ux + net.nz[v] * uz);
       ends[atStart ? d.from : d.to].push({ link: i, atStart, heading, near, pos: 0 });
     }
   });
@@ -504,7 +558,8 @@ export function routeLinks(layout: PalaceLayout, deck: Deck | undefined): Routed
 
   const links = drafts.map((d, i): RoutedLink => {
     let line = trunks[i];
-    const spur = (atStart: boolean): [number, number] => {
+    /** The spur at one end: from the lane, parallel to the line from the trunk to the place, as far as the place. */
+    const spur = (atStart: boolean): number[] => {
       const end = ends[atStart ? d.from : d.to].find((e) => e.link === i && e.atStart === atStart)!;
       const stop = net.stops[atStart ? d.from : d.to]!;
       if (line.length >= 4) {
@@ -516,21 +571,25 @@ export function routeLinks(layout: PalaceLayout, deck: Deck | undefined): Routed
       let ux = stop.x - net.x[v];
       let uz = stop.z - net.z[v];
       const reach = Math.hypot(ux, uz);
-      if (reach > 1e-3) {
-        ux /= reach;
-        uz /= reach;
-      } else {
-        ux = net.nx[v];
-        uz = net.nz[v];
-      }
-      // From the lane to the edge of the footprint, parallel to the line from the trunk to the place.
-      const own = (line[k] - net.x[v]) * ux + (line[k + 1] - net.z[v]) * uz;
-      const length = Math.max(MIN_SPUR, reach - own - stop.footprint - SPUR_GAP);
-      return [line[k] + ux * length, line[k + 1] + uz * length];
+      if (reach < 0.05) return [];
+      ux /= reach;
+      uz /= reach;
+      const length = reach - ((line[k] - net.x[v]) * ux + (line[k + 1] - net.z[v]) * uz);
+      return length > 0.05 ? [line[k] + ux * length, line[k + 1] + uz * length] : [];
     };
     const head = spur(true);
     const tail = spur(false);
-    return { kind: d.kind, label: d.label, from: d.from, to: d.to, line: fillet([...head, ...line, ...tail], FILLET) };
+    let whole = [...head, ...line, ...tail];
+    const a = net.stops[d.from]!;
+    const b = net.stops[d.to]!;
+    // Round every place on the way (each lane on a rim of its own, so that two links that pass
+    // the same place still lie side by side), and from the edge of the one footprint to the edge of the other.
+    net.stops.forEach((s, j) => {
+      if (s && j !== d.from && j !== d.to) whole = roundDisc(whole, s.x, s.z, s.footprint + KEEP_CLEAR + d.lane * spacing, s.inside);
+    });
+    whole = clipStart(whole, a.x, a.z, a.footprint + SPUR_GAP);
+    whole = reversed(clipStart(reversed(whole), b.x, b.z, b.footprint + SPUR_GAP));
+    return { kind: d.kind, label: d.label, from: d.from, to: d.to, line: fillet(untangle(whole), FILLET) };
   });
   return { links, scale };
 }

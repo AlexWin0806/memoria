@@ -90,14 +90,14 @@ const LINE_FRAG = /* glsl */ `
     if (vStyle.y < 0.5) {
       if (kind < 0.5) {
         // The flow: two rails, and chevrons between them whose points lead towards the end.
-        float rail = smoothstep(0.76 - fe, 0.76 + fe, edge);
+        float rail = smoothstep(0.72 - fe, 0.72 + fe, edge);
         float period = 0.44;
         float c = fract((s + edge * hw * 1.25) / period) * period;
         float stroke = 0.075;
         float chevron = smoothstep(0.0, fs, c) * (1.0 - smoothstep(stroke - fs, stroke + fs, c));
         // Far off, where a chevron is finer than a pixel, the channel settles to an even tone.
         chevron = mix(chevron, stroke / period, smoothstep(0.5, 1.5, fs / stroke));
-        alpha = max(rail * 0.9, max(chevron * 0.86, 0.13));
+        alpha = max(rail * 0.9, max(chevron * 0.86, 0.16));
       } else if (kind < 1.5) {
         float period = 0.27;
         float c = fract(s / period);
@@ -163,6 +163,8 @@ function pens(theme: Theme): [pen: string, slip: string] {
 
 interface Site {
   link: number;
+  /** Locus index of the place the link leads to. */
+  to: number;
   text: string;
   x: number;
   z: number;
@@ -287,7 +289,7 @@ function labelSites(routed: RoutedLinks): Site[] {
       if (room >= LABEL_APART) break;
     }
     pointAlong(link.line, best * length, at);
-    sites.push({ link: n, text: link.label, x: at[0], z: at[1], dx: at[2], dz: at[3] });
+    sites.push({ link: n, to: link.to, text: link.label, x: at[0], z: at[1], dx: at[2], dz: at[3] });
   });
   return sites;
 }
@@ -300,7 +302,7 @@ interface Labels {
 /**
  * The labels: every one written into one atlas with the theme's display face, and one quad
  * each on the floor. A label runs along its link and stands the right way up for the learner
- * at the nearest stop of the walk.
+ * who has just walked the link: who stands where the place it leads to is looked at from.
  */
 function makeLabels(sites: Site[], layout: PalaceLayout, theme: Theme): Labels | null {
   if (!sites.length) return null;
@@ -355,18 +357,10 @@ function makeLabels(sites: Site[], layout: PalaceLayout, theme: Theme): Labels |
   const index: number[] = [];
   sites.forEach((site, i) => {
     const b = boxes[i];
-    // Upright for whoever stands at the nearest stop: the top of the writing points away from them.
-    let vx = 0;
-    let vz = 0;
-    let nearest = Infinity;
-    for (const l of layout.loci) {
-      const d = Math.hypot(l.view.position[0] - site.x, l.view.position[2] - site.z);
-      if (d < nearest) {
-        nearest = d;
-        vx = l.view.position[0];
-        vz = l.view.position[2];
-      }
-    }
+    // The top of the writing points away from that viewpoint.
+    const view = layout.loci[site.to]?.view.position ?? layout.overview.position;
+    const vx = view[0];
+    const vz = view[2];
     let ux = site.dz;
     let uz = -site.dx;
     if (ux * (site.x - vx) + uz * (site.z - vz) < 0) {
@@ -404,14 +398,14 @@ interface Props {
   deck: Deck | undefined;
   /** The memory images of the scene: a link shows once the images at both its ends do. */
   tokens: SceneView['tokens'];
-  /** QA (`&links=all`): every link, whatever is shown. */
-  all: boolean;
+  /** QA (`&links=`): every link, whatever is shown, held this far through being drawn in. null = as the images say. */
+  held: number | null;
   /** Nothing is drawn in or taken up: links are simply there or not (reduced motion, frozen shots). */
   still: boolean;
   veil: Veil;
 }
 
-export function PalaceLinks({ layout, deck, tokens, all, still, veil }: Props) {
+export function PalaceLinks({ layout, deck, tokens, held, still, veil }: Props) {
   const theme = useTheme();
   const lines = useRef<Mesh>(null);
   const writing = useRef<Mesh>(null);
@@ -501,9 +495,9 @@ export function PalaceLinks({ layout, deck, tokens, all, still, veil }: Props) {
   useLayoutEffect(() => {
     const seen = new Set<number>();
     for (const t of tokens) if (t.visible) seen.add(t.locusIndex);
-    routed.links.forEach((link, i) => (rig.target[i] = all || (seen.has(link.from) && seen.has(link.to)) ? 1 : 0));
+    routed.links.forEach((link, i) => (rig.target[i] = held ?? (seen.has(link.from) && seen.has(link.to) ? 1 : 0)));
     rig.active = true;
-  }, [rig, routed, tokens, all]);
+  }, [rig, routed, tokens, held]);
 
   useFrame((_, delta) => {
     const cut = veil.cuts !== rig.cuts;
@@ -522,7 +516,8 @@ export function PalaceLinks({ layout, deck, tokens, all, still, veil }: Props) {
       if (p !== want) {
         p = snap ? want : p < want ? Math.min(want, p + dt / DRAW_SECONDS) : Math.max(want, p - dt / WIPE_SECONDS);
         rig.progress[i] = p;
-        rig.reveal[i] = ease(p);
+        // A held link (QA) is shown exactly that far along.
+        rig.reveal[i] = held === null ? ease(p) : p;
         if (p !== want) moving = true;
       }
       if (p > 0) any = true;
