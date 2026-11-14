@@ -1,4 +1,4 @@
-import { CanvasTexture, LinearFilter, SRGBColorSpace } from 'three';
+import { CanvasTexture, LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace } from 'three';
 
 const cache = new Map<string, CanvasTexture>();
 const EMOJI_STACK =
@@ -7,6 +7,8 @@ const EMOJI_STACK =
 /**
  * Draws one glyph (emoji) to a canvas and returns it as a texture. Tokens tint the
  * result in a shader, so the system emoji font only supplies the shape and tone.
+ * The glyph sits on a thin black rim of its own silhouette, which the token shader
+ * prints as an ink outline: the image reads as drawn, and stays legible on any pigment.
  */
 export function glyphTexture(glyph: string, size = 256): CanvasTexture {
   const key = `${glyph}@${size}`;
@@ -18,12 +20,25 @@ export function glyphTexture(glyph: string, size = 256): CanvasTexture {
   ctx.clearRect(0, 0, size, size);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `${Math.round(size * 0.74)}px ${EMOJI_STACK}`;
-  ctx.fillText(glyph, size / 2, size / 2 + size * 0.04);
+  ctx.font = `${Math.round(size * 0.7)}px ${EMOJI_STACK}`;
+  const x = size / 2;
+  const y = size / 2 + size * 0.04;
+  const rim = size * 0.014;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    ctx.fillText(glyph, x + Math.cos(a) * rim, y + Math.sin(a) * rim);
+  }
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillText(glyph, x, y);
   const tex = new CanvasTexture(canvas);
   tex.colorSpace = SRGBColorSpace;
-  tex.minFilter = LinearFilter;
-  tex.generateMipmaps = false;
+  // Mipmaps keep small, distant tokens from sparkling as the camera moves.
+  tex.minFilter = LinearMipmapLinearFilter;
+  tex.magFilter = LinearFilter;
+  tex.generateMipmaps = true;
   cache.set(key, tex);
   return tex;
 }
