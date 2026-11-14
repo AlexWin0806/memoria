@@ -9,16 +9,19 @@
  *   node scripts/smoke.mjs --url http://localhost:5173
  *
  * Cases:
- *   a  Judge Mode, passive (nothing pressed but the answers), every answer right -> "8 of 8"
+ *   a  Judge Mode, passive (nothing pressed but the answers), every answer right -> "8 of 8";
+ *      a returning learner's review card and edited copy of the carpal deck are left untouched
  *   b  Judge Mode, first two answers wrong       -> "6 of 8", two Strengthen buttons;
- *      Strengthen with the Architect unreachable, and with it never answering
+ *      Strengthen with the Architect unreachable, and with it never answering; no review card is
+ *      written, and the image kept goes to the learner's own copy, not into the next Judge run
  *   c  Compose a 5-line list, place it, walk encode and recall with the keyboard only
  *   d  (continues c) reload: the new deck is still listed; new versus due; reviews; the Leave dialog
  *   e  Judge Mode with the browser offline       -> "7 of 8", no requests at all, Strengthen at once
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
  *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay;
  *      a timed encode stop can be paused (P) and resumed (Space)
- *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of four -> "4 of 4"
+ *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of three -> "3 of 3";
+ *      the learner's saved state survives it too
  *   r  Compose: the draft survives a reload at both steps; dropped lines, the three-fact minimum,
  *      emoji-only glyphs, the read-to-the-end gate, validation that names the card, Discard draft
  *   t  Typed recall on a pairs deck: the place is the cue, articles and brackets are forgiven,
@@ -84,6 +87,9 @@ const routeOrder = [...layoutSrc.matchAll(/\{ id: '(domus-\d+)', index: (\d+),/g
   .map((m) => placeName[m[1]]);
 const fixtureCount = readFileSync('src/ai/fixtures/index.ts', 'utf8').match(/FIXTURE_DECKS: Deck\[\] = \[([^\]]+)\]/)[1].split(',').length;
 const JUDGE_DECK_TITLE = 'The eight carpal bones';
+/** The pitch variant's spot check: this many of the eight places (spotCheckStops in src/flows/timing.ts). */
+const SPOT = 3;
+const SPOT_WORDS = 'three of the eight';
 /** A person reads four options and picks one in about this long. */
 const THINK_MS = 2000;
 /** The pitch run waits on its "spot check" screen until its button is pressed: time to read its 18 words. */
@@ -207,7 +213,7 @@ const clickIfStillAt = (page, testid, label) =>
  * Judge Mode from the title to the results screen.
  *   passive  press nothing but the answers, as a judge who just watches would
  *   think    ms of thought before each answer
- *   pitch    the ?judge=pitch variant: no preview, spot check of four places
+ *   pitch    the ?judge=pitch variant: no preview, spot check of three places
  * Returns the score text, how long the run took, and the places recalled.
  */
 async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 0, pitch = false } = {}) {
@@ -246,7 +252,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   assert(preview === !pitch, pitch ? 'the pitch variant should have no route preview' : 'the route preview was not shown');
   assert(extra.length === 0, `a Judge run showed more to read than it should: ${extra}`);
   if (pitch) {
-    assert(spotNote.includes('four of the eight'), `the spot check is not announced: "${spotNote}"`);
+    assert(spotNote.includes(SPOT_WORDS), `the spot check is not announced: "${spotNote}"`);
     const said = `${await text(page.locator('[data-testid=interstitial] h1'))} ${spotNote}`.split(/\s+/).filter(Boolean).length;
     assert(said <= 20, `the spot-check screen says its piece in ${said} words (20 at most)`);
   }
@@ -265,8 +271,8 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   await page.getByTestId('recall-start').click();
   mark(pitch ? 'spot check started' : 'recall walk started');
 
-  const stops = pitch ? 4 : 8;
-  const label = (i) => (pitch ? `Spot check ${i} of 4` : `Place ${i} of 8`);
+  const stops = pitch ? SPOT : 8;
+  const label = (i) => (pitch ? `Spot check ${i} of ${SPOT}` : `Place ${i} of 8`);
   const visited = [];
   const expected = [];
   for (let i = 1; i <= stops; i++) {
@@ -302,6 +308,10 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     assert(r.text.includes(expected[i].answer), `recall stop ${i + 1}: the correct term is not shown`);
   });
   await quietShot('results');
+  // A Judge run is a sandbox: the results say so, and no row quotes a review schedule.
+  assert((await text(page.getByTestId('results-demo'))) === 'This demo run was not added to your reviews.', 'the Judge results do not say that the run was not added to the reviews');
+  const scheduled = (await page.getByTestId('result-meta').allTextContents()).filter((m) => /next review|again (in|now)/.test(m));
+  assert(scheduled.length === 0, `a Judge result row quotes a review schedule: ${scheduled}`);
   const { barBack, hidden } = await page.evaluate(() => window.__walkLog);
   assert(barBack.length === 0, `the time bar ran backwards at the start of: ${barBack}`);
   // With the stores exposed: the images are hidden for exactly as long as the screen between the walks is up.
@@ -313,6 +323,50 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     .map(([name, at]) => `${name} at ${at} s`)
     .join(', ');
   return { score: await text(page.getByTestId('results-score')), ms, visited, timeline };
+}
+
+/**
+ * A returning learner, as in QA review 3 (issue 3): a review card for the first carpal bone in
+ * box 4, due in six days, and an edited copy of the carpal deck saved under the built-in id.
+ * Returns what was stored, to compare with `learnerState` after a Judge run.
+ */
+const LEARNER_DECK_TITLE = 'My own carpal bones';
+const LEARNER_ROW = '3 places · next review in 6 days · 2 new';
+async function seedLearner(page) {
+  const seeded = await page.evaluate((title) => {
+    const day = 24 * 3600 * 1000;
+    const item = (n) => ({
+      id: `carpal-${n}`,
+      term: `My wording ${n}`,
+      locusId: `domus-0${n}`,
+      imago: { scene: `A scene the learner wrote for place ${n}.`, glyphs: ['⭐'], action: 'bob', source: 'learner' },
+    });
+    const deck = { id: 'fixture-carpals', title, kind: 'list', layoutId: 'domus', createdAt: 5, items: [item(1), item(2), item(3)] };
+    const card = { itemId: 'carpal-1', deckId: 'fixture-carpals', box: 4, dueAt: Date.now() + 6 * day, lastReviewedAt: Date.now() - day, reps: 4, lapses: 0 };
+    localStorage.setItem('memoria.decks.v1', JSON.stringify({ state: { decks: { 'fixture-carpals': deck } }, version: 0 }));
+    localStorage.setItem('memoria.review.v1', JSON.stringify({ state: { cards: { 'carpal-1': card }, walk: null }, version: 0 }));
+    return { deck: JSON.stringify(deck), card: JSON.stringify(card), cards: 1 };
+  }, LEARNER_DECK_TITLE);
+  await page.reload({ waitUntil: 'load' });
+  await page.getByTestId('title').waitFor();
+  const row = (await deckRows(page)).meta[LEARNER_DECK_TITLE];
+  assert(row === LEARNER_ROW, `the learner's saved deck and card are not on the title: ${row}`);
+  assert((await page.getByTestId('storage-notice').count()) === 0, 'the seeded learner data was set aside');
+  return seeded;
+}
+
+/** The learner's stored copy of the carpal deck, their card for the first bone, and how many cards there are. */
+const learnerState = (page) =>
+  page.evaluate(() => {
+    const decks = JSON.parse(localStorage.getItem('memoria.decks.v1') ?? '{}').state?.decks ?? {};
+    const cards = JSON.parse(localStorage.getItem('memoria.review.v1') ?? '{}').state?.cards ?? {};
+    return { deck: JSON.stringify(decks['fixture-carpals'] ?? null), card: JSON.stringify(cards['carpal-1'] ?? null), cards: Object.keys(cards).length };
+  });
+
+function assertLearnerKept(seeded, now, when) {
+  assert(now.deck === seeded.deck, `${when}: the learner's saved copy of the carpal deck changed: ${now.deck}`);
+  assert(now.card === seeded.card, `${when}: the learner's review card for carpal-1 changed: ${now.card}`);
+  assert(now.cards === seeded.cards, `${when}: the run wrote review cards (${now.cards} stored, ${seeded.cards} before)`);
 }
 
 /** Deck rows on the title screen, as { title: meta }. */
@@ -349,10 +403,13 @@ const cases = {
     assert(fresh.count === fixtureCount, `expected ${fixtureCount} deck rows, got ${fresh.count}`);
     assert(Object.values(fresh.meta).every((m) => m.endsWith('not started')), `a new learner's decks should read "not started": ${Object.values(fresh.meta)}`);
     assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'the Reviews entry should show no count for a new learner');
+    // From here on a returning learner: the run must show the built-in deck and leave their saved state alone.
+    const seeded = await seedLearner(page);
     const promised = await text(page.getByTestId('title-judge'));
     requests.length = 0;
     const { score, ms, timeline } = await judgeRun(page, { shots: 'judge', passive: true, think: THINK_MS });
     assert(score === '8 of 8', `expected 8 of 8, got "${score}"`);
+    assertLearnerKept(seeded, await learnerState(page), 'after a Judge run');
     assert((await page.getByTestId('strengthen').count()) === 0, 'no Strengthen buttons expected');
     const note = await text(page.getByTestId('judge-note'));
     assert(note.includes('We have not run an efficacy study of Memoria.'), 'caveat missing');
@@ -362,6 +419,7 @@ const cases = {
     await shot(page, 'judge-results-note');
     await page.getByTestId('results-build').click();
     await page.getByTestId('compose-text').waitFor();
+    assertLearnerKept(seeded, await learnerState(page), 'after leaving the Judge results');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score}; passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
@@ -372,21 +430,26 @@ const cases = {
     // ?judge=pitch waits on the title screen; the title button starts the pitch variant.
     await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
     await page.getByTestId('title').waitFor();
+    const seeded = await seedLearner(page);
     const promised = await text(page.getByTestId('title-judge'));
     requests.length = 0;
     const { score, ms, visited, timeline } = await judgeRun(page, { passive: true, think: THINK_MS, pitch: true, shots: 'pitch' });
-    assert(score === '4 of 4', `expected 4 of 4, got "${score}"`);
+    assert(score === `${SPOT} of ${SPOT}`, `expected ${SPOT} of ${SPOT}, got "${score}"`);
     const order = visited.map((v) => routeOrder.indexOf(v));
-    assert(new Set(visited).size === 4 && order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])), `spot check not four places in route order: ${visited}`);
-    assert((await text(page.getByTestId('results-spot'))).includes('four of the eight'), 'results do not say it was a spot check');
-    assert((await page.getByTestId('result-row').count()) === 4, 'expected four result rows');
+    assert(new Set(visited).size === SPOT && order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])), `spot check not ${SPOT} places in route order: ${visited}`);
+    const spotLine = await text(page.getByTestId('results-spot'));
+    assert(spotLine.includes(SPOT_WORDS) && spotLine.includes('The other five were not tested.'), `results do not say it was a spot check of three: ${spotLine}`);
+    assert((await text(page.getByTestId('results-again'))) === 'Recall all eight', 'the results do not offer to recall all eight');
+    assert((await page.getByTestId('result-row').count()) === SPOT, `expected ${SPOT} result rows`);
     assert((await text(page.getByTestId('judge-note'))).includes('We have not run an efficacy study of Memoria.'), 'caveat missing');
     assert(requests.length === 0, `Judge Mode made requests: ${requests.join(', ')}`);
-    // Only the four places that were recalled are scheduled; the other four stay new.
+    // A demo run is not study: nothing was scheduled, and the learner's deck and card are as they were.
+    assertLearnerKept(seeded, await learnerState(page), 'after a pitch run');
     await page.getByTestId('results-home').click();
     await page.getByTestId('title').waitFor();
     const { meta } = await deckRows(page);
-    assert(meta[JUDGE_DECK_TITLE] === '8 places · next review tomorrow · 4 new', `deck row after a spot check: ${meta[JUDGE_DECK_TITLE]}`);
+    assert(meta[LEARNER_DECK_TITLE] === LEARNER_ROW, `the learner's deck row after a pitch run: ${meta[LEARNER_DECK_TITLE]}`);
+    assertLearnerKept(seeded, await learnerState(page), 'back on the title after a pitch run');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score} (${visited.join(', ')}); passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
@@ -450,10 +513,24 @@ const cases = {
     await page.getByTestId('title').waitFor();
     const { count, meta } = await deckRows(page);
     assert(count === fixtureCount, `expected ${fixtureCount} deck rows after editing a fixture, got ${count}`);
-    // Studied a moment ago: nothing is due yet, and the other fixtures are still new.
-    assert(/^8 places · next review in (8|9|10) minutes$/.test(meta[JUDGE_DECK_TITLE]), `studied deck reads "${meta[JUDGE_DECK_TITLE]}"`);
-    assert(Object.values(meta).filter((m) => m.endsWith('not started')).length === fixtureCount - 1, 'the other fixtures should read "not started"');
+    // A demo run is not study: no review card was written, so every deck still reads "not started".
+    assert(meta[JUDGE_DECK_TITLE] === '8 places · not started', `the carpal deck after a Judge run reads "${meta[JUDGE_DECK_TITLE]}"`);
+    assert(Object.values(meta).filter((m) => m.endsWith('not started')).length === fixtureCount, 'every deck should read "not started"');
     assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'nothing is due, so the Reviews entry should show no count');
+    assert((await learnerState(page)).cards === 0, 'a Judge run wrote review cards');
+
+    // The image kept on the results is in the learner's own copy of the deck; the next Judge run is pristine again.
+    const kept = (await learnerState(page)).deck;
+    assert(kept.includes(NEW_SCENE), 'the strengthened image was not saved to the learner\'s own copy of the deck');
+    await page.getByTestId('title-judge').click();
+    await page.getByTestId('preview-skip').click();
+    await page.getByTestId('encode-scene').waitFor();
+    const again = await page.evaluate(() => [...document.querySelectorAll('[data-testid=encode] [data-testid=walk-label], [data-testid=encode-scene]')].map((el) => el.textContent));
+    assert(again.length === 2 && again[0].startsWith('Place 1 of 8') && !again[1].includes('rowing boat'), `a later Judge run does not start from the built-in images: ${again}`);
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    assert((await learnerState(page)).deck === kept, 'a later Judge run changed the learner\'s own copy of the deck');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score}, ${n} Strengthen buttons; unreachable Architect -> "${by}" editor in ${quick} ms; silent Architect -> "${silentBy}" editor in ${hung} ms`;
