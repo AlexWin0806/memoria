@@ -21,3 +21,10 @@ export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
 }
+
+const WORDS = ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+
+/** "four", "eight"; digits above twelve. */
+export function numberWord(n: number): string {
+  return WORDS[n] ?? String(n);
+}

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { answerOf, buildChoices, typedMatches } from '@/flows/answers';
-import { advanceRecall, itemAt } from '@/flows/flow';
-import { useWalkKeys } from '@/flows/hooks';
+import { advanceRecall, itemAt, judgeTiming, useFlow } from '@/flows/flow';
+import { useCountdown, useWalkKeys } from '@/flows/hooks';
+import { ProgressBar } from './Walk';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { isLastStop, useSession } from '@/state/session';
@@ -41,6 +42,11 @@ export function Recall() {
     if (answered) nextRef.current?.focus();
   }, [answered]);
 
+  // Judge Mode keeps moving: the feedback is shown briefly, then the walk goes on by itself.
+  const paused = useFlow((s) => s.confirmLeave);
+  const moveOn = useCountdown(judge && answered && !paused, judgeTiming().feedbackSeconds, step, advanceRecall);
+  const spot = judge && deck !== undefined && stops.length < deck.items.length;
+
   let choices: string[] = [];
   if (deck && item && input === 'choice') {
     choices = drawn.current.get(item.id) ?? buildChoices(deck, item);
@@ -72,7 +78,7 @@ export function Recall() {
   return (
     <section className="screen" data-testid="recall">
       <p className="label" data-testid="walk-label">
-        Place {step + 1} of {stops.length} · Recall
+        {spot ? `Spot check ${step + 1} of ${stops.length}` : `Place ${step + 1} of ${stops.length} · Recall`}
       </p>
       {!arrived && !result ? (
         <p className="muted">Walking to {locus.name}.</p>
@@ -147,6 +153,7 @@ export function Recall() {
         )}
       </div>
 
+      {result && judge && <ProgressBar value={moveOn} label="Time until the walk moves on" />}
       {result && (
         <div className="actions">
           <button type="button" className="btn btn--primary" ref={nextRef} onClick={advanceRecall} data-testid="recall-next">
@@ -156,7 +163,9 @@ export function Recall() {
       )}
       <p className="hint">
         {result
-          ? 'Right arrow or Enter: next.'
+          ? judge
+            ? 'It moves on by itself; Enter moves on sooner.'
+            : 'Right arrow or Enter: next.'
           : input === 'choice'
             ? `Keys 1 to ${Math.max(choices.length, 1)} pick an answer.`
             : 'Type your answer and press Enter. Small typos are forgiven.'}

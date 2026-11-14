@@ -1,21 +1,26 @@
 import { useState } from 'react';
 import type { Deck, ReviewCard } from '@/core/types';
-import { startEncode, startJudge, startRecall } from '@/flows/flow';
+import { judgeVariantFromUrl, startEncode, startJudge, startRecall } from '@/flows/flow';
 import { formatWhen, plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
+import { JUDGE_PROMISE } from '@/flows/timing';
 import { useAllDecks, useDecks } from '@/state/decks';
-import { dueItemIds, nextDueAt, useReview } from '@/state/review';
+import { deckProgress, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { useSettings, type RecallInput } from '@/state/settings';
 import { THEMES } from '@/themes';
 
-/** "8 places · 3 due now" or "8 places · none due · next review in 3 hours". */
+/**
+ * "8 places · not started", "8 places · 3 due now" or "8 places · next review tomorrow".
+ * A place that has never been recalled is new, not due; a partly studied palace says how many are new.
+ */
 export function deckStatus(deck: Deck, cards: Record<string, ReviewCard>, now: number): string {
   const places = plural(deck.items.length, 'place');
-  const due = dueItemIds(deck, cards, now).length;
-  if (due > 0) return `${places} · ${due} due now`;
-  const next = nextDueAt(deck, cards, now);
-  return next === undefined ? `${places} · none due` : `${places} · none due · next review ${formatWhen(next, now)}`;
+  const p = deckProgress(deck, cards, now);
+  if (p.studied === 0) return `${places} · not started`;
+  const fresh = p.fresh > 0 ? ` · ${p.fresh} new` : '';
+  if (p.due > 0) return `${places} · ${p.due} due now${fresh}`;
+  return `${places} · next review ${p.nextDueAt === undefined ? 'soon' : formatWhen(p.nextDueAt, now)}${fresh}`;
 }
 
 /** Title screen: set low on the left, straight over the scene, with no panel. */
@@ -24,7 +29,9 @@ export function Title() {
   const cards = useReview((s) => s.cards);
   const now = useNow();
   const [deleting, setDeleting] = useState<string | null>(null);
-  const totalDue = decks.reduce((n, d) => n + dueItemIds(d, cards, now).length, 0);
+  // Only places that have been studied and are due again: a new learner has no reviews.
+  const totalDue = decks.reduce((n, d) => n + deckProgress(d, cards, now).due, 0);
+  const promise = JUDGE_PROMISE[judgeVariantFromUrl()].label;
 
   const remove = (deckId: string) => {
     useDecks.getState().remove(deckId);
@@ -37,8 +44,8 @@ export function Title() {
       <h1 className="title__name">Memoria</h1>
       <p className="title__pitch">Paste what you need to learn. Walk it into memory.</p>
       <div className="actions">
-        <button type="button" className="btn btn--primary" onClick={startJudge} data-testid="title-judge">
-          Try it in 60 seconds
+        <button type="button" className="btn btn--primary" onClick={() => startJudge()} data-testid="title-judge">
+          {promise}
         </button>
         <button type="button" className="btn" onClick={() => useSession.getState().toCompose()} data-testid="title-build">
           Build a palace

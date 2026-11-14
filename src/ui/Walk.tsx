@@ -6,17 +6,15 @@ import {
   beginRecallAfterEncode,
   finishFamiliarize,
   itemAt,
+  judgeTiming,
   repeatFamiliarize,
   useFlow,
 } from '@/flows/flow';
+import { numberWord } from '@/flows/format';
 import { useCountdown, useWalkKeys } from '@/flows/hooks';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { isLastStop, useSession } from '@/state/session';
-
-const PREVIEW_SECONDS = 1.2;
-const JUDGE_ENCODE_SECONDS = 6;
-const JUDGE_INTERSTITIAL_SECONDS = 8;
 
 export function ProgressBar({ value, label }: { value: number; label: string }) {
   return (
@@ -40,7 +38,8 @@ export function Familiarize() {
     else useSession.getState().next();
   };
   // The Judge preview is a fly-through: it keeps moving without waiting for the camera to settle.
-  const progress = useCountdown(judge && phase === 'walk', PREVIEW_SECONDS, step, advance);
+  const paused = useFlow((s) => s.confirmLeave);
+  const progress = useCountdown(judge && phase === 'walk' && !paused, judgeTiming().previewSecondsPerStop, step, advance);
 
   useWalkKeys({
     next: phase === 'walk' && (arrived || judge) ? advance : undefined,
@@ -188,9 +187,14 @@ export function Encode() {
   const item = itemAt(deck, locus);
   const last = isLastStop({ step, stops });
   const walking = phase === 'walk';
+  const timing = judgeTiming();
+  // Judge pitch: the recall walk checks only some of the places.
+  const spot = judge && timing.spotCheckStops !== null && timing.spotCheckStops < stops.length ? timing.spotCheckStops : null;
 
-  const progress = useCountdown(judge && walking && arrived, JUDGE_ENCODE_SECONDS, step, advanceEncode);
-  const wait = useCountdown(judge && !walking, JUDGE_INTERSTITIAL_SECONDS, 'interstitial', beginRecallAfterEncode);
+  // Nothing moves on by itself while the "leave?" question is open.
+  const paused = useFlow((s) => s.confirmLeave);
+  const progress = useCountdown(judge && walking && arrived && !paused, timing.encodeSecondsPerStop, step, advanceEncode);
+  const wait = useCountdown(judge && !walking && !paused, timing.interstitialSeconds, 'interstitial', beginRecallAfterEncode);
 
   useWalkKeys({
     next: !walking ? beginRecallAfterEncode : arrived ? advanceEncode : undefined,
@@ -200,15 +204,20 @@ export function Encode() {
   if (!walking) {
     return (
       <section className="screen" data-testid="interstitial">
-        <p className="label">Recall walk</p>
+        <p className="label">{spot ? 'Spot check' : 'Recall walk'}</p>
         <h2 className="question">Now walk it again. The images are hidden. Answer from memory.</h2>
+        {spot && (
+          <p className="body" data-testid="spot-note">
+            We will check {numberWord(spot)} of the {numberWord(stops.length)}, picked at random, in route order.
+          </p>
+        )}
         <p className="body">
           At each place, say what you left there before you look. Trying to retrieve it is the part that makes it last.
         </p>
         {judge && <ProgressBar value={wait} label="Time until the recall walk starts" />}
         <div className="actions">
           <button type="button" className="btn btn--primary" autoFocus onClick={beginRecallAfterEncode} data-testid="recall-start">
-            Start the recall walk
+            {spot ? 'Start the spot check' : 'Start the recall walk'}
           </button>
         </div>
       </section>

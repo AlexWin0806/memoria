@@ -5,16 +5,25 @@
  *   npm run build && node scripts/smoke.mjs
  *   node scripts/smoke.mjs --only a,c        # run some cases
  *   node scripts/smoke.mjs --serial          # one case at a time
+ *   node scripts/smoke.mjs --jobs 2          # cases at once (default 3)
  *   node scripts/smoke.mjs --url http://localhost:5173
  *
  * Cases:
- *   a  Judge Mode, every answer right            -> "8 of 8"
- *   b  Judge Mode, first two answers wrong       -> "6 of 8", two Strengthen buttons
+ *   a  Judge Mode, passive (nothing pressed but the answers), every answer right -> "8 of 8"
+ *   b  Judge Mode, first two answers wrong       -> "6 of 8", two Strengthen buttons;
+ *      Strengthen with the Architect unreachable, and with it never answering
  *   c  Compose a 5-line list, place it, walk encode and recall with the keyboard only
- *   d  (continues c) reload: the new deck is still listed; reviews, settings, Escape
- *   e  Judge Mode with the browser offline       -> "8 of 8", no requests at all
+ *   d  (continues c) reload: the new deck is still listed; new versus due; reviews; the Leave dialog
+ *   e  Judge Mode with the browser offline       -> "7 of 8", no requests at all, Strengthen at once
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
  *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay
+ *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of four -> "4 of 4"
+ *
+ * Timing. Cases a and p print how long a passive run took, with THINK_MS of thought per
+ * answer. Run them alone for a fair figure (software rendering slows down when cases share
+ * the machine), then keep JUDGE_PROMISE in src/flows/timing.ts in step:
+ *   node scripts/smoke.mjs --only a --serial
+ *   node scripts/smoke.mjs --only p --serial
  *
  * Screenshots of each screen go to qa/shots/ui/.
  */
@@ -40,6 +49,8 @@ const flag = (name) => {
 };
 const only = flag('only')?.split(',');
 const serial = args.includes('--serial');
+// Each case is a software-rendered 3D page. More than a few at once and they starve each other.
+const jobs = serial ? 1 : Math.max(1, Number(flag('jobs') ?? 3));
 const outDir = path.resolve(flag('out') ?? path.join('qa', 'shots', 'ui'));
 mkdirSync(outDir, { recursive: true });
 
@@ -56,6 +67,13 @@ if (Object.keys(termAt).length !== 8) {
   console.error('Could not read the eight fixture items.');
   process.exit(1);
 }
+const routeOrder = [...layoutSrc.matchAll(/\{ id: '(domus-\d+)', index: (\d+),/g)]
+  .sort((a, b) => Number(a[2]) - Number(b[2]))
+  .map((m) => placeName[m[1]]);
+const fixtureCount = readFileSync('src/ai/fixtures/index.ts', 'utf8').match(/FIXTURE_DECKS: Deck\[\] = \[([^\]]+)\]/)[1].split(',').length;
+const JUDGE_DECK_TITLE = 'The eight carpal bones';
+/** A person reads four options and picks one in about this long. */
+const THINK_MS = 2000;
 
 let base = flag('url');
 let server;
@@ -107,48 +125,144 @@ const shot = (page, name) => page.screenshot({ path: path.join(outDir, `${name}.
 const text = async (locator) => ((await locator.textContent()) ?? '').trim();
 const choiceTexts = (page, testid) => page.locator(`[data-testid=${testid}] span:last-child`).allTextContents();
 
-/** Judge Mode from the title to the results screen. Returns the score text. */
-async function judgeRun(page, { wrong = 0, shots = '' } = {}) {
-  await page.getByTestId('title-judge').click();
-  await page.getByTestId('familiarize').waitFor();
-  if (shots) await shot(page, `${shots}-preview`);
-
-  for (let i = 1; i <= 8; i++) {
-    await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 8")`).waitFor();
-    await page.getByTestId('encode-term').waitFor();
-    const place = (await text(page.getByTestId('walk-label'))).split('·')[1].trim();
-    assert((await text(page.getByTestId('encode-term'))) === termAt[place], `encode stop ${i}: wrong term at ${place}`);
-    if (shots && i === 3) await shot(page, `${shots}-encode`);
-    await page.getByTestId('walk-next').click();
+/**
+ * Judge Mode moves on by itself, so the harness never polls for a screen that may be gone
+ * a second later. Instead the page keeps a log: every image shown on the encode walk and
+ * every piece of feedback on the recall walk is written down the moment it enters the DOM.
+ */
+function installWalkLog() {
+  if (window.__walkLog) {
+    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '' });
+    return;
   }
+  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '' };
+  const note = (list, entry) => {
+    if (!list.some((e) => e.label === entry.label)) list.push(entry);
+  };
+  const look = () => {
+    const log = window.__walkLog;
+    if (document.querySelector('[data-testid=familiarize]')) log.preview = true;
+    const spot = document.querySelector('[data-testid=spot-note]');
+    if (spot) log.spotNote = spot.textContent;
+    const term = document.querySelector('[data-testid=encode] [data-testid=encode-term]');
+    if (term) note(log.encode, { label: document.querySelector('[data-testid=encode] [data-testid=walk-label]').textContent, term: term.textContent });
+    const reveal = document.querySelector('[data-testid=recall-feedback] .reveal');
+    if (reveal) note(log.reveal, { label: document.querySelector('[data-testid=recall] [data-testid=walk-label]').textContent, state: reveal.dataset.state, text: reveal.textContent });
+  };
+  new MutationObserver(look).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+}
 
-  await page.getByTestId('interstitial').waitFor();
-  if (shots) await shot(page, `${shots}-interstitial`);
-  await page.getByTestId('recall-start').click();
+/** Clicks `testid` only if the walk label still shows `label`: one step in the page, so it cannot land on the next stop. */
+const clickIfStillAt = (page, testid, label) =>
+  page.evaluate(
+    ([id, want]) => {
+      const here = document.querySelector('[data-testid=walk-label]');
+      const button = document.querySelector(`[data-testid=${id}]`);
+      if (here && here.textContent.includes(want) && button && !button.disabled) button.click();
+    },
+    [testid, label],
+  );
 
-  for (let i = 1; i <= 8; i++) {
-    await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 8")`).waitFor();
+/**
+ * Judge Mode from the title to the results screen.
+ *   passive  press nothing but the answers, as a judge who just watches would
+ *   think    ms of thought before each answer
+ *   pitch    the ?judge=pitch variant: no preview, spot check of four places
+ * Returns the score text, how long the run took, and the places recalled.
+ */
+async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 0, pitch = false } = {}) {
+  const LONG = { timeout: 240000 };
+  const quietShot = (name) => (shots ? shot(page, `${shots}-${name}`).catch(() => {}) : undefined);
+  await page.evaluate(installWalkLog);
+  const started = Date.now();
+  const phases = {};
+  const mark = (name) => {
+    phases[name] = Math.round((Date.now() - started) / 100) / 10;
+  };
+  await page.getByTestId('title-judge').click();
+  if (!pitch) await quietShot('preview');
+
+  if (passive) {
+    // Watch only. A screenshot of the third image is taken on the side, if it can be caught.
+    const third = page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 3 of 8")');
+    const side = shots ? third.waitFor(LONG).then(() => page.getByTestId('encode-term').waitFor({ timeout: 3000 })).then(() => quietShot('encode'), () => {}) : null;
+    await page.getByTestId('encode-term').first().waitFor(LONG);
+    mark('first image');
+    await page.getByTestId('interstitial').waitFor(LONG);
+    await side;
+  } else {
+    for (let i = 1; i <= 8; i++) {
+      await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 8")`).waitFor();
+      // The term shows on arrival. If the stop moves on by itself first, the next label is the signal.
+      await page.waitForFunction((n) => document.querySelector('[data-testid=encode-term]') || !document.querySelector('[data-testid=walk-label]')?.textContent.includes(`Place ${n} of 8`), i);
+      if (i === 1) mark('first image');
+      await clickIfStillAt(page, 'walk-next', `Place ${i} of 8`);
+    }
+    await page.getByTestId('interstitial').waitFor();
+  }
+  mark('encode done');
+  const { encode: shown, preview, spotNote } = await page.evaluate(() => window.__walkLog);
+  assert(preview === !pitch, pitch ? 'the pitch variant should have no route preview' : 'the route preview was not shown');
+  if (pitch) assert(spotNote.includes('four of the eight'), `the spot check is not announced: "${spotNote}"`);
+  assert(shown.length === 8, `expected eight images on the encode walk, saw ${shown.length}: ${shown.map((e) => e.label)}`);
+  shown.forEach((e, i) => {
+    const [step, place] = e.label.split('·').map((part) => part.trim());
+    assert(step === `Place ${i + 1} of 8`, `encode stop ${i + 1}: out of order (${e.label})`);
+    assert(e.term.trim() === termAt[place], `encode stop ${i + 1}: wrong term at ${place}`);
+  });
+  await quietShot('interstitial');
+  // The pause ends by itself in Judge Mode, so the button may already be gone.
+  if (!passive) await page.getByTestId('recall-start').click({ timeout: 2500 }).catch(() => {});
+
+  const stops = pitch ? 4 : 8;
+  const label = (i) => (pitch ? `Spot check ${i} of 4` : `Place ${i} of 8`);
+  const visited = [];
+  const expected = [];
+  for (let i = 1; i <= stops; i++) {
+    await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("${label(i)}")`).waitFor();
     const question = page.getByTestId('recall-question');
     await question.waitFor();
-    const answer = termAt[await question.getAttribute('data-place')];
-    // Retrieval practice: nothing may be revealed before the learner commits.
+    if (i === 1) mark('first question');
+    const place = await question.getAttribute('data-place');
+    visited.push(place);
+    const answer = termAt[place];
+    // Retrieval practice: nothing may be revealed before the learner commits. (Nothing moves on before an answer either.)
     assert((await text(page.getByTestId('recall-feedback'))) === '', `recall stop ${i}: feedback shown before answering`);
     const options = await choiceTexts(page, 'choice');
     assert(options.length === 4 && options.includes(answer), `recall stop ${i}: options ${options} lack ${answer}`);
     const pick = i <= wrong ? options.findIndex((o) => o !== answer) : options.indexOf(answer);
-    if (shots && i === 3) await shot(page, `${shots}-recall-question`);
+    if (i === 3) await quietShot('recall-question');
+    if (think) await page.waitForTimeout(think);
     await page.getByTestId('choice').nth(pick).click();
-    const reveal = page.locator('[data-testid=recall-feedback] .reveal');
-    await reveal.waitFor();
-    assert((await reveal.getAttribute('data-state')) === (i <= wrong ? 'wrong' : 'right'), `recall stop ${i}: wrong verdict`);
-    assert((await text(reveal)).includes(answer), `recall stop ${i}: the correct term is not shown`);
-    if (shots && (i === 3 || i === 1)) await shot(page, `${shots}-recall-feedback-${i}`);
-    await page.getByTestId('recall-next').click();
+    expected.push({ state: i <= wrong ? 'wrong' : 'right', answer });
+    if (i === 3 || i === 1) await quietShot(`recall-feedback-${i}`);
+    // The walk moves on by itself after a moment; when clicking through, never click a later stop's button.
+    if (!passive) await clickIfStillAt(page, 'recall-next', label(i));
   }
 
   await page.getByTestId('results').waitFor();
-  if (shots) await shot(page, `${shots}-results`);
-  return text(page.getByTestId('results-score'));
+  const ms = Date.now() - started;
+  mark('results');
+  const reveals = await page.evaluate(() => window.__walkLog.reveal);
+  assert(reveals.length === stops, `expected feedback at ${stops} stops, saw ${reveals.length}`);
+  reveals.forEach((r, i) => {
+    assert(r.label.includes(label(i + 1)), `recall stop ${i + 1}: feedback out of order (${r.label})`);
+    assert(r.state === expected[i].state, `recall stop ${i + 1}: wrong verdict`);
+    assert(r.text.includes(expected[i].answer), `recall stop ${i + 1}: the correct term is not shown`);
+  });
+  await quietShot('results');
+  const timeline = Object.entries(phases)
+    .map(([name, at]) => `${name} at ${at} s`)
+    .join(', ');
+  return { score: await text(page.getByTestId('results-score')), ms, visited, timeline };
+}
+
+/** Deck rows on the title screen, as { title: meta }. */
+async function deckRows(page) {
+  const rows = await page.getByTestId('deck-row').evaluateAll((els) =>
+    els.map((el) => [el.querySelector('.deck__title').textContent, el.querySelector('.deck__meta').textContent]),
+  );
+  return { count: rows.length, meta: Object.fromEntries(rows) };
 }
 
 async function tabTo(page, testid) {
@@ -172,39 +286,113 @@ const cases = {
   async a() {
     const { context, page, errors, requests } = await open();
     await shot(page, 'title');
+    // A new learner has nothing due: unstudied places are new, and the Reviews entry stays quiet.
+    const fresh = await deckRows(page);
+    assert(fresh.count === fixtureCount, `expected ${fixtureCount} deck rows, got ${fresh.count}`);
+    assert(Object.values(fresh.meta).every((m) => m.endsWith('not started')), `a new learner's decks should read "not started": ${Object.values(fresh.meta)}`);
+    assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'the Reviews entry should show no count for a new learner');
+    const promised = await text(page.getByTestId('title-judge'));
     requests.length = 0;
-    const score = await judgeRun(page, { shots: 'judge' });
+    const { score, ms, timeline } = await judgeRun(page, { shots: 'judge', passive: true, think: THINK_MS });
     assert(score === '8 of 8', `expected 8 of 8, got "${score}"`);
     assert((await page.getByTestId('strengthen').count()) === 0, 'no Strengthen buttons expected');
-    assert((await text(page.getByTestId('judge-note'))).includes('We have not run an efficacy study of Memoria'), 'caveat missing');
+    const note = await text(page.getByTestId('judge-note'));
+    assert(note.includes('We have not run an efficacy study of Memoria.'), 'caveat missing');
+    assert(note.includes('build a palace from your own notes'), 'the note does not say what to try next');
     assert(requests.length === 0, `Judge Mode made requests: ${requests.join(', ')}`);
     await page.getByTestId('results-again').scrollIntoViewIfNeeded();
     await shot(page, 'judge-results-note');
+    await page.getByTestId('results-build').click();
+    await page.getByTestId('compose-text').waitFor();
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return score;
+    return `${score}; passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
+  },
+
+  async p() {
+    const { context, page, errors, requests } = await open();
+    // ?judge=pitch starts the pitch variant on load and makes the title button start it too.
+    await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('encode').waitFor();
+    assert((await page.getByTestId('familiarize').count()) === 0, 'the pitch variant should have no route preview');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    const promised = await text(page.getByTestId('title-judge'));
+    requests.length = 0;
+    const { score, ms, visited, timeline } = await judgeRun(page, { passive: true, think: THINK_MS, pitch: true, shots: 'pitch' });
+    assert(score === '4 of 4', `expected 4 of 4, got "${score}"`);
+    const order = visited.map((v) => routeOrder.indexOf(v));
+    assert(new Set(visited).size === 4 && order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])), `spot check not four places in route order: ${visited}`);
+    assert((await text(page.getByTestId('results-spot'))).includes('four of the eight'), 'results do not say it was a spot check');
+    assert((await page.getByTestId('result-row').count()) === 4, 'expected four result rows');
+    assert((await text(page.getByTestId('judge-note'))).includes('We have not run an efficacy study of Memoria.'), 'caveat missing');
+    assert(requests.length === 0, `Judge Mode made requests: ${requests.join(', ')}`);
+    // Only the four places that were recalled are scheduled; the other four stay new.
+    await page.getByTestId('results-home').click();
+    await page.getByTestId('title').waitFor();
+    const { meta } = await deckRows(page);
+    assert(/^8 places · next review in (9|10) minutes · 4 new$/.test(meta[JUDGE_DECK_TITLE]), `deck row after a spot check: ${meta[JUDGE_DECK_TITLE]}`);
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `${score} (${visited.join(', ')}); passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
   },
 
   async b() {
     const { context, page, errors } = await open();
-    const score = await judgeRun(page, { wrong: 2 });
+    const { score } = await judgeRun(page, { wrong: 2 });
     assert(score === '6 of 8', `expected 6 of 8, got "${score}"`);
     const n = await page.getByTestId('strengthen').count();
     assert(n === 2, `expected two Strengthen buttons, got ${n}`);
     await shot(page, 'results-misses');
+
+    const draft = page.getByTestId('strengthen-draft');
+
+    // 1. The network is up but the Architect never answers: the wait must end by itself.
+    await page.route('**/api/architect', () => {});
+    let t0 = Date.now();
     await page.getByTestId('strengthen').first().click();
-    await page.getByTestId('strengthen-draft').waitFor();
+    await draft.waitFor();
+    const hung = Date.now() - t0;
+    // The overlay gives up after 1.5 s here; the Architect's own timeout is 15 s. The margin is for a busy machine.
+    assert(hung < 8000, `Strengthen waited ${hung} ms for an Architect that never answers`);
+    assert((await draft.getAttribute('data-by')) === 'hand', 'a silent Architect should hand the old image back for rewriting');
+    const guide = await text(page.getByTestId('strengthen-guide'));
+    assert(guide.includes('did not answer') && guide.includes('bigger, louder or sillier'), `guidance after a silent Architect: ${guide}`);
+    assert(await page.getByTestId('strengthen-accept').isDisabled(), 'an unchanged image should not be accepted as a new one');
+    await shot(page, 'results-strengthen-by-hand');
+    await page.getByTestId('strengthen-cancel').click();
+    await draft.waitFor({ state: 'detached' });
+    await page.unroute('**/api/architect');
+
+    // 2. The Architect is unreachable (the preview server has no /api): an editor must open at once.
+    t0 = Date.now();
+    await page.getByTestId('strengthen').first().click();
+    await draft.waitFor();
+    const quick = Date.now() - t0;
+    assert(quick < 6000, `Strengthen took ${quick} ms with the Architect unreachable`);
+    const by = await draft.getAttribute('data-by');
+    assert((await text(draft)).includes('bigger, louder or sillier'), 'no guidance in the Strengthen editor');
+    // The editor opens focused with the scene selected, so typing replaces it.
+    const NEW_SCENE = 'A rowing boat the size of a bus crashes through the wall, oars windmilling.';
+    await page.keyboard.type(NEW_SCENE);
+    assert((await page.getByTestId('strengthen-scene').inputValue()) === NEW_SCENE, 'typing did not replace the selected scene');
     await shot(page, 'results-strengthen');
     await page.getByTestId('strengthen-accept').click();
-    await page.getByTestId('strengthen-draft').waitFor({ state: 'detached' });
+    await draft.waitFor({ state: 'detached' });
+
     // An edited fixture shadows the original: it must still be listed exactly once.
     await page.getByTestId('results-home').click();
     await page.getByTestId('title').waitFor();
-    const listed = await page.getByTestId('deck-row').count();
-    assert(listed === 1, `expected one deck row after editing the fixture, got ${listed}`);
+    const { count, meta } = await deckRows(page);
+    assert(count === fixtureCount, `expected ${fixtureCount} deck rows after editing a fixture, got ${count}`);
+    // Studied a moment ago: nothing is due yet, and the other fixtures are still new.
+    assert(/^8 places · next review in (8|9|10) minutes$/.test(meta[JUDGE_DECK_TITLE]), `studied deck reads "${meta[JUDGE_DECK_TITLE]}"`);
+    assert(Object.values(meta).filter((m) => m.endsWith('not started')).length === fixtureCount - 1, 'the other fixtures should read "not started"');
+    assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'nothing is due, so the Reviews entry should show no count');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return `${score}, ${n} Strengthen buttons`;
+    return `${score}, ${n} Strengthen buttons; unreachable Architect -> "${by}" editor in ${quick} ms; silent Architect -> by hand in ${hung} ms`;
   },
 
   /** c and d share a browser context: d reloads and looks for the deck c made. */
@@ -297,17 +485,61 @@ const cases = {
     await page.getByTestId('settings').locator('summary').click();
     await shot(page, 'title-decks');
 
+    // Studied a moment ago: nothing is due yet. The fixtures were never studied, so they are not reviews at all.
+    const afterReload = (await deckRows(page)).meta[DECK_TITLE];
+    assert(/^5 places · next review in (9|10) minutes$/.test(afterReload), `the new deck should not be due yet: ${afterReload}`);
+    assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'nothing is due, so the Reviews entry should show no count');
+    await page.getByTestId('title-review').click();
+    await page.getByTestId('review').waitFor();
+    await shot(page, 'review-none-due');
+    let reviewRows = await page.getByTestId('review-row').allTextContents();
+    assert(reviewRows.length === 1 && reviewRows[0].includes(DECK_TITLE), `Reviews should list only the studied deck: ${reviewRows}`);
+    assert((await page.getByTestId('review-now').count()) === 0, 'nothing is due, so there should be no Review now button');
+
+    // Let time pass for three of the five places, then reload.
+    await page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('memoria.review.v1'));
+      Object.values(stored.state.cards)
+        .slice(0, 3)
+        .forEach((card) => {
+          card.dueAt = Date.now() - 60_000;
+        });
+      localStorage.setItem('memoria.review.v1', JSON.stringify(stored));
+    });
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert((await deckRows(page)).meta[DECK_TITLE] === '5 places · 3 due now', 'the deck row should count the three due places');
+    assert((await text(page.getByTestId('title-review'))) === 'Reviews (3 due)', 'the Reviews entry should count the three due places');
+    await shot(page, 'title-due');
     await page.getByTestId('title-review').click();
     await page.getByTestId('review').waitFor();
     await shot(page, 'review');
-    // A review walks only the places that are due: the new deck has none, the fixture has all eight.
+    reviewRows = await page.getByTestId('review-row').allTextContents();
+    assert(reviewRows.length === 1 && reviewRows[0].includes('3 of 5 places due now'), `Reviews should show three due: ${reviewRows}`);
+    // A review walks only the places that are due.
     assert((await page.getByTestId('review-now').count()) === 1, 'expected exactly one deck with reviews due');
     await page.getByTestId('review-now').click();
-    await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 8")').waitFor();
+    await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 3")').waitFor();
+    await page.getByTestId('choice').first().waitFor();
+
+    // The Leave question is a modal dialog: focus moves in and stays in, Escape cancels, focus goes back.
+    await page.getByTestId('choice').nth(1).focus();
     await key('Escape');
-    await page.getByTestId('leave-confirm').waitFor();
+    const dialog = page.getByTestId('leave-confirm');
+    await dialog.waitFor();
+    const inDialog = () => page.evaluate(() => Boolean(document.activeElement?.closest('[data-testid=leave-confirm]')));
+    assert(await inDialog(), 'focus did not move into the Leave dialog');
+    for (let i = 0; i < 5; i++) {
+      await key(i % 2 ? 'Shift+Tab' : 'Tab');
+      assert(await inDialog(), 'Tab left the Leave dialog');
+    }
+    // Walk shortcuts are suspended behind the dialog: a digit must not answer the question.
+    await key('1');
     await key('Escape');
-    await page.getByTestId('leave-confirm').waitFor({ state: 'detached' });
+    await dialog.waitFor({ state: 'detached' });
+    assert((await text(page.getByTestId('recall-feedback'))) === '', 'a key pressed in the Leave dialog answered the question behind it');
+    const back = await page.evaluate(() => [...document.querySelectorAll('[data-testid=choice]')].indexOf(document.activeElement));
+    assert(back === 1, 'focus did not return to where it was before the Leave dialog');
     await page.getByTestId('leave').click();
     await page.getByTestId('leave-yes').click();
     await page.getByTestId('title').waitFor();
@@ -330,12 +562,23 @@ const cases = {
     const { context, page, errors, requests } = await open();
     await context.setOffline(true);
     requests.length = 0;
-    const score = await judgeRun(page);
-    assert(score === '8 of 8', `expected 8 of 8 offline, got "${score}"`);
+    const { score } = await judgeRun(page, { wrong: 1 });
+    assert(score === '7 of 8', `expected 7 of 8 offline, got "${score}"`);
+    // Strengthen must answer at once with no network, and say how to make the image stronger.
+    const before = await page.getByTestId('result-row').first().locator('.place__term').textContent();
+    const t0 = Date.now();
+    await page.getByTestId('strengthen').click();
+    const draft = page.getByTestId('strengthen-draft');
+    await draft.waitFor();
+    const took = Date.now() - t0;
+    assert(took < 6000, `Strengthen took ${took} ms offline`);
+    assert((await text(draft)).includes('bigger, louder or sillier'), 'no guidance in the offline Strengthen editor');
+    const by = await draft.getAttribute('data-by');
+    const offered = await page.getByTestId('strengthen-scene').inputValue();
     assert(requests.length === 0, `Judge Mode made requests while offline: ${requests.join(', ')}`);
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return `${score} offline`;
+    return `${score} offline; Strengthen (${before}) -> "${by}" editor in ${took} ms: ${offered}`;
   },
 
   async f() {
@@ -394,8 +637,11 @@ const run = async (name) => {
   }
 };
 try {
-  if (serial) for (const n of names) await run(n);
-  else await Promise.all(names.map(run));
+  const queue = [...names];
+  const worker = async () => {
+    for (let n = queue.shift(); n; n = queue.shift()) await run(n);
+  };
+  await Promise.all(Array.from({ length: jobs }, worker));
 } finally {
   await browser.close();
   server?.kill();
