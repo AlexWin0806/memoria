@@ -4,7 +4,9 @@
  *
  *  1. Validates every fixture deck (and the control list) against a schema.
  *  2. Runs the local planner on three sample inputs and prints the plans.
- *  3. Exercises the API handler's guard rails without a network (405, 400, 503, 429).
+ *  3. Exercises the API handler's guard rails without a network (405, 400, 503, 429),
+ *     then its plan/regenerate logic against canned answers from a localhost stand-in
+ *     for the Messages API (no real model involved).
  *  4. Only when ANTHROPIC_API_KEY is set (environment or .env.local): calls the real
  *     `plan` and `regenerate` paths once each.
  *
@@ -12,6 +14,7 @@
  * SSR module loader instead of a second toolchain.
  */
 import { existsSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { createServer, loadEnv } from 'vite';
 import { z } from 'zod';
@@ -213,6 +216,95 @@ try {
     let last;
     for (let i = 0; i < 21; i++) last = await call({ op: 'nope' }, { ip: '10.9.9.9' });
     expect('21st request from one address', last, 429);
+
+    // ── 3b. Handler logic against a local stand-in for the Messages API ─────
+    // Not the real API: canned answers over HTTP on localhost. It proves the request we
+    // build and what we do with an answer (caps, locus repair, glyph filter, retry,
+    // critic revisions, error mapping). It cannot prove the real model accepts the schema.
+    section('API handler (mocked upstream, no real model)');
+    const queue = [];
+    const seen = [];
+    const upstream = createHttpServer((rq, rs) => {
+      let raw = '';
+      rq.on('data', (c) => (raw += c));
+      rq.on('end', () => {
+        seen.push(JSON.parse(raw));
+        const next = queue.shift() ?? { status: 500, json: { type: 'error', error: { type: 'api_error', message: 'mock queue empty' } } };
+        rs.writeHead(next.status ?? 200, { 'content-type': 'application/json' });
+        rs.end(JSON.stringify(next.json));
+      });
+    });
+    await new Promise((r) => upstream.listen(0, '127.0.0.1', r));
+    process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${upstream.address().port}`;
+    const answer = (text, stop_reason = 'end_turn') => ({
+      json: {
+        id: 'msg_mock', type: 'message', role: 'assistant', model: 'mock', stop_reason, stop_sequence: null,
+        content: [{ type: 'thinking', thinking: '', signature: 'mock' }, { type: 'text', text }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    });
+    const image = (n, extra = {}) => ({
+      term: `fact ${n}`, meaning: n % 2 ? `gloss ${n}` : '', locusId: `domus-${String(n).padStart(2, '0')}`,
+      scene: `A kettle number ${n} whistles on the place.`, glyphs: ['🫖'], action: n % 2 ? 'hop' : 'spin', reason: `Because ${n}.`, ...extra,
+    });
+    const draft = {
+      title: 'Mock deck', kind: 'list', grouping: 'Kept the order.', overflow: ['left out'],
+      items: [
+        image(1), image(2, { locusId: 'domus-01' }), // the same place twice: must be repaired
+        image(3, { glyphs: ['👨‍👩‍👧', '🫠'] }), // a ZWJ family and a Unicode 14 face: must be filtered
+        image(4, { scene: Array(30).fill('word').join(' ') }), // too long: must reach the critic as a finding
+        image(5), image(6), image(7), image(8), image(9), // nine facts for eight places
+      ],
+    };
+    const review = {
+      verdicts: draft.items.slice(0, 8).map((it, i) => ({ locusId: `domus-0${i + 1}`, ok: i !== 3, issue: i === 3 ? 'far too long' : '' })),
+      revisions: [{ locusId: 'domus-04', scene: 'A short kettle leaps through the arch.', glyphs: ['🫖', '🇫🇷'], action: 'swing', reason: 'Shorter.' }],
+    };
+    const check = (label, ok, detail = '') => {
+      console.log(`${ok ? 'ok ' : 'BAD'} ${label}${detail ? `: ${detail}` : ''}`);
+      if (!ok) fail(`mocked handler: ${label} ${detail}`);
+    };
+
+    queue.push(answer('this is not json'), answer(JSON.stringify(draft)), answer(JSON.stringify(review)));
+    let r = await call(planBody);
+    const p = r.json?.plan;
+    check('plan succeeds after one invalid answer (retry once)', r.status === 200 && seen.length === 3, `HTTP ${r.status}, ${seen.length} upstream calls`);
+    if (p) {
+      check('never more items than places', p.items.length === 8 && p.overflow.includes('fact 9') && p.overflow.includes('left out'), `${p.items.length} items, overflow ${JSON.stringify(p.overflow)}`);
+      check('one fact per place, in route order', p.items.every((it, i) => it.locusId === `domus-0${i + 1}`));
+      check('unsafe glyphs removed', p.items.every((it) => it.imago.glyphs.length >= 1 && it.imago.glyphs.every(isSafeGlyph)), p.items.map((it) => it.imago.glyphs.join('')).join(' '));
+      check('critic revision applied', p.items[3].imago.scene === 'A short kettle leaps through the arch.' && p.items[3].imago.action === 'swing');
+      check('steps say what was done', ['plan', 'generate', 'check', 'revise'].every((k) => p.steps.some((s) => s.kind === k)));
+      for (const s of p.steps) console.log(`      · (${s.kind}) ${s.label}`);
+    }
+    const first = seen[1] ?? {};
+    check('request: model, effort, structured output', first.model === 'claude-haiku-5-5' && first.output_config?.effort === 'low' && first.output_config?.format?.type === 'json_schema', `${first.model} / ${first.output_config?.effort} / ${first.output_config?.format?.type}`);
+    check('request: no sampling params, no prefill, thinking left adaptive', !('temperature' in first) && !('thinking' in first) && first.messages?.length === 1 && first.messages[0].role === 'user');
+    check('request: schema is closed and pins the locus ids', JSON.stringify(first.output_config?.format?.schema ?? {}).includes('"domus-12"') && first.output_config?.format?.schema?.additionalProperties === false);
+    check('critic is told the measured problems', String(seen[2]?.messages?.[0]?.content).includes('Measured problems') && String(seen[2]?.messages?.[0]?.content).includes('30 words'));
+
+    seen.length = 0;
+    queue.push(answer(JSON.stringify(draft)), { status: 500, json: { type: 'error', error: { type: 'api_error', message: 'boom' } } }, { status: 500, json: { type: 'error', error: { type: 'api_error', message: 'boom' } } });
+    r = await call(planBody);
+    check('critic failure still returns the draft, labelled unchecked', r.status === 200 && r.json.plan.steps.some((s) => s.kind === 'check' && /unchecked/.test(s.label)), r.json?.plan?.steps?.at(-1)?.label);
+
+    queue.push(answer('I cannot help with that.', 'refusal'));
+    r = await call(planBody);
+    check('refusal is a clean 422', r.status === 422 && r.json.error === 'declined', `HTTP ${r.status} ${r.json?.error}`);
+
+    queue.push({ status: 401, json: { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key SECRET-DETAIL' } } });
+    r = await call(planBody);
+    check('bad key is a 503 with no upstream detail', r.status === 503 && !JSON.stringify(r.json).includes('SECRET-DETAIL'), `HTTP ${r.status} ${JSON.stringify(r.json)}`);
+
+    queue.push(answer(JSON.stringify({ scene: 'A loaf of bread drums on the bench.', glyphs: ['🍞', '🥁'], action: 'shake', reason: 'Pain is bread.' })));
+    seen.length = 0;
+    r = await call({ op: 'regenerate', item: { term: 'le pain', meaning: 'bread', scene: 'Old scene.', glyphs: ['🍞'], action: 'bob' }, locus: { name: 'The Cloak Bench', hint: 'A stone bench.' }, others: [{ scene: 'A cat spins.', glyphs: ['🐈'], action: 'spin' }], missed: true, hint: 'make it about music' });
+    const regenPrompt = String(seen[0]?.messages?.[0]?.content);
+    check('regenerate returns one image', r.status === 200 && r.json.imago?.action === 'shake' && r.json.imago.glyphs.length === 2, JSON.stringify(r.json?.imago));
+    check('regenerate prompt carries the miss, the hint and the other images', /failed to recall/.test(regenPrompt) && /make it about music/.test(regenPrompt) && /A cat spins/.test(regenPrompt));
+
+    delete process.env.ANTHROPIC_BASE_URL;
+    await new Promise((r2) => upstream.close(r2));
 
     // ── 4. Live calls ────────────────────────────────────────────────────────
     section('API handler (live)');

@@ -67,7 +67,8 @@ export function extractFacts(text: string): ExtractedFacts {
   if (rawLines.length > 1 && (/^#+\s/.test(rawLines[0]) || /^[^:]{2,60}:$/.test(rawLines[0]))) {
     title = rawLines.shift()!.replace(/^#+\s*/, '').replace(/:$/, '').trim();
   }
-  const longLines = rawLines.filter((l) => l.length > 90 || /[.!?]\s+\S/.test(l)).length;
+  // A line that already splits into "term - meaning" is a list line however long it is.
+  const longLines = rawLines.filter((l) => !parseLine(l)?.meaning && (l.length > 90 || /[.!?]\s+\S/.test(l))).length;
   const looksLikeList = rawLines.length >= 2 && longLines <= rawLines.length / 3;
 
   if (looksLikeList) {
