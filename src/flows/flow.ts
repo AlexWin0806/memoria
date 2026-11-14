@@ -1,23 +1,24 @@
 import { create } from 'zustand';
 import { JUDGE_DECK_ID } from '@/ai/fixtures';
-import type { Deck, Locus, MemoryItem, WalkKind, WalkRecord } from '@/core/types';
+import type { Deck, Locus, MemoryItem, ReviewCard, WalkKind, WalkRecord } from '@/core/types';
 import { getLayout, type PalaceLayout } from '@/layouts';
 import { getDeck, openSandbox, useDecks } from '@/state/decks';
-import { useHistory } from '@/state/history';
+import { SECTION_WALK_PREFIX, useHistory } from '@/state/history';
 import { dueItemIds, useReview } from '@/state/review';
 import { isLastStop, useSession, type SessionState, type WalkResult } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { cleanWalk, STORE_KEYS } from '@/state/storage';
 import { shuffle } from './answers';
+import { isProcessDeck, linkQuestions, orderTask, type LinkAnswer, type LinkQuestion, type StepOrder } from './process';
 import { JUDGE_TIMING, type JudgeTiming, type JudgeVariant } from './timing';
 
 /**
  * Overlay-only flow state. The engine never reads this: everything the scene needs is in
  * the session store. A walk has sub-steps that are not session modes (the route check
  * after familiarization, the interstitial between encode and recall, the summary after
- * the survey); they live here.
+ * the survey, putting the steps of a process in order after its recall walk); they live here.
  */
-export type WalkPhase = 'walk' | 'routeCheck' | 'interstitial' | 'summary';
+export type WalkPhase = 'walk' | 'routeCheck' | 'interstitial' | 'summary' | 'order';
 type WalkMode = 'familiarize' | 'survey' | 'encode' | 'recall';
 
 /** A walk in progress, as kept in sessionStorage so that a reload can offer it again. */
@@ -36,6 +37,10 @@ export interface SavedWalk {
   recallSpentMs: number;
   recallScope: 'all' | 'due';
   surveyWalked: boolean;
+  /** The walk covers only the places added to a palace (startSection). */
+  section: boolean;
+  /** The answers about links given so far on a process deck's recall walk. */
+  linkAnswers: LinkAnswer[];
 }
 
 interface FlowState {
@@ -52,6 +57,23 @@ interface FlowState {
    * of the empty route: only the route check is left before images are placed.
    */
   surveyWalked: boolean;
+  /**
+   * The walks in progress cover only the places that were added to a palace (startSection):
+   * their survey, their study walk and their recall walk. Nothing about the other places changes.
+   */
+  section: boolean;
+  /**
+   * Recall walk of a process deck: which question about a link is on screen at this stop
+   * (1 = the first). 0 = the question about the place itself, or what it revealed.
+   */
+  linkAt: number;
+  /**
+   * The answers about links given on this recall walk. They are scored apart from the places:
+   * they never reach the session, the scene or the review schedule (principle 10).
+   */
+  linkAnswers: LinkAnswer[];
+  /** How the steps were put in order after this recall walk. null = not done, or the walk has no such task. */
+  order: { total: number; correct: number } | null;
   /** The Progress view is open, over the title or the results. Not a session mode: the scene stays as it is. */
   progress: boolean;
   /** The "leave?" question is open. Screen shortcuts are suspended meanwhile. */
@@ -72,14 +94,35 @@ const WALK_KEY = STORE_KEYS.walk;
  */
 function readSavedWalk(): SavedWalk | null {
   try {
-    const w = cleanWalk(JSON.parse(sessionStorage.getItem(WALK_KEY) ?? 'null'));
+    const raw: unknown = JSON.parse(sessionStorage.getItem(WALK_KEY) ?? 'null');
+    const w = cleanWalk(raw);
     const deck = w ? getDeck(w.deckId) : undefined;
     if (!w || !deck) return null;
     const places = getLayout(deck.layoutId).loci.length;
-    return w.stops.every((index) => index < places) ? w : null;
+    return w.stops.every((index) => index < places) ? { ...w, ...savedExtras(raw, w.mode, w.phase) } : null;
   } catch {
     return null;
   }
+}
+
+function isLinkAnswer(v: unknown): v is LinkAnswer {
+  if (typeof v !== 'object' || v === null) return false;
+  const a = v as Record<string, unknown>;
+  return typeof a.id === 'string' && typeof a.correct === 'boolean' && typeof a.given === 'string';
+}
+
+/**
+ * What a section walk and a process deck's recall walk add to the saved walk. `cleanWalk`
+ * (@/state/storage) keeps only the fields it knows, so these are read from the stored value
+ * and checked here; anything of the wrong shape counts as absent.
+ */
+function savedExtras(raw: unknown, mode: WalkMode, phase: Exclude<WalkPhase, 'order'>): Pick<SavedWalk, 'phase' | 'section' | 'linkAnswers'> {
+  const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  return {
+    phase: r.phase === 'order' && mode === 'recall' ? 'order' : phase,
+    section: r.section === true,
+    linkAnswers: Array.isArray(r.linkAnswers) ? r.linkAnswers.filter(isLinkAnswer) : [],
+  };
 }
 
 export const useFlow = create<FlowState>()(() => ({
@@ -89,6 +132,10 @@ export const useFlow = create<FlowState>()(() => ({
   walkId: '',
   recallScope: 'all',
   surveyWalked: false,
+  section: false,
+  linkAt: 0,
+  linkAnswers: [],
+  order: null,
   progress: false,
   confirmLeave: false,
   unsavedEdits: false,
@@ -123,15 +170,21 @@ export function itemAt(deck: Deck | undefined, locus: Locus | undefined): Memory
   return deck.items.find((it) => it.locusId === locus.id);
 }
 
-const newWalkId = () => `walk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+/** A section walk's id says so: that is how its record is told from a walk of the whole palace (see @/state/history). */
+const newWalkId = (section = false) => `${section ? SECTION_WALK_PREFIX : 'walk-'}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-function begin(mode: WalkMode, deck: Deck, stops: number[], judge: boolean, scope: 'all' | 'due' = 'all') {
+function begin(mode: WalkMode, deck: Deck, stops: number[], judge: boolean, opts: { scope?: 'all' | 'due'; section?: boolean } = {}) {
+  const section = opts.section ?? false;
   useFlow.setState({
     phase: 'walk',
     confirmLeave: false,
     progress: false,
-    ...(mode === 'recall' ? { recallStartedAt: Date.now(), recallMs: 0, walkId: newWalkId(), recallScope: scope } : {}),
-    ...(mode === 'survey' ? { walkId: newWalkId(), surveyWalked: false } : {}),
+    section,
+    linkAt: 0,
+    ...(mode === 'recall'
+      ? { recallStartedAt: Date.now(), recallMs: 0, walkId: newWalkId(section), recallScope: opts.scope ?? 'all', linkAnswers: [], order: null }
+      : {}),
+    ...(mode === 'survey' ? { walkId: newWalkId(section), surveyWalked: false } : {}),
   });
   useSession.setState({ layoutId: deck.layoutId });
   useSession.getState().startWalk(mode, { deckId: deck.id, stops, judge });
@@ -163,6 +216,27 @@ export function needsSurvey(deck: Deck): boolean {
   return !deck.items.some((it) => (cards[it.id]?.reps ?? 0) > 0);
 }
 
+/** Nothing is known about this item yet: it was never surveyed, studied or recalled. */
+function isUntouched(card: ReviewCard | undefined): boolean {
+  return !card || (card.survey === undefined && card.studiedAt === undefined && card.reps === 0);
+}
+
+/**
+ * The items of a surveyed palace that no survey has asked about: places added to it since.
+ * (The survey of a palace leaves an outcome on the card of every item it has, reached or not.)
+ */
+function addedSinceSurvey(deck: Deck): string[] {
+  if (deck.surveyedAt === undefined) return [];
+  const cards = useReview.getState().cards;
+  return deck.items.filter((it) => isUntouched(cards[it.id])).map((it) => it.id);
+}
+
+/** Something in this deck has had its image placed or has been recalled: there is something to recall. */
+function hasStudied(deck: Deck): boolean {
+  const cards = useReview.getState().cards;
+  return deck.items.some((it) => cards[it.id]?.studiedAt !== undefined || (cards[it.id]?.reps ?? 0) > 0);
+}
+
 /**
  * Open a deck to study it ("Walk"). The first time, that is the survey walk; after it, the
  * encode walk, preceded by the familiarization walk if the layout's route has not been
@@ -178,31 +252,55 @@ export function startEncode(deckId: string): void {
     begin('survey', deck, stops, false);
     return;
   }
+  // Places added to a surveyed palace and never asked about come first, by themselves: they
+  // too start with a survey (principle 9), whichever screen the learner comes from.
+  const added = addedSinceSurvey(deck);
+  if (added.length > 0 && added.length < deck.items.length) {
+    startSection(deckId, added);
+    return;
+  }
   const known = useSettings.getState().familiarized[layout.id];
   begin(known ? 'encode' : 'familiarize', deck, stops, false);
 }
 
 /**
  * The walks for places added to a palace that is already in use (a deck that was extended):
- * a survey of the new items only, then their study walk and their recall walk. The places
- * the learner already knows are not walked again, and nothing about them changes.
+ * a survey of the new items only, its summary, then their study walk and their recall walk:
+ * the whole loop of a new deck, for the new places alone. The places the learner already has
+ * are not walked again, and nothing about them changes: not their cards, not their state,
+ * not the date the palace was surveyed. Each walk is recorded as a walk of a section.
+ *
+ * Only items nothing is known about yet are walked: an item that was already surveyed,
+ * studied or recalled is one of the older places, whatever the caller passes. A palace that
+ * was never opened has no older places: all of it is surveyed, the new places with the rest.
  */
 export function startSection(deckId: string, itemIds: string[]): void {
   const deck = getDeck(deckId);
   if (!deck) return;
-  const stops = stopsFor(deck, getLayout(deck.layoutId), itemIds);
-  if (!stops.length) return;
-  begin('survey', deck, stops, false);
+  const cards = useReview.getState().cards;
+  const fresh = itemIds.filter((id) => isUntouched(cards[id]));
+  const stops = needsSurvey(deck) ? [] : stopsFor(deck, getLayout(deck.layoutId), fresh);
+  if (!stops.length) {
+    startEncode(deckId);
+    return;
+  }
+  begin('survey', deck, stops, false, { section: true });
 }
 
 /** Recall walk over the whole deck, or only over the loci whose items are due. */
 export function startRecall(deckId: string, scope: 'all' | 'due', judge = false): void {
   const deck = getDeck(deckId);
   if (!deck) return;
+  // A palace in which nothing has been studied has nothing to recall. It opens as "Walk" does:
+  // on its survey (principle 9) or, once surveyed, on its study walk. A Judge run studies first by itself.
+  if (!judge && scope === 'all' && !hasStudied(deck)) {
+    startEncode(deckId);
+    return;
+  }
   const only = scope === 'due' ? dueItemIds(deck, useReview.getState().cards) : undefined;
   const stops = stopsFor(deck, getLayout(deck.layoutId), only);
   if (!stops.length) return;
-  begin('recall', deck, stops, judge, scope);
+  begin('recall', deck, stops, judge, { scope });
 }
 
 /**
@@ -269,7 +367,8 @@ function finishSurvey(walked: boolean): void {
   );
   if (record.total > 0) useHistory.getState().add(record);
   // A built-in deck is copied into the learner's decks here, as it is when one of its images is edited.
-  useDecks.getState().upsert({ ...deck, surveyedAt: now });
+  // The survey of a section leaves the palace's own survey date as it is.
+  if (!useFlow.getState().section) useDecks.getState().upsert({ ...deck, surveyedAt: now });
   useFlow.setState({ phase: 'summary', surveyWalked: walked, confirmLeave: false });
 }
 
@@ -286,7 +385,9 @@ export function beginStudyAfterSurvey(): void {
   if (s.mode !== 'survey' || f.phase !== 'summary') return;
   // The survey's answers have been saved; the study walk starts with none.
   useSession.setState({ results: [] });
-  if (useSettings.getState().familiarized[s.layoutId]) {
+  // New places are new to the learner even in a palace they know: a section always gets its
+  // own walk of the empty route (the survey, if it was walked) and its route check.
+  if (!f.section && useSettings.getState().familiarized[s.layoutId]) {
     useFlow.setState({ phase: 'walk' });
     s.startWalk('encode', { stops: s.stops });
   } else if (f.surveyWalked && s.stops.length >= 2) {
@@ -351,6 +452,12 @@ export function advanceEncode(): void {
 export function beginRecallAfterEncode(): void {
   const s = useSession.getState();
   if (!s.deckId) return;
+  if (useFlow.getState().section && !s.judge) {
+    // A section is recalled by itself: the places just studied, and no others.
+    const deck = getDeck(s.deckId);
+    if (deck && s.stops.length) begin('recall', deck, s.stops, false, { section: true });
+    return;
+  }
   const spot = s.judge ? judgeTiming().spotCheckStops : null;
   if (spot !== null && spot < s.stops.length) startSpotCheck(s.deckId, spot);
   else startRecall(s.deckId, 'all', s.judge);
@@ -365,6 +472,29 @@ function startSpotCheck(deckId: string, count: number): void {
     .slice(0, count)
     .sort((a, b) => a - b);
   if (stops.length) begin('recall', deck, stops, true);
+}
+
+/** The items a walk asks about, in the order it visits them. */
+function walkedItems(deck: Deck, s: Pick<SessionState, 'stops'>): MemoryItem[] {
+  const layout = getLayout(deck.layoutId);
+  return s.stops.flatMap((index) => itemAt(deck, layout.loci[index]) ?? []);
+}
+
+/**
+ * The questions about links at the current stop of a recall walk: none unless the deck is a
+ * process (see ./process). A Judge run asks about places only.
+ */
+export function linkQuestionsHere(): LinkQuestion[] {
+  const s = useSession.getState();
+  const deck = s.judge || s.mode !== 'recall' ? undefined : getDeck(s.deckId);
+  return deck ? linkQuestions(deck, itemAt(deck, getLayout(deck.layoutId).loci[s.stops[s.step]])) : [];
+}
+
+/** The ordering task that follows the recall walk in progress, if its deck is a process with steps to put in order. */
+export function orderTaskOfWalk(): StepOrder | null {
+  const s = useSession.getState();
+  const deck = s.judge || s.mode !== 'recall' ? undefined : getDeck(s.deckId);
+  return deck ? orderTask(deck, walkedItems(deck, s).map((it) => it.id)) : null;
 }
 
 /**
@@ -390,9 +520,49 @@ export function markRight(itemId: string): void {
   answerRecall({ ...was, correct: true, selfMarked: true });
 }
 
-/** After the last recall stop: show the results. Every answer was recorded when it was given. */
+/**
+ * An answer to a question about a link (process decks). It is kept with the walk and scored
+ * apart: it never reaches the session, so it reveals nothing in the scene, changes no review
+ * card and does not count among the places.
+ */
+export function answerLink(answer: LinkAnswer): void {
+  const s = useSession.getState();
+  if (s.mode !== 'recall' || s.judge) return;
+  useFlow.setState((f) => ({ linkAnswers: [...f.linkAnswers.filter((a) => a.id !== answer.id), answer] }));
+}
+
+/** "I was right" on a typed answer about a link. */
+export function markLinkRight(questionId: string): void {
+  const was = useFlow.getState().linkAnswers.find((a) => a.id === questionId);
+  if (!was || was.correct || was.unknown) return;
+  answerLink({ ...was, correct: true, selfMarked: true });
+}
+
+/**
+ * On from an answered recall stop. In a process deck the questions about the step's links
+ * come first, one at a time; then the next place. After the last place the walk is recorded,
+ * and the results follow, or first the ordering task. Every answer about a place was recorded
+ * when it was given.
+ */
 export function advanceRecall(): void {
   const s = useSession.getState();
+  const f = useFlow.getState();
+  if (f.phase === 'order') {
+    // The ordering task moves on by itself (resultsAfterOrder). Should there be none to show, the results follow.
+    if (!orderTaskOfWalk()) resultsAfterOrder();
+    return;
+  }
+  const questions = linkQuestionsHere();
+  if (questions.length) {
+    // Nothing moves on from a question that has not been answered ("I don't know" is an answer).
+    const here = questions[f.linkAt - 1];
+    if (here && !f.linkAnswers.some((a) => a.id === here.id)) return;
+    if (f.linkAt < questions.length) {
+      useFlow.setState({ linkAt: f.linkAt + 1 });
+      return;
+    }
+  }
+  if (f.linkAt !== 0) useFlow.setState({ linkAt: 0 });
   if (!isLastStop(s)) {
     s.next();
     return;
@@ -401,10 +571,58 @@ export function advanceRecall(): void {
   // The finished walk goes into the history (never a Judge run's: a demo is not the learner's score).
   const deck = s.judge ? undefined : getDeck(s.deckId);
   if (deck) {
-    const record = walkRecord(useFlow.getState().recallScope === 'due' ? 'review' : 'recall', deck, s, Date.now());
+    const record = recallRecord(deck, s, Date.now());
     if (record.total > 0) useHistory.getState().add(record);
   }
   useFlow.setState({ recallMs: Date.now() - useFlow.getState().recallStartedAt });
+  if (orderTaskOfWalk()) {
+    // The steps are about to be put in order from memory: the scene must not show them standing in it.
+    s.setImagesHidden(true);
+    useFlow.setState({ phase: 'order' });
+  } else s.toResults();
+}
+
+/**
+ * The record of a finished recall walk. The places are counted as ever. A process deck adds
+ * its answers about links, counted apart, over every question the walk asked.
+ */
+function recallRecord(deck: Deck, s: SessionState, at: number): WalkRecord {
+  const f = useFlow.getState();
+  const record = walkRecord(f.recallScope === 'due' ? 'review' : 'recall', deck, s, at);
+  if (!isProcessDeck(deck)) return record;
+  const asked = walkedItems(deck, s).flatMap((item) => linkQuestions(deck, item));
+  if (!asked.length) return record;
+  const right = new Set(f.linkAnswers.filter((a) => a.correct).map((a) => a.id));
+  return { ...record, relations: { total: asked.length, correct: asked.filter((q) => right.has(q.id)).length } };
+}
+
+/** Left arrow on the recall walk: back through the questions about links, then to the place before. */
+export function backRecall(): void {
+  const f = useFlow.getState();
+  if (f.phase === 'order') return;
+  if (f.linkAt > 0) useFlow.setState({ linkAt: f.linkAt - 1 });
+  else useSession.getState().prev();
+}
+
+/**
+ * The steps have been put in order: the score is kept with the walk's record, apart from the
+ * places and the links. It changes no review card and no place.
+ */
+export function finishOrder(result: { total: number; correct: number }): void {
+  const s = useSession.getState();
+  const f = useFlow.getState();
+  if (s.mode !== 'recall' || f.phase !== 'order' || s.judge) return;
+  const order = { total: result.total, correct: result.correct };
+  useFlow.setState({ order });
+  const record = useHistory.getState().records.find((r) => r.id === f.walkId && r.deckId === s.deckId);
+  if (record) useHistory.getState().add({ ...record, order });
+}
+
+/** From the ordering task to the results. */
+export function resultsAfterOrder(): void {
+  const s = useSession.getState();
+  if (s.mode !== 'recall' || useFlow.getState().phase !== 'order') return;
+  useFlow.setState({ phase: 'walk' });
   s.toResults();
 }
 
@@ -447,7 +665,7 @@ export function resumeWalk(): void {
   // A Judge run that a reload cut short goes on in a fresh sandbox, like the run it was.
   const deck = w ? ((w.judge ? openSandbox(w.deckId) : undefined) ?? getDeck(w.deckId)) : undefined;
   // A survey that was finished elsewhere meanwhile (another tab) cannot be gone back into.
-  if (!w || !deck || (w.mode === 'survey' && w.phase !== 'summary' && deck.surveyedAt !== undefined)) {
+  if (!w || !deck || (w.mode === 'survey' && w.phase !== 'summary' && surveyIsOver(deck, w))) {
     discardSavedWalk();
     return;
   }
@@ -455,9 +673,13 @@ export function resumeWalk(): void {
     phase: w.phase,
     confirmLeave: false,
     judgeVariant: w.judgeVariant,
-    walkId: w.walkId || newWalkId(),
+    walkId: w.walkId || newWalkId(w.section),
     recallScope: w.recallScope,
     surveyWalked: w.surveyWalked,
+    section: w.section,
+    linkAt: 0,
+    linkAnswers: w.linkAnswers,
+    order: null,
     progress: false,
     recallStartedAt: Date.now() - w.recallSpentMs,
     recallMs: 0,
@@ -472,9 +694,16 @@ export function resumeWalk(): void {
     arrived: false,
     results: w.results,
     judge: w.judge,
-    // Resumed on the screen between the two walks: the images stay hidden there.
-    imagesHidden: w.mode === 'encode' && w.phase === 'interstitial',
+    // Resumed on the screen between the two walks, or on the ordering task: the images stay hidden there.
+    imagesHidden: (w.mode === 'encode' && w.phase === 'interstitial') || w.phase === 'order',
   });
+}
+
+/** The survey that a saved walk was in the middle of has since been finished: the palace's, or that of the section it covers. */
+function surveyIsOver(deck: Deck, w: SavedWalk): boolean {
+  if (!w.section) return deck.surveyedAt !== undefined;
+  const cards = useReview.getState().cards;
+  return walkedItems(deck, w).every((it) => cards[it.id]?.survey !== undefined);
 }
 
 /** "Start over": forget the walk that was cut short. */
@@ -532,6 +761,8 @@ function followWalk(): void {
         recallSpentMs: 0,
         recallScope: f.recallScope,
         surveyWalked: f.surveyWalked,
+        section: f.section,
+        linkAnswers: f.linkAnswers,
       };
       // The clock is left out of the comparison, so that only real progress causes a write.
       const key = JSON.stringify(walk);

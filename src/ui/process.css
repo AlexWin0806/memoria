@@ -1,0 +1,74 @@
+/*
+ * What a process deck adds to the walk screens: how a step connects (study walk), the
+ * questions about links and the ordering task (recall walk), and the lines that count links
+ * and order apart from the places (results, Progress).
+ * Like overlay.css: every colour, face and radius comes from the CSS variables written by
+ * applyThemeVars(). No literal colours in this file. Selectors carry the screen's own class
+ * where they adjust a shared one, so that the order in which the stylesheets load does not matter.
+ */
+
+/* Study walk: one plain line per link, set off like a margin note. */
+.links {
+  margin: 4px 0 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+.links ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.links li {
+  margin: 0 0 6px;
+  padding-left: 12px;
+  border-left: 3px solid var(--rule-strong);
+}
+
+/* Recall walk: the right answer to a question about a link, as one sentence. */
+.reveal .link__fact {
+  margin: 4px 0 0;
+  font-family: var(--type-display);
+  font-size: 24px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* The ordering task: a placed step stays in its row, inert and quiet, with its position beside it. */
+.order .order__steps .choice[aria-disabled='true'] {
+  border-left-color: var(--ui-fg);
+  background: var(--wash);
+  color: var(--ui-muted);
+  cursor: default;
+}
+.order__nth {
+  font-variant-numeric: lining-nums;
+  white-space: nowrap;
+}
+.order__head { margin-top: 22px; }
+.order__seq {
+  margin: 4px 0 0;
+  padding-left: 30px;
+  font-variant-numeric: lining-nums;
+}
+.order__seq li { padding: 2px 0; }
+.order__mark {
+  margin-left: 10px;
+  color: var(--ui-success);
+}
+.order__seq li[data-state='wrong'] .order__mark { color: var(--ui-danger); }
+.order .body { margin: 12px 0 0; }
+
+/* Results: places, links and order, each counted by itself. */
+.lines {
+  margin: 0 0 14px;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--rule-strong);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.lines p { margin: 0; }
+.lines p + p { margin-top: 2px; }
+.lines .lines__note {
+  margin-top: 6px;
+  font-size: 16px;
+  color: var(--ui-muted);
+}

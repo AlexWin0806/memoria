@@ -303,6 +303,11 @@ export interface WalkRecord {
   ms: number;
   /** Questions about links between items (process decks), scored apart from the items. */
   relations?: { total: number; correct: number };
+  /**
+   * Putting the steps in order after the walk (process decks), scored apart from the items:
+   * how many of the `total` steps followed their true predecessor.
+   */
+  order?: { total: number; correct: number };
 }
 
 // ───────────────────────── Session ─────────────────────────

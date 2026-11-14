@@ -24,7 +24,7 @@ export function useArrivedFallback(ms = ARRIVED_FALLBACK_MS): void {
 export interface WalkKeys {
   next?: () => void;
   back?: () => void;
-  /** 0-based option index for keys 1 to 4. */
+  /** 0-based option index for keys 1 to 9. A screen with fewer options ignores the rest. */
   pick?: (index: number) => void;
   /** The 0 key, or the question mark: "I don't know" on the survey walk. */
   unknown?: () => void;
@@ -45,8 +45,8 @@ function activatesItself(el: EventTarget | null): boolean {
 }
 
 /**
- * Walk shortcuts: Right / Space / Enter next, Left back, 1 to 4 pick an option, 0 or ? for
- * "I don't know" (survey), P pause.
+ * Walk shortcuts: Right / Space / Enter next, Left back, 1 to 9 pick an option (four on most
+ * screens, more when the steps of a process are put in order), 0 or ? for "I don't know", P pause.
  * Keys are left alone while a text field has focus, and Space / Enter are left to a
  * focused button so that one press never counts twice.
  */
@@ -81,7 +81,7 @@ export function useWalkKeys(keys: WalkKeys): void {
         if (isTextField(t) || !k.unknown) return;
         e.preventDefault();
         k.unknown();
-      } else if (/^[1-4]$/.test(e.key)) {
+      } else if (/^[1-9]$/.test(e.key)) {
         if (isTextField(t) || !k.pick) return;
         e.preventDefault();
         k.pick(Number(e.key) - 1);

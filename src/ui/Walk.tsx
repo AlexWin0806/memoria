@@ -12,10 +12,12 @@ import {
 } from '@/flows/flow';
 import { numberWord, termLength } from '@/flows/format';
 import { useCountdown, useTimedStop, useWalkKeys } from '@/flows/hooks';
+import { studyLines } from '@/flows/process';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { useReview } from '@/state/review';
 import { isLastStop, useSession } from '@/state/session';
+import './process.css';
 
 /** The one wording for the advance key, used on every walk screen. */
 export const ADVANCE_KEYS = 'Space or Right arrow';
@@ -283,6 +285,8 @@ export function Encode() {
     );
   }
   if (!locus || !item) return null;
+  // A process deck: how this step connects to the others, from the deck's links. (A timed Judge run has no time for it.)
+  const connects = judge || !deck ? [] : studyLines(deck, item, stops.flatMap((index) => itemAt(deck, layout.loci[index])?.id ?? []));
 
   return (
     <section className="screen" data-testid="encode">
@@ -324,6 +328,16 @@ export function Encode() {
               <p className="reason" data-testid="encode-reason">
                 <span className="label">Why</span> {item.imago.reason}
               </p>
+            )}
+            {connects.length > 0 && (
+              <div className="links" data-testid="encode-links">
+                <p className="label">How this step connects</p>
+                <ul>
+                  {connects.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </>
         ) : (

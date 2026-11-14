@@ -5,7 +5,7 @@ import { plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
 import { getLayout } from '@/layouts';
 import { useAllDecks } from '@/state/decks';
-import { isSkippedSurvey, useHistory, walksOf, weakestPlaces } from '@/state/history';
+import { isSectionWalk, isSkippedSurvey, useHistory, walksOf, weakestPlaces } from '@/state/history';
 import { repairCounts, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { RepairLegend } from './Legend';
@@ -21,8 +21,11 @@ const KIND_NAME: Record<WalkKind, string> = {
 
 const when = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const day = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
-const score = (r: WalkRecord) => `${r.correct} of ${r.total}`;
+const score = (r: { correct: number; total: number }) => `${r.correct} of ${r.total}`;
 const share = (r: WalkRecord) => (r.total > 0 ? r.correct / r.total : 0);
+/** The kind of a walk as the table names it. A walk of a section says that it covered only new places. */
+const kindName = (r: WalkRecord) =>
+  `${isSkippedSurvey(r) ? 'Before study (survey skipped)' : KIND_NAME[r.kind]}${isSectionWalk(r) ? ` · ${plural(r.total, 'new place')}` : ''}`;
 
 /**
  * Progress: for each palace, its score on every finished walk, the latest against the
@@ -82,19 +85,28 @@ export function Progress() {
   );
 }
 
-function PalaceProgress({ deck, walks, cards, now }: { deck: Deck; walks: WalkRecord[]; cards: Record<string, ReviewCard>; now: number }) {
+function PalaceProgress({ deck, walks: all, cards, now }: { deck: Deck; walks: WalkRecord[]; cards: Record<string, ReviewCard>; now: number }) {
+  // The line and the summary follow walks of the whole palace. A walk of a section (only the places
+  // that were added) scores a different set of places, so it is listed in the table, labelled, and
+  // kept out of the line. A palace that has only section walks so far shows those.
+  const whole = all.filter((r) => !isSectionWalk(r));
+  const walks = whole.length > 0 ? whole : all;
+  const sections = all.length - whole.length;
   const first = walks[0];
   const latest = walks[walks.length - 1];
+  // A process deck counts its links and its order apart from the places: two more columns, when there is something in them.
+  const hasLinks = all.some((r) => r.relations !== undefined);
+  const hasOrder = all.some((r) => r.order !== undefined);
   const layout = getLayout(deck.layoutId);
   const placeOf = (itemId: string) => {
     const item = deck.items.find((it) => it.id === itemId);
     return layout.loci.find((l) => l.id === item?.locusId)?.name;
   };
-  const weak = weakestPlaces(walks, deck.id).flatMap((p) => {
+  const weak = weakestPlaces(all, deck.id).flatMap((p) => {
     const name = placeOf(p.itemId);
     return name ? [{ ...p, name }] : [];
   });
-  const tested = walks.some((r) => r.kind !== 'survey');
+  const tested = all.some((r) => r.kind !== 'survey');
   const repair = deck.surveyedAt !== undefined ? repairCounts(deck, cards) : null;
   const firstName = first.kind === 'survey' ? (isSkippedSurvey(first) ? 'Before study (survey skipped)' : 'Before study') : 'First walk';
 
@@ -111,6 +123,11 @@ function PalaceProgress({ deck, walks, cards, now }: { deck: Deck; walks: WalkRe
           ? `${firstName}: ${score(first)}. One walk so far.`
           : `${firstName}: ${score(first)}. Latest (${KIND_NAME[latest.kind].toLowerCase()}): ${score(latest)}. ${plural(walks.length, 'walk')} in all.`}
       </p>
+      {sections > 0 && whole.length > 0 && (
+        <p className="body" data-testid="progress-sections">
+          {plural(sections, 'more walk')} of new places only: in the table, not on the line.
+        </p>
+      )}
       {repair && (
         <p className="body" data-testid="progress-repair">
           Now: {repair.whole} restored, {repair.repair} under repair, {repair.damaged} needing another repair, {repair.ruins} in ruins.
@@ -125,18 +142,22 @@ function PalaceProgress({ deck, walks, cards, now }: { deck: Deck; walks: WalkRe
               <th scope="col">Walk</th>
               <th scope="col">When</th>
               <th scope="col">Kind</th>
-              <th scope="col">Right</th>
+              <th scope="col">{hasLinks || hasOrder ? 'Places right' : 'Right'}</th>
               <th scope="col">No answer</th>
+              {hasLinks && <th scope="col">Links</th>}
+              {hasOrder && <th scope="col">Order</th>}
             </tr>
           </thead>
           <tbody>
-            {walks.map((r, i) => (
-              <tr key={r.id} data-testid="progress-row" data-kind={r.kind}>
+            {all.map((r, i) => (
+              <tr key={r.id} data-testid="progress-row" data-kind={r.kind} data-section={isSectionWalk(r) ? 'true' : undefined}>
                 <td>{i + 1}</td>
                 <td>{when.format(r.at)}</td>
-                <td>{isSkippedSurvey(r) ? 'Before study (survey skipped)' : KIND_NAME[r.kind]}</td>
+                <td>{kindName(r)}</td>
                 <td>{score(r)}</td>
                 <td>{r.unknown}</td>
+                {hasLinks && <td data-testid="progress-links">{r.relations ? score(r.relations) : 'not asked'}</td>}
+                {hasOrder && <td data-testid="progress-order">{r.order ? score(r.order) : 'not asked'}</td>}
               </tr>
             ))}
           </tbody>

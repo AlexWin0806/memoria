@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { answerOf, buildChoices, typedMatches } from '@/flows/answers';
-import { advanceRecall, answerRecall, itemAt, judgeTiming, markRight } from '@/flows/flow';
+import { advanceRecall, answerRecall, itemAt, judgeTiming, markRight, useFlow } from '@/flows/flow';
 import { termLength } from '@/flows/format';
 import { useTimedStop, useWalkKeys } from '@/flows/hooks';
+import { buildLinkChoices, linkQuestions, orderTask } from '@/flows/process';
+import { LinkStop, OrderTask } from './Process';
 import { ADVANCE_KEYS, ProgressBar } from './Walk';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
@@ -13,6 +15,10 @@ import { useSettings } from '@/state/settings';
  * Recall walk: retrieval practice. The place is the only cue: both answer modes ask what
  * was left there, the answer is the item's term, and nothing about the item is rendered
  * until the learner has committed. Committing is what reveals the image in the scene.
+ *
+ * In a process deck the place's question comes first and is unchanged; once it is answered
+ * and the item revealed, each link that leaves the step is asked about (LinkStop), and after
+ * the last place the steps are put in order (OrderTask). Those answers are scored apart.
  */
 export function Recall() {
   const { stops, step, arrived, judge, layoutId, deckId, results } = useSession();
@@ -24,6 +30,15 @@ export function Recall() {
   const result = item ? results.find((r) => r.itemId === item.id) : undefined;
   const input = judge ? 'choice' : setting;
   const last = isLastStop({ step, stops });
+
+  // A process deck (never a Judge run): the questions about this step's links, the one on screen
+  // if any, and the ordering task that follows the walk.
+  const linkAt = useFlow((s) => s.linkAt);
+  const questions = judge ? [] : linkQuestions(deck, item);
+  const question = result ? questions[linkAt - 1] : undefined;
+  const task = judge || !deck ? null : orderTask(deck, stops.flatMap((index) => itemAt(deck, layout.loci[index])?.id ?? []));
+  const ordering = useFlow((s) => s.phase) === 'order' && task !== null;
+  const aside = ordering || question !== undefined;
 
   // Options are drawn once per stop and kept for the whole walk, so going back does not reshuffle them.
   const drawn = useRef(new Map<string, string[]>());
@@ -46,9 +61,10 @@ export function Recall() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when a stop becomes ready, not when it is answered
   }, [arrived, step]);
 
+  // Also on the way back from a question about a link to what the place revealed.
   useEffect(() => {
-    if (answered) nextRef.current?.focus();
-  }, [answered, step]);
+    if (answered && !aside) nextRef.current?.focus();
+  }, [answered, step, aside]);
 
   // Judge Mode keeps moving: the feedback is shown, then the walk goes on by itself. A miss is
   // held longer, because that is the moment to look at the image again.
@@ -71,6 +87,11 @@ export function Recall() {
     choices = drawn.current.get(item.id) ?? buildChoices(deck, item);
     drawn.current.set(item.id, choices);
   }
+  let linkChoices: string[] = [];
+  if (deck && question && input === 'choice') {
+    linkChoices = drawn.current.get(question.id) ?? buildLinkChoices(deck, question);
+    drawn.current.set(question.id, linkChoices);
+  }
 
   const commit = (given: string) => {
     if (!deck || !item || !arrived || result) return;
@@ -80,15 +101,37 @@ export function Recall() {
     answerRecall({ itemId: item.id, correct, given, ms: Date.now() - arrivedAt.current, ...(given === '' ? { unknown: true } : {}) });
   };
 
-  useWalkKeys({
-    pick: input === 'choice' && arrived && !result ? (i) => choices[i] !== undefined && commit(choices[i]) : undefined,
-    next: result ? advanceRecall : undefined,
-    back: step > 0 ? () => useSession.getState().prev() : undefined,
-    pause: canHold ? toggleHold : undefined,
-    resume: held ? toggleHold : undefined,
-  });
+  // A question about a link and the ordering task have keys of their own: this screen's are off meanwhile.
+  useWalkKeys(
+    aside
+      ? {}
+      : {
+          pick: input === 'choice' && arrived && !result ? (i) => choices[i] !== undefined && commit(choices[i]) : undefined,
+          next: result ? advanceRecall : undefined,
+          back: step > 0 ? () => useSession.getState().prev() : undefined,
+          pause: canHold ? toggleHold : undefined,
+          resume: held ? toggleHold : undefined,
+        },
+  );
 
   if (!deck || !locus || !item) return null;
+  // What follows the last answer at the last place.
+  const afterWalk = task ? 'Put the steps in order' : 'See the results';
+  if (ordering) return <OrderTask deck={deck} task={task} />;
+  if (question) {
+    const lastQuestion = linkAt >= questions.length;
+    return (
+      <LinkStop
+        key={question.id}
+        question={question}
+        index={linkAt}
+        count={questions.length}
+        choices={linkChoices}
+        input={input}
+        onward={!lastQuestion ? 'Next question' : last ? afterWalk : 'Next place'}
+      />
+    );
+  }
   const right = answerOf(item);
   // Only a typed answer can be overruled: the grader may be wrong about wording, never about a picked option.
   const canOverrule = input === 'typed' && result !== undefined && !result.correct && result.given.trim() !== '';
@@ -162,7 +205,7 @@ export function Recall() {
       {result && (
         <div className="actions">
           <button type="button" className="btn btn--primary" ref={nextRef} onClick={advanceRecall} data-testid="recall-next">
-            {last ? 'See the results' : 'Next place'}
+            {questions.length > 0 ? 'Next question' : last ? afterWalk : 'Next place'}
           </button>
           {judge && (
             <button type="button" className="btn" ref={pauseRef} aria-pressed={held} onClick={toggleHold} data-testid="recall-pause">

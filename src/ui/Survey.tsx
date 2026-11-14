@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { answerOf, buildChoices, surveyQuestion, typedMatches } from '@/flows/answers';
-import { advanceSurvey, answerSurvey, beginStudyAfterSurvey, itemAt, leave, skipSurvey, useFlow } from '@/flows/flow';
+import { advanceSurvey, answerSurvey, beginStudyAfterSurvey, itemAt, leave, skipSurvey, stopsFor, useFlow } from '@/flows/flow';
 import { plural, termLength } from '@/flows/format';
 import { useWalkKeys } from '@/flows/hooks';
 import { getLayout } from '@/layouts';
@@ -35,6 +35,8 @@ function SurveyWalk() {
   const result = item ? results.find((r) => r.itemId === item.id) : undefined;
   const answered = Boolean(result);
   const last = isLastStop({ step, stops });
+  // The survey of a section: only the places that were added to the palace.
+  const section = useFlow((s) => s.section);
 
   // Options are drawn once per stop and kept for the whole walk, so going back does not reshuffle them.
   const drawn = useRef(new Map<string, string[]>());
@@ -87,7 +89,8 @@ function SurveyWalk() {
   });
 
   if (!deck || !locus || !item) return null;
-  const q = surveyQuestion(deck, item, step + 1);
+  // A bare list item is asked for by its place in the whole list, which on a section is not its place in this walk.
+  const q = surveyQuestion(deck, item, stopsFor(deck, layout).indexOf(stops[step]) + 1);
   const ready = arrived || answered;
 
   const onSubmit = (e: FormEvent) => {
@@ -98,7 +101,7 @@ function SurveyWalk() {
   return (
     <section className="screen survey" data-testid="survey">
       <h1 className="label" data-testid="walk-label">
-        Survey · Place {step + 1} of {stops.length}
+        {section ? 'Survey of the new places' : 'Survey'} · Place {step + 1} of {stops.length}
         {room ? ` · ${room.name}` : ''}
       </h1>
       {/* Said once, on the survey's first screen and nowhere else (the claims rule: docs/research.md). */}
@@ -270,7 +273,9 @@ function SurveySummary() {
   const deck = useDeck(deckId);
   const cards = useReview((s) => s.cards);
   const walked = useFlow((s) => s.surveyWalked);
-  const familiar = useSettings((s) => s.familiarized[layoutId] === true);
+  const section = useFlow((s) => s.section);
+  // New places are new even in a palace the learner knows: a section never counts as familiar (beginStudyAfterSurvey).
+  const familiar = useSettings((s) => s.familiarized[layoutId] === true) && !section;
   const layout = getLayout(layoutId);
   const heading = useRef<HTMLHeadingElement>(null);
 
@@ -293,7 +298,10 @@ function SurveySummary() {
 
   return (
     <section className="screen survey" data-testid="survey-summary">
-      <p className="label">Survey · {deck.title}</p>
+      <p className="label" data-testid="survey-summary-label">
+        Survey · {deck.title}
+        {section ? ` · ${plural(rows.length, 'new place')}` : ''}
+      </p>
       <h1 className="question" tabIndex={-1} ref={heading} data-testid="survey-score">
         You knew {knew} of {rows.length}.
       </h1>
