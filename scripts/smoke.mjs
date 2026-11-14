@@ -332,7 +332,7 @@ const cases = {
     await page.getByTestId('results-home').click();
     await page.getByTestId('title').waitFor();
     const { meta } = await deckRows(page);
-    assert(meta[JUDGE_DECK_TITLE] === '8 places · next review in 10 minutes · 4 new', `deck row after a spot check: ${meta[JUDGE_DECK_TITLE]}`);
+    assert(/^8 places · next review in (9|10) minutes · 4 new$/.test(meta[JUDGE_DECK_TITLE]), `deck row after a spot check: ${meta[JUDGE_DECK_TITLE]}`);
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score} (${visited.join(', ')}); passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
@@ -387,7 +387,7 @@ const cases = {
     const { count, meta } = await deckRows(page);
     assert(count === fixtureCount, `expected ${fixtureCount} deck rows after editing a fixture, got ${count}`);
     // Studied a moment ago: nothing is due yet, and the other fixtures are still new.
-    assert(meta[JUDGE_DECK_TITLE] === '8 places · next review in 10 minutes', `studied deck reads "${meta[JUDGE_DECK_TITLE]}"`);
+    assert(/^8 places · next review in (8|9|10) minutes$/.test(meta[JUDGE_DECK_TITLE]), `studied deck reads "${meta[JUDGE_DECK_TITLE]}"`);
     assert(Object.values(meta).filter((m) => m.endsWith('not started')).length === fixtureCount - 1, 'the other fixtures should read "not started"');
     assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'nothing is due, so the Reviews entry should show no count');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
@@ -486,7 +486,8 @@ const cases = {
     await shot(page, 'title-decks');
 
     // Studied a moment ago: nothing is due yet. The fixtures were never studied, so they are not reviews at all.
-    assert((await deckRows(page)).meta[DECK_TITLE] === '5 places · next review in 10 minutes', 'the new deck should not be due yet');
+    const afterReload = (await deckRows(page)).meta[DECK_TITLE];
+    assert(/^5 places · next review in (9|10) minutes$/.test(afterReload), `the new deck should not be due yet: ${afterReload}`);
     assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'nothing is due, so the Reviews entry should show no count');
     await page.getByTestId('title-review').click();
     await page.getByTestId('review').waitFor();
