@@ -163,7 +163,8 @@ function pens(theme: Theme): [pen: string, slip: string] {
 
 interface Site {
   link: number;
-  /** Locus index of the place the link leads to. */
+  /** Locus indices of the two places the link joins. */
+  from: number;
   to: number;
   text: string;
   x: number;
@@ -289,7 +290,7 @@ function labelSites(routed: RoutedLinks): Site[] {
       if (room >= LABEL_APART) break;
     }
     pointAlong(link.line, best * length, at);
-    sites.push({ link: n, to: link.to, text: link.label, x: at[0], z: at[1], dx: at[2], dz: at[3] });
+    sites.push({ link: n, from: link.from, to: link.to, text: link.label, x: at[0], z: at[1], dx: at[2], dz: at[3] });
   });
   return sites;
 }
@@ -301,8 +302,9 @@ interface Labels {
 
 /**
  * The labels: every one written into one atlas with the theme's display face, and one quad
- * each on the floor. A label runs along its link and stands the right way up for the learner
- * who has just walked the link: who stands where the place it leads to is looked at from.
+ * each on the floor. A label runs along its link and stands the right way up for a learner
+ * at one of the two places it joins: at the one whose viewpoint is nearer the label, which
+ * for a link through a doorway is the one in the same room.
  */
 function makeLabels(sites: Site[], layout: PalaceLayout, theme: Theme): Labels | null {
   if (!sites.length) return null;
@@ -358,9 +360,9 @@ function makeLabels(sites: Site[], layout: PalaceLayout, theme: Theme): Labels |
   sites.forEach((site, i) => {
     const b = boxes[i];
     // The top of the writing points away from that viewpoint.
-    const view = layout.loci[site.to]?.view.position ?? layout.overview.position;
-    const vx = view[0];
-    const vz = view[2];
+    const here = layout.loci[site.from].view.position;
+    const there = layout.loci[site.to].view.position;
+    const [vx, , vz] = Math.hypot(here[0] - site.x, here[2] - site.z) < Math.hypot(there[0] - site.x, there[2] - site.z) ? here : there;
     let ux = site.dz;
     let uz = -site.dx;
     if (ux * (site.x - vx) + uz * (site.z - vz) < 0) {
@@ -412,9 +414,15 @@ export function PalaceLinks({ layout, deck, tokens, held, still, veil }: Props) 
   // Rebuilt when the links or the places of the items change, not on every edit of the deck.
   const links = deck?.links;
   const placed = deck?.items.map((it) => `${it.id}@${it.locusId}`).join('|') ?? '';
-  const routed = useMemo(() => {
+  const routed = useMemo((): RoutedLinks => {
     void placed;
-    return routeLinks(layout, deck && links ? { ...deck, links } : undefined);
+    try {
+      return routeLinks(layout, deck && links ? { ...deck, links } : undefined);
+    } catch (error) {
+      // The links are an extra: whatever a deck holds, the palace itself must come up.
+      console.warn('[memoria] links not drawn', error);
+      return { links: [], scale: 1 };
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `placed` stands for the part of `deck` that matters here
   }, [layout, links, placed]);
   const count = routed.links.length;

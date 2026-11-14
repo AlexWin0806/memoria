@@ -10,7 +10,9 @@ import { viaBetween } from './rail';
  * the second place.
  *
  * The route on the floor is a small graph, the trunk:
- *   a generated hall     its axis, from doorway to doorway; each place joins it square-on
+ *   a generated hall     its axis, from doorway to doorway. A place by a side wall is reached
+ *                        by a branch that leaves the axis a step before it and comes to it
+ *                        along the wall, from the side; the place at the far wall square-on
  *   a generated ring     the circle the places themselves stand on, with a stub to each
  *                        doorway: a link runs round it as an arc from the side of one place to
  *                        the side of the next, where the learner standing in the middle of the
@@ -37,6 +39,13 @@ const SLOT = 0.3;
 const SPUR_GAP = 0.12;
 /** Generated rooms: the trunk comes this close to the wall a doorway is in. */
 const DOOR_IN = 0.5;
+/**
+ * A hall's branch to a place by a side wall leaves the axis this far before the place, on the
+ * entrance side, where the learner looking at the place stands: the last stretch then runs
+ * along the wall into the side of the place, in the picture. (Square-on it would come from
+ * under the learner's feet, below the picture.) Clear of the lines inlaid across the floor.
+ */
+const HALL_LEAD = 1.15;
 /** A ring's trunk circle runs this far in from the sides of the room: through the middle of the plots. */
 const RING_IN = 1;
 const RING_STEPS = 72;
@@ -162,10 +171,27 @@ function generatedNet(layout: PalaceLayout): Net | null {
       }
     } else {
       for (const l of loci) {
-        const v = vert(net, x0, spotOf(layout, l.index)[1], 1, 0, true);
+        const [sx, sz] = spotOf(layout, l.index);
+        const side = Math.sign(sx - x0);
+        const bySideWall = Math.abs(room.plots[plan.places[l.index]?.slot ?? -1]?.normal[0] ?? 0) > 0.5;
+        const v = vert(net, x0, bySideWall ? sz + HALL_LEAD : sz, 1, 0, true);
         if (prev >= 0) join(net, prev, v);
         prev = v;
-        stop(l.index, v);
+        if (!bySideWall || side === 0) {
+          stop(l.index, v);
+          continue;
+        }
+        // The branch: across the hall, then along the wall. Each stretch has a vertex of its own
+        // at the corner, so that its lanes run parallel to it; they lie on the inside of the turn.
+        const out = vert(net, x0, sz + HALL_LEAD, 0, -1);
+        const corner = vert(net, sx, sz + HALL_LEAD, 0, -1);
+        const along = vert(net, sx, sz + HALL_LEAD, -side, 0);
+        const at = vert(net, sx, sz, -side, 0);
+        join(net, v, out);
+        join(net, out, corner);
+        join(net, corner, along);
+        join(net, along, at);
+        stop(l.index, at);
       }
       last = -1;
       if (more && prev >= 0) {
