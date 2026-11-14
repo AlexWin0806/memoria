@@ -108,6 +108,7 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
         <LocusLabel
           key={current.id}
           locus={current}
+          at={layout.focus?.[current.index]}
           total={layout.loci.length}
           raised={tokens.some((t) => t.visible && t.locusIndex === current.index)}
           still={reduced}

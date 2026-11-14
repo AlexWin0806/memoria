@@ -1,4 +1,4 @@
-import type { PalaceLayoutMeta } from '@/core/types';
+import type { PalaceLayoutMeta, Vec3 } from '@/core/types';
 
 /**
  * "Domus": a small Roman house walked front to back. Three rooms, twelve loci, one route.
@@ -19,6 +19,12 @@ import type { PalaceLayoutMeta } from '@/core/types';
  */
 export const DOMUS_FOOTPRINT = [0.3, 0.9, 0.45, 0.5, 1.8, 0.45, 0.5, 0.55, 0.95, 0.45, 0.4, 0.4];
 
+/**
+ * Where a feature is centred when its image hangs to one side of it (see PalaceLayout.focus),
+ * by locus index. The Arch: the head of the opening.
+ */
+export const DOMUS_FOCUS: Record<number, Vec3> = { 3: [0, 2.42, 0.45] };
+
 export const DOMUS_META: PalaceLayoutMeta = {
   id: 'domus',
   name: 'Domus',
@@ -32,8 +38,11 @@ export const DOMUS_META: PalaceLayoutMeta = {
     { id: 'domus-01', index: 0, roomId: 'vestibule', name: 'The Lamp', hint: 'A tall bronze lampstand with a single flame, left of the door.', anchor: [-2.1, 2.5, 6.5], view: { position: [1.9, 1.65, 8.45], target: [-2.1, 1.55, 6.5] }, accent: 'amber' },
     { id: 'domus-02', index: 1, roomId: 'vestibule', name: 'The Cloak Bench', hint: 'A stone bench against the right wall with a red cloak thrown over it.', anchor: [2.4, 1.85, 4.6], view: { position: [-1.3, 1.65, 7.3], target: [2.5, 1.05, 4.6] }, accent: 'red' },
     { id: 'domus-03', index: 2, roomId: 'vestibule', name: 'The Amphora', hint: 'A tall blue-glazed storage jar leaning in its stand, on the left.', anchor: [-2.2, 2.25, 2.6], view: { position: [1.3, 1.65, 5.5], target: [-2.2, 1.4, 2.6] }, accent: 'blue' },
-    // Seen square on: the image hangs in the head of the arch and, from here, exactly hides the fountain's.
-    { id: 'domus-04', index: 3, roomId: 'vestibule', name: 'The Arch', hint: 'The plum-painted archway you walk through into the atrium.', anchor: [0, 2.42, 0.45], view: { position: [0, 1.65, 5.2], target: [0, 1.75, 0] }, accent: 'plum' },
+    // The image hangs over the arch's left shoulder, not in the opening: the walk to the fountain
+    // goes through the arch, and an image in the walking line fills the lens. The view stands
+    // half a metre right of the axis and looks a little left, so that arch and image share the
+    // picture while the amphora's image (further left, nearer) stays out of it.
+    { id: 'domus-04', index: 3, roomId: 'vestibule', name: 'The Arch', hint: 'The plum-painted archway you walk through into the atrium.', anchor: [-1.45, 2.8, 0.7], view: { position: [0.5, 1.65, 5.2], target: [-0.14, 1.75, 0] }, accent: 'plum' },
     { id: 'domus-05', index: 4, roomId: 'atrium', name: 'The Fountain', hint: 'The pool at the centre, under the open roof. Fifth place: it bears the golden hand.', anchor: [0, 3.15, -6], view: { position: [1.3, 1.65, -0.75], target: [0, 1.75, -6] }, accent: 'teal', marker: 'hand' },
     { id: 'domus-06', index: 5, roomId: 'atrium', name: 'The Sundial', hint: 'A sundial on a short column in a patch of sun, front left.', anchor: [-4.2, 2.4, -3.6], view: { position: [-0.6, 1.65, -1.2], target: [-4.2, 1.5, -3.6] }, accent: 'amber' },
     { id: 'domus-07', index: 6, roomId: 'atrium', name: 'The Statue', hint: 'A draped figure in a niche in the right wall.', anchor: [5.0, 3.65, -7.2], view: { position: [0.7, 1.65, -3.5], target: [5.5, 2.25, -7.2] }, accent: 'blue' },

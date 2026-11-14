@@ -1,7 +1,7 @@
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { CanvasTexture, type Group, LinearFilter, type MeshBasicMaterial, SRGBColorSpace } from 'three';
-import type { Locus, Theme } from '@/core/types';
+import type { Locus, Theme, Vec3 } from '@/core/types';
 import { useTheme } from '@/styles';
 
 const TEX_HEIGHT = 256;
@@ -56,8 +56,8 @@ function makePlate(name: string, eyebrow: string, theme: Theme, pigment: string)
   return { texture, aspect: canvas.width / canvas.height, draw };
 }
 
-/** The name of a locus, shown in-world beside its anchor during the familiarization walk. */
-export function LocusLabel({ locus, total, raised, still }: { locus: Locus; total: number; raised?: boolean; still?: boolean }) {
+/** The name of a locus, shown in-world at `at` (default: its anchor) during the familiarization walk. */
+export function LocusLabel({ locus, at, total, raised, still }: { locus: Locus; at?: Vec3; total: number; raised?: boolean; still?: boolean }) {
   const theme = useTheme();
   const face = useRef<Group>(null);
   const material = useRef<MeshBasicMaterial>(null);
@@ -84,7 +84,7 @@ export function LocusLabel({ locus, total, raised, still }: { locus: Locus; tota
     if (face.current) face.current.position.y = still ? 0 : (1 - p * (2 - p)) * -0.08;
   });
 
-  const [x, y, z] = locus.anchor;
+  const [x, y, z] = at ?? locus.anchor;
   return (
     <group position={[x, y + (raised ? 1.05 : 0), z]}>
       <group ref={face}>

@@ -178,7 +178,8 @@ export function FlourishRing({ flourish, layout }: { flourish: Flourish; layout:
     }
     m.visible = flourish.kind === 'right';
     if (!m.visible) return;
-    m.position.set(locus.anchor[0], FLOOR_Y, locus.anchor[2]);
+    const centre = layout.focus?.[locus.index] ?? locus.anchor;
+    m.position.set(centre[0], FLOOR_Y, centre[2]);
     const u = material.uniforms;
     u.uT.value = Math.min(1, flourish.t / RING_SECONDS);
     // A different hand at each place, the same one every time at that place.
