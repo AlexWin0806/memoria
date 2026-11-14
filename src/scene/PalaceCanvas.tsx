@@ -98,7 +98,10 @@ export function PalaceCanvas() {
   const theme = useActiveTheme();
   const style = STYLES[theme.style] ?? STYLES.greybox;
   const reduced = prefersReducedMotion(useSettings((s) => s.reducedMotion));
-  const veil = useMemo(() => createVeil(qa.frozen, qa.holdVeil), [qa]);
+  // One veil for the life of the canvas. It lifts once, when the first scene is ready; made
+  // afresh for every palace (`qa` is read again when the layout changes) it came back and
+  // never lifted, so a generated palace opened from the title screen stayed a blank page.
+  const veil = useMemo(() => createVeil(qa.frozen, qa.holdVeil), [qa.frozen, qa.holdVeil]);
   const titled = useSession((s) => s.mode === 'attract');
   const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
 
