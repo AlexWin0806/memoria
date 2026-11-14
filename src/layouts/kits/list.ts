@@ -17,6 +17,7 @@ export const KIT_LIST: KitInfo[] = [
     name: 'Gothic library',
     blurb: 'Tall stone halls with pointed arches, lancet windows, dark oak and chained books.',
   },
+  { id: 'workshop', name: 'Workshop', blurb: 'Timber works halls of machines in a line, a channel running from station to station: suits processes, pathways and sequences of steps.' },
 ];
 
 /** The kit used when a spec names one that does not exist. The same as the fallback in `normalizeSpec` (../spec.ts). */
