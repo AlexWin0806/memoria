@@ -140,3 +140,22 @@ Reject the theme if any of these is true:
 - [ ] Frame cost stated; within the budget; no allocations per frame; nothing leaks under Theme Lab edits.
 - [ ] Overlay contrast >= 4.5:1, body text >= 16 px, reduced motion still fine.
 - [ ] `npm run check` and `npm run build` pass; final PNGs copied where the brief asks; `docs/art-bible.md` updated if the direction changed (art director only); `CREDITS.md` updated for any new font or asset; `TASKS.md` updated.
+
+## Ink style: wash knobs added in round three
+
+These live in `theme.post` of `ink-vellum.json` and `ink-sanguine.json`:
+
+- `washThreshold` is now a **reach** threshold (about 0.08), and `bleed` is the hand-wander of
+  the wash boundary **in metres**.
+- First glaze (a place whose image has been placed but not yet recalled):
+  `washFirstPigment`, `firstSaturation`.
+- Tint ramp from a miss to a first glaze: `tintFrom`, `tintTo`, `missGrey`.
+- Hatching: `hatchTone`, `hatchContact` (the band at the wall base), `hatchPatch`,
+  `groundAt` (floor height the contact band assumes; 0 for Domus).
+- `quality`: 0 = half-size geometry buffer, 1 = full size without multisampling (the shipped
+  default), 2 = 4x multisampled. Raise it only after a frame-rate check on a real laptop.
+
+The ink surface shader supports `InstancedMesh`. A new style that uses a custom
+`ShaderMaterial` must handle `instanceMatrix` itself (`#ifdef USE_INSTANCING`), or instanced
+parts of a layout collapse to the mesh origin. The experimental `blueprint` style has not
+been checked for this.
