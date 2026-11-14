@@ -47,9 +47,11 @@ export const SURFACE_VERT = /* glsl */ `
 
 /**
  * One shader, two jobs, switched by uPass:
- *   0  the wash. Paint goes down in two glazes, each with a crisp dried edge:
- *      a light flat first wash where the place has been visited, then the full
- *      three-tone colour (with hatching in the shade) where it has been learned.
+ *   0  the wash. Paint goes down in two glazes. WHERE the first one goes comes from the
+ *      reach of the shared development field (distance to places that have been touched),
+ *      so a half-learned room is covered evenly, with one dried edge at the outer
+ *      boundary; HOW MUCH pigment it carries comes from the field's strength. The second
+ *      glaze (three tones, full pigment, hatching) covers the places that are learned.
  *      Alpha is written as 0 so that anything drawn afterwards with blending (the imago
  *      tokens) leaves its coverage in alpha; the page pass keeps ink lines off them.
  *   1  the geometry buffer the page pass finds its lines in: view-space normal scaled by
@@ -64,6 +66,7 @@ export const SURFACE_FRAG = /* glsl */ `
   uniform float uFar;
   uniform float uKind;     // 0 solid, 1 glow (flat thin wash), 2 water (flat wash, ripple reserve)
   uniform float uPigment;  // 1 when the mesh carries an accent pigment
+  uniform float uBroad;    // 1 for the big planes (floor, wall, ceiling): hatched at contacts only
   uniform float uId;
   uniform vec3 uPaper;
   uniform vec3 uInk;
@@ -79,6 +82,12 @@ export const SURFACE_FRAG = /* glsl */ `
   uniform float uWashThreshold;
   uniform float uWashFull;
   uniform float uWashFirst;
+  uniform float uWashFirstPigment;
+  uniform float uFirstSaturation;
+  uniform float uTintFrom;
+  uniform float uTintTo;
+  uniform float uMissGrey;
+  uniform float uGroundAt;
   uniform float uBleed;
   uniform float uPool;
   uniform float uPoolWidth;
@@ -87,21 +96,27 @@ export const SURFACE_FRAG = /* glsl */ `
   uniform float uHatchSpacing;
   uniform float uHatchWidth;
   uniform float uHatchStrength;
+  uniform float uHatchTone;
+  uniform float uHatchContact;
+  uniform float uHatchPatch;
   varying vec3 vWorldPos;
   varying vec3 vWorldNormal;
   varying float vViewZ;
   ${DEVELOPMENT_GLSL}
   ${NOISE_GLSL}
 
-  // Coverage (x) and dried-edge pooling (y) of one glaze whose boundary is field == 0.
-  // The distance to the boundary is measured in pixels, so the edge is one pixel crisp
-  // and the pooled rim keeps its width at any distance.
+  // Coverage (x) and dried edge (y) of one glaze whose boundary is field == 0. The
+  // distance to the boundary is measured in pixels, so the edge is one pixel crisp and
+  // the dried rim keeps its width at any distance. A field that is flat (a whole room at
+  // one value) is simply in or out: nothing here can break it into islands.
   vec2 glaze(float field) {
     float e = field / max(fwidth(field), 1e-5);
     float cover = clamp(e + 0.5, 0.0, 1.0);
-    float rim = 1.0 - smoothstep(0.0, uPoolWidth * uScale, e);
-    float gather = 1.0 - smoothstep(0.0, 0.16, field);
-    return vec2(cover, cover * (rim + 0.45 * gather));
+    return vec2(cover, cover * (1.0 - smoothstep(0.0, uPoolWidth * uScale, e)));
+  }
+
+  float luma(vec3 c) {
+    return dot(c, vec3(0.3, 0.59, 0.11));
   }
 
   void main() {
@@ -115,30 +130,39 @@ export const SURFACE_FRAG = /* glsl */ `
     float nLow = vnoise3(vWorldPos * 0.9);
     float nMid = vnoise3(vWorldPos * 3.1 + 17.0);
 
-    // Development. The shared field (developmentAt) is a soft union, which is right for
-    // where the first wash reaches: gaps between visited places close up. The second
-    // glaze must only come in where one place is truly learned, so it follows the
-    // strongest single locus instead. Same uniforms and falloff as developmentAt.
-    float reach = 1.0;
-    float peak = 0.0;
-    if (uDevCount == 0) {
-      reach = 0.0;
-      peak = 1.0;
-    }
+    // The hand wanders a little: the field is read a few centimetres to the side of the
+    // true position. Displacing the position (not adding noise to the value) moves the
+    // boundary without ever deciding coverage inside an evenly developed area.
+    float nSide = vnoise(vWorldPos.xz * 0.7 + vWorldPos.y * vec2(0.53, -0.41) + 5.0);
+    vec3 wp = vWorldPos + (vec3(nLow - 0.5, 0.0, nSide - 0.5) * 2.0 + vec3(nMid - 0.5) * 0.5) * uBleed;
+
+    vec2 dev = developmentField(wp);
+    // Which single place this point belongs to, for the second glaze: the same kernel as
+    // the shared field to the fourth power, so that a learned place is not dragged below the mark by an
+    // unlearned neighbour (the field's strength is a broad mean, right for the first wash
+    // only). A faint constant "background place" carries the palace-wide floor.
+    float ws = 0.00006;
+    float vs = 0.00006 * uDevFloor;
     for (int i = 0; i < ${MAX_LOCI}; i++) {
       if (i >= uDevCount) break;
-      float k = 1.0 - smoothstep(uDevRadius * 0.4, uDevRadius, distance(vWorldPos, uDevPoints[i]));
-      float v = k * uDevValues[i];
-      reach *= 1.0 - v;
-      peak = max(peak, v);
+      float k = 1.0 - smoothstep(uDevRadius * 0.4, uDevRadius, distance(wp, uDevPoints[i]));
+      k *= k;
+      k *= k;
+      ws += k;
+      vs += k * uDevValues[i];
     }
-    float dUnion = max(1.0 - reach, uDevFloor);
-    float dPeak = max(peak, uDevFloor);
+    float learned = uDevCount == 0 ? 1.0 : vs / ws;
 
-    // The edge of each glaze wanders like pigment creeping across damp vellum.
-    float wander = (nLow * 0.6 + nMid * 0.4 - 0.5) * uBleed;
-    vec2 first = glaze(dUnion + wander * smoothstep(0.0, 0.2, dUnion) - uWashThreshold);
-    vec2 full = glaze(dPeak + wander * 0.55 - uWashFull);
+    // First glaze. Inside the reach of touched places it is laid evenly; as the whole
+    // route nears mastery the rest of the page takes the same coat (ground), all at once.
+    float ground = smoothstep(0.0, uGroundAt, uDevFloor);
+    vec2 first = glaze(dev.x - max(uWashThreshold, uDevFloor + 0.02));
+    float amount = max(smoothstep(uTintFrom, uTintTo, dev.y), ground);
+    float w1 = max(first.x * amount, ground);
+    float rim1 = first.y * (1.0 - ground);
+    // Second glaze, with its own dried edge where it stops short of the first.
+    vec2 full = glaze(learned - uWashFull);
+    float rim2 = full.y * (1.0 - smoothstep(0.5, 0.9, uDevFloor));
 
     // Three flat tones with a slightly irregular, brush-laid boundary.
     float ndl = dot(N, uLightDir) + (nMid - 0.5) * 0.16;
@@ -156,16 +180,21 @@ export const SURFACE_FRAG = /* glsl */ `
     col = mix(col, cShade, inShade);
     col *= 1.0 - seam * uPool * 0.35;
 
-    // First wash: one thin, even coat of the local colour. A touch more pigment on the
-    // side away from the light, and no shadow tone, so it reads as paint and not as dirt.
-    vec3 thin = mix(uPaper, uBase, uWashFirst * mix(1.0, 1.15, uPigment) * (0.8 + 0.2 * inHalf));
+    // The first glaze is one thin, flat coat of the local colour with the pigment held
+    // back (accents at part saturation), a touch stronger on the side away from the
+    // light and with no shadow tone, so it reads as paint and not as dirt. A place that
+    // was missed keeps only a faint coat, greyed towards the soft ink.
+    vec3 neutral = uPaper * (luma(uBase) / max(luma(uPaper), 1e-3));
+    vec3 tint = mix(neutral, uBase, mix(1.0, uFirstSaturation * amount, uPigment));
+    tint = mix(tint, uInkSoft, uMissGrey * (1.0 - amount));
+    vec3 thin = mix(uPaper, tint, mix(uWashFirst, uWashFirstPigment, uPigment) * (0.85 + 0.15 * inHalf));
 
     if (uKind > 1.5) {
       // Water: one flat wash, with thin rings of bare paper left as ripples.
       col = mix(uPaper, uBase, 0.82);
       float ring = abs(fract(length(vWorldPos.xz) * 2.6 + nMid * 0.5) - 0.5);
       col = mix(col, uPaper, (1.0 - smoothstep(0.02, 0.07, ring)) * 0.45 * step(0.45, nLow));
-      thin = mix(uPaper, uBase, uWashFirst * 1.3);
+      thin = mix(uPaper, tint, uWashFirst * 1.3);
       inShade = 0.0;
     } else if (uKind > 0.5) {
       col = mix(uPaper, uBase, 0.5 + 0.2 * smoothstep(0.5, 3.6, vWorldPos.y));
@@ -173,10 +202,10 @@ export const SURFACE_FRAG = /* glsl */ `
     }
 
     float mottle = 1.0 + (nLow - 0.5) * uGranulation + (nMid - 0.5) * uGranulation * 0.7;
-    vec3 outc = mix(uPaper, thin * mottle * (1.0 - first.y * uPool), first.x);
-    outc = mix(outc, col * mottle * (1.0 - full.y * uPool * 0.8), full.x);
+    vec3 outc = mix(uPaper, thin * mottle * (1.0 - rim1 * uPool), w1);
+    outc = mix(outc, col * mottle * (1.0 - rim2 * uPool * 0.6), full.x);
 
-    // Engraver's hatching in the shade tone. The strokes lie on the surface (the world
+    // Engraver's hatching, kept for the darkest tone. The strokes lie on the surface (the world
     // plane the surface faces), and their spacing snaps to powers of two of a base
     // interval so that they stay about uHatchSpacing pixels apart at any distance: as
     // the camera approaches, every other stroke fades in between its neighbours.
@@ -194,8 +223,15 @@ export const SURFACE_FRAG = /* glsl */ `
     float stroke = smoothstep(0.32, 0.48, vnoise(vec2(along * 1.9 + lineAt * 17.0, lineAt * 53.0)));
     float wpx = uHatchWidth * uScale * (0.7 + 0.6 * nMid);
     float hl = 1.0 - smoothstep(wpx * 0.5 - 0.6, wpx * 0.5 + 0.6, abs(c - lineAt) / fw);
+    // Where the strokes go. Small things are hatched on their shade side, in loose
+    // patches. The big planes are never textured: a wall takes a ragged band of strokes
+    // where it meets the floor, and the deepest tone a few short clusters.
     float patchy = smoothstep(0.36, 0.6, nLow);
-    float hatch = hl * keep * stroke * inShade * full.x * mix(0.12, 1.0, patchy) * uHatchStrength;
+    float contact = (1.0 - an.y) * (1.0 - smoothstep(uHatchContact * 0.3, uHatchContact, vWorldPos.y + (nSide - 0.5) * uHatchContact));
+    float deep = 1.0 - smoothstep(uHatchTone - 0.04, uHatchTone + 0.04, ndl);
+    float cluster = smoothstep(uHatchPatch, uHatchPatch + 0.08, nSide * 0.6 + nLow * 0.4);
+    float spots = mix(mix(0.12, 1.0, patchy), max(contact, deep * cluster * 0.7), uBroad);
+    float hatch = hl * keep * stroke * inShade * full.x * spots * uHatchStrength;
     outc = mix(outc, uInk, hatch);
 
     gl_FragColor = vec4(outc, 0.0);
