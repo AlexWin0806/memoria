@@ -36,10 +36,20 @@ export const SURFACE_VERT = /* glsl */ `
   varying vec3 vWorldNormal;
   varying float vViewZ;
   void main() {
-    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vec4 pos = vec4(position, 1.0);
+    vec3 n = normal;
+    // Instanced meshes (columns, fingers, leaves) carry a matrix per instance. Without
+    // this every instance is drawn untransformed on top of the others at the mesh origin.
+    #ifdef USE_INSTANCING
+      pos = instanceMatrix * pos;
+      mat3 im = mat3(instanceMatrix);
+      // In lieu of a per-instance normal matrix; holds for non-uniform scale, as in three.
+      n = im * (n / vec3(dot(im[0], im[0]), dot(im[1], im[1]), dot(im[2], im[2])));
+    #endif
+    vec4 wp = modelMatrix * pos;
     vec4 vp = viewMatrix * wp;
     vWorldPos = wp.xyz;
-    vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    vWorldNormal = normalize(mat3(modelMatrix) * n);
     vViewZ = -vp.z;
     gl_Position = projectionMatrix * vp;
   }
