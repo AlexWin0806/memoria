@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Deck, RecallResult, ReviewCard } from '@/core/types';
 import { newCard, schedule } from '@/srs/leitner';
+import { cleanReviewState, newTally, STORE_KEYS } from './storage';
 
 /**
  * What one recall walk has recorded so far. Each answer is scheduled from the card as it
@@ -55,7 +56,11 @@ export const useReview = create<ReviewState>()(
           walk: null,
         })),
     }),
-    { name: 'memoria.review.v1' },
+    {
+      name: STORE_KEYS.review,
+      // Cards and a ledger of the wrong shape are dropped when read: see ./storage.
+      merge: (stored, current) => ({ ...current, ...cleanReviewState(stored, newTally()) }),
+    },
   ),
 );
 

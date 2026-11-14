@@ -29,6 +29,8 @@ export function Compare() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
+      // A key typed into the Theme Lab (`?lab`) is the Lab's own; it stops it from reaching the walk itself.
+      if (e.target instanceof Element && e.target.closest('[data-lab]')) return;
       e.stopPropagation();
       if (e.key !== 'Escape') return;
       e.preventDefault();

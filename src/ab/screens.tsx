@@ -321,6 +321,8 @@ export function RecallTest() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !/^[1-8]$/.test(e.key)) return;
+      // A digit typed into a Theme Lab field (`?lab`) is not an answer.
+      if (e.target instanceof Element && e.target.closest('[data-lab]')) return;
       const option = useAb.getState().options[Number(e.key) - 1];
       if (!option) return;
       e.preventDefault();

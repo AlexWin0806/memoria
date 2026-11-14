@@ -1,6 +1,7 @@
 import { useDecks } from './decks';
 import { useReview } from './review';
 import { useSettings } from './settings';
+import { repairStoredKey } from './storage';
 
 /**
  * Keeps a second tab in step: when another tab writes one of the persisted stores, this
@@ -14,7 +15,10 @@ export function syncStoresAcrossTabs(): () => void {
     'memoria.settings.v1': useSettings,
   };
   const onStorage = (e: StorageEvent) => {
-    if (e.key && stores[e.key]) void stores[e.key].persist.rehydrate();
+    if (!e.key || !stores[e.key]) return;
+    // The other tab may run an older build: clean what it wrote before reading it.
+    repairStoredKey(e.key);
+    void stores[e.key].persist.rehydrate();
   };
   window.addEventListener('storage', onStorage);
   return () => window.removeEventListener('storage', onStorage);

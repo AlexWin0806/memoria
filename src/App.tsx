@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { ProtoApp } from './proto/ProtoApp';
 import { PalaceCanvas } from './scene/PalaceCanvas';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { Overlay } from './ui/Overlay';
 
 // Loaded only for `?lab`, so Leva stays out of the main bundle.
@@ -18,13 +19,25 @@ declare global {
  * They talk only through the zustand stores in src/state.
  *   /?proto=1   art-direction test room
  *   /?lab       Theme Lab: tune theme tokens live and export JSON
+ * Everything is inside one error boundary, so a render error shows a page with a way out.
  */
 export function App() {
+  return (
+    <ErrorBoundary>
+      <Shell />
+    </ErrorBoundary>
+  );
+}
+
+function Shell() {
   const q = new URLSearchParams(location.search);
   if (q.has('proto')) return <ProtoApp />;
   return (
     <div className="app">
-      <PalaceCanvas />
+      {/* The scene is a picture of what the overlay already says in words: hidden from assistive technology. */}
+      <div className="app__scene" aria-hidden="true">
+        <PalaceCanvas />
+      </div>
       <Overlay />
       {q.has('lab') && (
         <Suspense fallback={null}>

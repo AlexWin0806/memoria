@@ -516,6 +516,16 @@ textarea.field { resize: vertical; }
   font-size: 24px;
   font-style: italic;
 }
+/* One quiet line: saved data that could not be read was set aside. */
+.title__aside {
+  margin: 14px 0 0;
+  font-size: 16px;
+}
+/* The skip link above the proposal list. */
+.skip {
+  margin: 18px 0 0;
+  font-size: 16px;
+}
 .title .actions { margin-top: 26px; }
 .title .resume { margin: 24px 0 0; }
 .title .resume .actions { margin-top: 12px; }

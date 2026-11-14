@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { FIXTURE_DECKS } from '@/ai/fixtures';
 import type { Deck, MemoryItem } from '@/core/types';
+import { cleanDecksState, newTally, STORE_KEYS } from './storage';
 
 interface DecksState {
   /** Learner-made decks, persisted. Fixture decks are merged in by the selectors below. */
@@ -31,7 +32,11 @@ export const useDecks = create<DecksState>()(
           return { decks: { ...s.decks, [deckId]: { ...deck, items } } };
         }),
     }),
-    { name: 'memoria.decks.v1' },
+    {
+      name: STORE_KEYS.decks,
+      // Whatever is read (at start, or when another tab writes) is cleaned first: see ./storage.
+      merge: (stored, current) => ({ ...current, ...cleanDecksState(stored, newTally()) }),
+    },
   ),
 );
 

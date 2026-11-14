@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { ArchitectPlan } from '@/ai/architect';
 import type { Imago, MemoryItem } from '@/core/types';
+import { cleanDraftState, newTally, STORE_KEYS } from './storage';
 
 /** The parts of the Architect's plan that Compose keeps once the items are being edited. */
 export type DraftPlan = Pick<ArchitectPlan, 'title' | 'kind' | 'steps' | 'source' | 'overflow'>;
@@ -82,26 +83,20 @@ export const useDraft = create<DraftState>()(
       discard: () => set((s) => ({ ...EMPTY, open: s.open })),
     }),
     {
-      name: 'memoria.draft.v1',
+      name: STORE_KEYS.draft,
       storage,
       partialize: ({ text, stage, plan, items, title, drafted, shown, rest, open }) => ({ text, stage, plan, items, title, drafted, shown, rest, open }),
-      // Stored data of the wrong shape is dropped rather than trusted.
+      // Stored data of the wrong shape is dropped rather than trusted: see ./storage.
       merge: (stored, current) => {
-        const d = stored as Partial<DraftData> | null;
-        if (!d || typeof d.text !== 'string' || !Array.isArray(d.items)) return current;
-        const proposal = d.stage === 'proposal' && d.plan != null && d.items.length > 0;
+        const d = cleanDraftState(stored, newTally());
+        if (!d) return current;
+        const proposal = d.stage === 'proposal' && d.plan !== null && d.items.length > 0;
         return {
           ...current,
           ...EMPTY,
-          text: d.text,
+          ...d,
           stage: proposal ? 'proposal' : 'input',
-          plan: d.plan ?? null,
           items: d.plan ? d.items : [],
-          title: typeof d.title === 'string' ? d.title : '',
-          drafted: d.drafted ?? {},
-          shown: d.shown ?? {},
-          rest: Array.isArray(d.rest) ? d.rest : [],
-          open: d.open === true,
         };
       },
     },

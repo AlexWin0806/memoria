@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_THEME_ID } from '@/themes';
+import { cleanSettingsState, newTally, STORE_KEYS } from './storage';
 
 export type RecallInput = 'choice' | 'typed';
 
@@ -29,7 +30,11 @@ export const useSettings = create<SettingsState>()(
       setRecallInput: (recallInput) => set({ recallInput }),
       markFamiliarized: (layoutId) => set((s) => ({ familiarized: { ...s.familiarized, [layoutId]: true } })),
     }),
-    { name: 'memoria.settings.v1' },
+    {
+      name: STORE_KEYS.settings,
+      // A setting of the wrong type falls back to its default when read: see ./storage.
+      merge: (stored, current) => ({ ...current, ...cleanSettingsState(stored, newTally()) }),
+    },
   ),
 );
 

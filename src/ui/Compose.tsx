@@ -101,6 +101,16 @@ export function Compose() {
     io.observe(end);
     return () => io.disconnect();
   }, [stage, readAll]);
+  // The skip link does with one key what a mouse does with the scroll bar: it goes to the end
+  // of the list, which is what unlocks the button, and puts the focus on it.
+  const placeButton = useRef<HTMLButtonElement>(null);
+  const skipToPlace = () => {
+    setReadAll(true);
+    setTimeout(() => {
+      placeButton.current?.scrollIntoView({ block: 'nearest' });
+      placeButton.current?.focus();
+    }, 0);
+  };
 
   const cleaned = useMemo(() => cleanPaste(text), [text]);
   const dropped = droppedNote(cleaned);
@@ -412,7 +422,10 @@ export function Compose() {
               <li key={i}>{line}</li>
             ))}
           </ol>
-          <p>Memoria has one palace today. Learn this set first, then build the next one on the same route.</p>
+          <p data-testid="compose-one-route">
+            Memoria has one palace today. Learn this set until it is solid before you put another on the same route: two half-learned
+            lists on one route interfere.
+          </p>
           <p>
             <button
               type="button"
@@ -447,6 +460,11 @@ export function Compose() {
       </label>
       <input id="deck-title" className="field" value={title} onChange={(e) => draft.patch({ title: e.target.value })} data-testid="compose-title" />
 
+      <p className="skip">
+        <button type="button" className="link" onClick={skipToPlace} data-testid="compose-skip">
+          Skip to the place button
+        </button>
+      </p>
       <ol className="proposal">
         {items.map((it, n) => {
           const locus = layout.loci.find((l) => l.id === it.locusId);
@@ -600,7 +618,7 @@ export function Compose() {
           </p>
         )}
         <div className="actions">
-          <button type="button" className="btn btn--primary" disabled={!readAll} onClick={place} data-testid="compose-place">
+          <button type="button" className="btn btn--primary" ref={placeButton} disabled={!readAll} onClick={place} data-testid="compose-place">
             I have read these: place them in the palace
           </button>
           <button type="button" className="btn btn--quiet" onClick={() => draft.patch({ stage: 'input' })} data-testid="compose-back">
