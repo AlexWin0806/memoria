@@ -138,6 +138,12 @@ caveats there). Every feature must respect these.
    judged on delayed recall.
 8. One route per topic: never load a second, confusable list onto a route that is still
    being learned.
+9. Every new deck starts with a survey walk: one question at each place, answered or marked
+   "I don't know" before moving on, with nothing revealed; the study walk follows in the same
+   session and gives each answer at the place where it was asked.
+10. The state of a place comes only from the learner's answers, never from self-rating; a
+    place is restored by a correct recall after study, and a correct survey answer still gets
+    a scheduled check.
 
 Claims rule: nothing goes into the README, Devpost, pitch or UI copy unless it is in
 `docs/research.md`. Do not claim "first AI memory palace" (others exist), do not say

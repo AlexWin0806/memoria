@@ -23,7 +23,8 @@ to 30 places; past scores and trends. The build that was demo-ready before Part 
 | Evidence for the diagnostic, rooms and links; facts about Mnemorium and memoryOS | Researcher | doing | `docs/research.md`, new Part 2 section |
 | Upload a PDF: its text is read in the browser and becomes the notes | App | doing | `agent/app-pdf`; asked for by Alex at 2:27 PM |
 | Compose: choose the architecture and rooms, edit links, extend a palace | App | todo | After the generator and the Architect land |
-| Links drawn between places; Zen garden and castle kits (confirmed by Alex) | Engine | todo | After the generator lands |
+| Links drawn between places; Zen garden and workshop kits (Alex, 3:00 PM: workshop instead of castle, it suits processes) | Engine | todo | After the generator lands |
+| Process mode: a process deck's walk asks how each step leads on and has the learner reorder the steps (confirmed by Alex) | App, AI | todo | `Deck.focus`; the citric acid cycle is the showcase |
 | QA review 4; pitch, README, Devpost, Doc, media for Part 2 | QA, Scribe | todo | |
 
 ## Status at Sat 12:55 PM ET
