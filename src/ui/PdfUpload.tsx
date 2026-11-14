@@ -48,7 +48,7 @@ function readLine(name: string, pdf: PdfExtract, used: PdfPageText[]): string {
  * `target` is the id of the notes box. A PDF dropped on that element is read too, which is
  * why this component, not Compose, listens there: one mount point, nothing else to wire.
  */
-export function PdfUpload({ target, disabled = false }: { target: string; disabled?: boolean }) {
+export function PdfUpload({ target, disabled = false, headingsBecomeRooms = false }: { target: string; disabled?: boolean; headingsBecomeRooms?: boolean }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const input = useRef<HTMLInputElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -302,7 +302,8 @@ export function PdfUpload({ target, disabled = false }: { target: string; disabl
         </p>
       )}
       <p className="hint" data-testid="pdf-note">
-        PDFs of up to {Math.round(PDF_MAX_BYTES / (1024 * 1024))} MB and {PDF_MAX_PAGES} pages. Your PDF is read in this browser. Only the text
+        {/* True of a generated palace only: the handcrafted house has its own three rooms. */}
+        {headingsBecomeRooms ? 'Headings in your PDF become rooms. ' : ''}PDFs of up to {Math.round(PDF_MAX_BYTES / (1024 * 1024))} MB and {PDF_MAX_PAGES} pages. Your PDF is read in this browser. Only the text
         you keep is sent to the Architect.
       </p>
     </div>

@@ -1,0 +1,155 @@
+/*
+ * Compose: choosing the architecture, the proposal room by room, the links, and the palace
+ * line on the title. Like overlay.css, every colour, face and radius comes from the theme's
+ * CSS variables, and the feel is the same page margin: ruled lines, small caps, no boxes.
+ */
+
+/* ───────── A choice of one: ruled lines, the chosen one marked in the margin ───────── */
+
+.pick {
+  min-width: 0;
+  margin: 26px 0 0;
+  padding: 0;
+  border: 0;
+}
+.pick legend {
+  /* A legend sits on the fieldset's border by default; here it is the first line of the block. */
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 6px;
+}
+.pick > * { clear: both; }
+.pick .body { margin-bottom: 10px; }
+.pick .notice { margin: 0 0 12px; }
+.pick__list { border-top: 1px solid var(--rule); }
+.pick__opt {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 11px 8px 11px 8px;
+  border-bottom: 1px solid var(--rule);
+  /* The rubric rule of a notice, in the margin of the chosen line. */
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+.pick__opt:hover { background: var(--wash); }
+.pick__opt[data-checked='true'] {
+  border-left-color: var(--ui-accent);
+  background: var(--wash);
+}
+.pick:disabled .pick__opt { cursor: default; opacity: 0.6; }
+.pick__opt input {
+  width: 18px;
+  height: 18px;
+  margin: 5px 0 0;
+  accent-color: var(--ui-fg);
+}
+/* The whole line shows where the keyboard is, not only the small button in it. */
+.pick__opt:has(input:focus-visible) {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: -2px;
+}
+.pick__opt input:focus-visible { outline: none; }
+.pick__text { min-width: 0; overflow-wrap: anywhere; }
+.pick__name {
+  display: block;
+  font-family: var(--type-display);
+  font-size: 22px;
+  line-height: 1.25;
+}
+.pick__blurb {
+  display: block;
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+
+/* ───────── The proposal, one section to a room ───────── */
+
+.room { margin-top: 30px; }
+.room__head {
+  padding-top: 14px;
+  /* A room begins with a heavier rule than the hairline between two of its images. */
+  border-top: 1px solid var(--rule-strong);
+}
+.room__head .sub { margin-top: 6px; }
+.room__head .muted { margin: 6px 0 0; font-size: 16px; }
+.room__name,
+.room__title {
+  font-family: var(--type-display);
+  font-size: 26px;
+  line-height: 1.25;
+}
+.room__title { margin: 4px 0 0; overflow-wrap: anywhere; }
+.room__new { color: var(--ui-fg); }
+.room .proposal { margin-top: 14px; }
+.prop__flag {
+  margin: 6px 0 2px;
+  padding-left: 10px;
+  border-left: 3px solid var(--ui-accent);
+  font-size: 16px;
+}
+/* A card whose room is still being drawn is there to read, in a lighter hand, until its image arrives. */
+.prop[data-drawing='true'] .field { border-style: dashed; }
+
+/* Heard, and seen as one quiet line: which rooms the Architect is still drawing. */
+.compose__live { margin: 0 0 12px; }
+.compose__live:empty { display: none; }
+
+/* ───────── How these connect ───────── */
+
+.links {
+  margin-top: 34px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule-strong);
+}
+.links .body { margin: 6px 0 10px; }
+.links__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+}
+.links__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 18px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.links__words { min-width: 0; overflow-wrap: anywhere; }
+.links__said { margin: 10px 0 0; }
+.links__said:empty { display: none; }
+.links__add {
+  min-width: 0;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+}
+.links__add legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+.links__add > * { clear: both; }
+.links__form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+.links__form > * { min-width: 0; }
+.links__add .btn { margin-top: 14px; }
+.links__add .notice { margin: 12px 0 0; }
+
+/* ───────── Title: the style and size of a generated palace, on the line of its status ───────── */
+
+.deck__line { display: block; font-size: 16px; }
+.deck__line .deck__meta,
+.deck__palace { display: inline; }
+
+@media (max-width: 719px) {
+  .links__form { grid-template-columns: 1fr; }
+}

@@ -1,4 +1,4 @@
-import type { Deck, Imago, MemoryItem, PalaceLayoutMeta, RecallResult, ReviewCard, WalkRecord } from '@/core/types';
+import type { Deck, DeckFocus, Imago, ItemLink, MemoryItem, PalaceLayoutMeta, PalaceSpec, RecallResult, ReviewCard, WalkRecord } from '@/core/types';
 import { DOMUS_META } from '@/layouts/domus/meta';
 import { parsePalaceId, specPlaces } from '@/layouts/spec';
 
@@ -50,6 +50,10 @@ const SOURCES = ['architect', 'learner', 'fixture', 'fallback'] as const;
 const STEP_KINDS = ['plan', 'generate', 'check', 'revise', 'fallback'] as const;
 const WALK_KINDS = ['survey', 'recall', 'review'] as const;
 const SURVEY_OUTCOMES = ['known', 'unknown'] as const;
+const LINK_KINDS = ['becomes', 'needs', 'blocks', 'mirrors'] as const;
+const FOCUSES = ['facts', 'process'] as const;
+/** A label on a link is a few words (the Architect's own rule: src/ai/wire.ts). */
+const LINK_LABEL_WORDS = 4;
 
 /** Cleans every element; returns the same array when nothing changed, so a clean value is left untouched. */
 function cleanList<T>(list: unknown[], clean: (v: unknown, t: Tally) => T | null, t: Tally): T[] {
@@ -136,6 +140,38 @@ function onePerPlace(items: MemoryItem[], layoutId: unknown, t: Tally): MemoryIt
   return kept;
 }
 
+/**
+ * One link between two items: both ends are items the caller knows (`known`), never an item
+ * with itself, one of the four kinds. A label that is not a few words is dropped from the link;
+ * anything else wrong drops the link.
+ */
+function cleanLink(v: unknown, known: (id: string) => boolean, t: Tally): ItemLink | null {
+  if (!isObj(v) || !str(v.from) || !str(v.to) || v.from === v.to || !oneOf(v.kind, LINK_KINDS) || !known(v.from) || !known(v.to)) return null;
+  if (v.label === undefined || (str(v.label) && v.label.trim() !== '' && v.label.trim().split(/\s+/).length <= LINK_LABEL_WORDS)) return v as unknown as ItemLink;
+  t.dropped = true;
+  return { from: v.from, to: v.to, kind: v.kind };
+}
+
+/**
+ * The links of a deck or a draft, one for any two items (the first wins). Returns the same
+ * array when every link is kept as it is, so that a clean value is left untouched.
+ */
+export function cleanLinks(list: unknown[], known: (id: string) => boolean, t: Tally): ItemLink[] {
+  const pairs = new Set<string>();
+  return cleanList(
+    list,
+    (v, tally) => {
+      const link = cleanLink(v, known, tally);
+      if (!link) return null;
+      const pair = link.from < link.to ? `${link.from}|${link.to}` : `${link.to}|${link.from}`;
+      if (pairs.has(pair)) return null;
+      pairs.add(pair);
+      return link;
+    },
+    t,
+  );
+}
+
 /** A deck needs an id, a title and at least one well-formed item on a place of its palace; the rest is given a default. */
 function cleanDeck(v: unknown, t: Tally): Deck | null {
   if (!isObj(v) || !str(v.id) || !str(v.title) || !Array.isArray(v.items)) return null;
@@ -143,12 +179,22 @@ function cleanDeck(v: unknown, t: Tally): Deck | null {
   if (items.length === 0) return null;
   // A survey date that is not a number is dropped: the deck then reads as never surveyed.
   const surveyed = v.surveyedAt === undefined || num(v.surveyedAt);
-  if (items === v.items && oneOf(v.kind, ['list', 'pairs'] as const) && str(v.layoutId) && num(v.createdAt) && surveyed) return v as unknown as Deck;
+  // Links are checked against the items that were kept: a link to an item that is gone goes with it.
+  const ids = new Set(items.map((it) => it.id));
+  const links = v.links === undefined ? undefined : Array.isArray(v.links) ? cleanLinks(v.links, (id) => ids.has(id), t) : null;
+  // A focus that is not one of the two is dropped: the deck then reads as facts.
+  const focused = v.focus === undefined || oneOf(v.focus, FOCUSES);
+  if (items === v.items && oneOf(v.kind, ['list', 'pairs'] as const) && str(v.layoutId) && num(v.createdAt) && surveyed && links === v.links && focused) {
+    return v as unknown as Deck;
+  }
   t.changed = true;
-  if (!surveyed) t.dropped = true;
-  const { surveyedAt: _when, ...unsurveyed } = v;
+  if (!surveyed || !focused || links === null) t.dropped = true;
+  const { surveyedAt, links: _links, focus, ...rest } = v;
   return {
-    ...(surveyed ? v : unsurveyed),
+    ...rest,
+    ...(num(surveyedAt) ? { surveyedAt } : {}),
+    ...(links ? { links } : {}),
+    ...(oneOf(focus, FOCUSES) ? { focus } : {}),
     id: v.id,
     title: v.title,
     items,
@@ -272,32 +318,88 @@ export function cleanSettingsState(state: unknown, t: Tally): CleanSettings {
   return out;
 }
 
-export interface CleanDraft {
+/** One Compose draft: a new palace, or the notes being added to a palace that stands. */
+export interface CleanDraftDoc {
   text: string;
   stage: 'input' | 'proposal';
-  plan: { title: string; kind: 'list' | 'pairs'; steps: { label: string; kind: (typeof STEP_KINDS)[number] }[]; source: 'api' | 'local'; overflow: string[] } | null;
+  plan: {
+    title: string;
+    kind: 'list' | 'pairs';
+    steps: { label: string; kind: (typeof STEP_KINDS)[number] }[];
+    source: 'api' | 'local';
+    overflow: string[];
+    /** The generated palace the plan is for; null = the handcrafted house. */
+    spec: PalaceSpec | null;
+    kit: { id: string; chosenBy: 'learner' | 'architect' | 'default'; reason?: string } | null;
+    /** The kit whose places the images were written for. */
+    drawnFor: string | null;
+    focus: DeckFocus;
+    focusReason?: string;
+    lowConfidence: string[];
+    pendingRooms: string[];
+    /** An extension: the layout id of the deck when the new notes were read. */
+    base: string | null;
+  } | null;
   items: MemoryItem[];
   title: string;
   drafted: Record<string, Imago['source']>;
   shown: Record<string, string[]>;
   rest: string[];
-  open: boolean;
+  links: ItemLink[];
+  focus: DeckFocus;
+  /** `auto`, a kit id, or the id of the handcrafted house. */
+  arch: string;
 }
 
-function cleanPlan(v: unknown, t: Tally): CleanDraft['plan'] {
+export interface CleanDraft extends CleanDraftDoc {
+  open: boolean;
+  /** The deck being added to; null = a new palace. */
+  target: string | null;
+  /** The drafts that are not on screen, by target ('' = the new palace). */
+  parked: Record<string, CleanDraftDoc>;
+}
+
+function cleanSpec(v: unknown): PalaceSpec | null {
+  if (!isObj(v) || !str(v.kit) || !Array.isArray(v.rooms) || v.rooms.length === 0) return null;
+  const rooms: PalaceSpec['rooms'] = [];
+  for (const r of v.rooms) {
+    if (!isObj(r) || !str(r.id) || !str(r.name) || !num(r.places)) return null;
+    rooms.push({ id: r.id, name: r.name, places: r.places, ...(r.shape === 'ring' ? { shape: 'ring' as const } : {}) });
+  }
+  return { kit: v.kit, rooms };
+}
+
+const KIT_CHOSEN_BY = ['learner', 'architect', 'default'] as const;
+
+function cleanPlan(v: unknown, t: Tally): CleanDraftDoc['plan'] {
   if (!isObj(v) || !str(v.title) || !Array.isArray(v.steps) || !Array.isArray(v.overflow)) return null;
+  // A plan saved before palaces were generated has none of the palace fields: it is a plan for
+  // the house. A palace that is there but damaged takes the plan with it (its items would have
+  // no places); the pasted text is kept.
+  const spec = cleanSpec(v.spec);
+  if (!spec && v.spec !== undefined && v.spec !== null) return null;
   const steps = cleanList(v.steps, (s) => (isObj(s) && str(s.label) && oneOf(s.kind, STEP_KINDS) ? { label: s.label, kind: s.kind } : null), t);
+  const strings = (list: unknown): string[] => (Array.isArray(list) ? cleanList(list, cleanString, t) : []);
+  const kit = v.kit;
   return {
     title: v.title,
     kind: v.kind === 'pairs' ? 'pairs' : 'list',
     steps,
     source: v.source === 'api' ? 'api' : 'local',
     overflow: cleanList(v.overflow, cleanString, t),
+    spec,
+    kit: spec && isObj(kit) && str(kit.id) && oneOf(kit.chosenBy, KIT_CHOSEN_BY) ? { id: kit.id, chosenBy: kit.chosenBy, ...(str(kit.reason) ? { reason: kit.reason } : {}) } : null,
+    drawnFor: spec && str(v.drawnFor) ? v.drawnFor : null,
+    focus: v.focus === 'process' ? 'process' : 'facts',
+    ...(str(v.focusReason) ? { focusReason: v.focusReason } : {}),
+    lowConfidence: strings(v.lowConfidence),
+    pendingRooms: strings(v.pendingRooms),
+    base: str(v.base) ? v.base : null,
   };
 }
 
-/** The Compose draft. null = nothing usable was stored. */
-export function cleanDraftState(state: unknown, t: Tally): CleanDraft | null {
+/** One draft. null = nothing usable was stored. */
+function cleanDraftDoc(state: unknown, t: Tally): CleanDraftDoc | null {
   if (!isObj(state)) return null;
   const lost = (v: unknown) => {
     if (v !== undefined && v !== null) t.dropped = true;
@@ -307,14 +409,14 @@ export function cleanDraftState(state: unknown, t: Tally): CleanDraft | null {
   if (!plan) lost(state.plan);
   const items = Array.isArray(state.items) ? cleanList(state.items, cleanItem, t) : [];
   if (!Array.isArray(state.items)) lost(state.items);
-  const drafted: CleanDraft['drafted'] = {};
+  const drafted: CleanDraftDoc['drafted'] = {};
   if (isObj(state.drafted)) {
     for (const [id, source] of Object.entries(state.drafted)) {
       if (oneOf(source, SOURCES)) drafted[id] = source;
       else t.dropped = true;
     }
   } else lost(state.drafted);
-  const shown: CleanDraft['shown'] = {};
+  const shown: CleanDraftDoc['shown'] = {};
   if (isObj(state.shown)) {
     for (const [id, scenes] of Object.entries(state.shown)) {
       if (Array.isArray(scenes)) shown[id] = cleanList(scenes, cleanString, t);
@@ -322,6 +424,7 @@ export function cleanDraftState(state: unknown, t: Tally): CleanDraft | null {
     }
   } else lost(state.shown);
   if (!Array.isArray(state.rest)) lost(state.rest);
+  if (!Array.isArray(state.links)) lost(state.links);
   return {
     text: str(state.text) ? state.text : '',
     stage: state.stage === 'proposal' ? 'proposal' : 'input',
@@ -331,8 +434,27 @@ export function cleanDraftState(state: unknown, t: Tally): CleanDraft | null {
     drafted,
     shown,
     rest: Array.isArray(state.rest) ? cleanList(state.rest, cleanString, t) : [],
-    open: state.open === true,
+    // A link of a draft may join a new item to one that already stands in the palace being
+    // added to, so only its shape is checked here; the deck's own check runs once it is saved.
+    links: Array.isArray(state.links) ? cleanLinks(state.links, () => true, t) : [],
+    focus: state.focus === 'process' ? 'process' : 'facts',
+    arch: str(state.arch) && state.arch ? state.arch : 'auto',
   };
+}
+
+/** The Compose drafts: the one on screen and the ones set aside. null = nothing usable was stored. */
+export function cleanDraftState(state: unknown, t: Tally): CleanDraft | null {
+  const doc = cleanDraftDoc(state, t);
+  if (!isObj(state) || !doc) return null;
+  const parked: CleanDraft['parked'] = {};
+  if (isObj(state.parked)) {
+    for (const [target, value] of Object.entries(state.parked)) {
+      const other = cleanDraftDoc(value, t);
+      if (other) parked[target] = other;
+      else t.dropped = true;
+    }
+  } else if (state.parked !== undefined && state.parked !== null) t.dropped = true;
+  return { ...doc, open: state.open === true, target: str(state.target) && state.target ? state.target : null, parked };
 }
 
 const isArmResult = (v: unknown): boolean => isObj(v) && num(v.score) && num(v.ms);
