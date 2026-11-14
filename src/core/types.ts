@@ -64,7 +64,18 @@ export interface Deck {
   links?: ItemLink[];
   /** Epoch ms of the last completed survey walk (the diagnostic). Absent = never surveyed. */
   surveyedAt?: number;
+  /** What the learner is meant to do with this deck. Absent = `facts`. */
+  focus?: DeckFocus;
 }
+
+/**
+ * Different kinds of knowledge are practised differently:
+ *   facts    remember each item at its place (terms, names, dates). The place is the cue.
+ *   process  the items are the steps of a process. The walks also ask how one step leads to
+ *            another (what it becomes, what it needs, what it blocks), using `links`, and
+ *            the learner puts the steps back in order.
+ */
+export type DeckFocus = 'facts' | 'process';
 
 /**
  * A relationship between two items, drawn in the palace between their two places:
@@ -276,6 +287,8 @@ export interface WalkRecord {
   items: { itemId: string; correct: boolean; unknown?: boolean }[];
   /** Total answering time in ms. */
   ms: number;
+  /** Questions about links between items (process decks), scored apart from the items. */
+  relations?: { total: number; correct: number };
 }
 
 // ───────────────────────── Session ─────────────────────────
