@@ -57,7 +57,6 @@ function OverlayRoot() {
         <Title />
       ) : (
         <Panel wide={mode === 'compose'}>
-          {confirmLeave && <LeaveConfirm compose={mode === 'compose'} />}
           {mode === 'compose' && <Compose />}
           {mode === 'familiarize' && <Familiarize />}
           {mode === 'encode' && <Encode />}
@@ -66,6 +65,7 @@ function OverlayRoot() {
           {mode === 'review' && <Review />}
         </Panel>
       )}
+      {confirmLeave && <LeaveConfirm compose={mode === 'compose'} />}
     </div>
   );
 }
@@ -110,21 +110,58 @@ function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
   );
 }
 
+/**
+ * The "leave?" question, as a modal dialog: the scrim takes every click, Tab cycles inside
+ * the box, Escape cancels (the overlay's Escape handler toggles it), and on closing focus
+ * returns to whatever had it before. Walk shortcuts and Judge timers pause meanwhile.
+ */
 function LeaveConfirm({ compose }: { compose: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const buttons = () => Array.from(box.current?.querySelectorAll<HTMLElement>('button') ?? []);
+    buttons()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const all = buttons();
+      if (!all.length) return;
+      const at = all.indexOf(document.activeElement as HTMLElement);
+      e.preventDefault();
+      // From outside the box (at === -1) Tab lands on the first button and Shift+Tab on the last.
+      const next = e.shiftKey ? (at <= 0 ? all.length - 1 : at - 1) : (at + 1) % all.length;
+      all[next].focus();
+    };
+    // Capture phase, so the trap runs before any handler that might act on Tab.
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
+
   return (
-    <div className="confirm" role="alertdialog" aria-labelledby="leave-q" data-testid="leave-confirm">
-      <p id="leave-q">
-        {compose
-          ? 'Leave without placing these? The proposal will be lost; your pasted text is kept.'
-          : 'Leave this walk? It will not be recorded.'}
-      </p>
-      <div className="actions">
-        <button type="button" className="btn" autoFocus onClick={() => useFlow.setState({ confirmLeave: false })}>
-          Stay
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={leave} data-testid="leave-yes">
-          Leave
-        </button>
+    <div className="modal" data-testid="leave-scrim">
+      <div
+        ref={box}
+        className="confirm"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="leave-q"
+        aria-describedby="leave-d"
+        data-testid="leave-confirm"
+      >
+        <h2 id="leave-q" className="question">
+          {compose ? 'Leave without placing these?' : 'Leave this walk?'}
+        </h2>
+        <p id="leave-d">{compose ? 'The proposal will be lost. Your pasted text is kept.' : 'It will not be recorded.'}</p>
+        <div className="actions">
+          <button type="button" className="btn btn--primary" onClick={() => useFlow.setState({ confirmLeave: false })} data-testid="leave-stay">
+            Stay
+          </button>
+          <button type="button" className="btn" onClick={leave} data-testid="leave-yes">
+            Leave
+          </button>
+        </div>
       </div>
     </div>
   );

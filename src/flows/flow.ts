@@ -6,6 +6,8 @@ import { getDeck, useDecks } from '@/state/decks';
 import { dueItemIds, useReview } from '@/state/review';
 import { isLastStop, useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
+import { shuffle } from './answers';
+import { JUDGE_TIMING, type JudgeTiming, type JudgeVariant } from './timing';
 
 /**
  * Overlay-only flow state. The engine never reads this: everything the scene needs is in
@@ -25,6 +27,8 @@ interface FlowState {
   unsavedDraft: boolean;
   /** Text in the Compose box, kept so that leaving the screen does not lose it. */
   draftText: string;
+  /** Which Judge Mode run this is: the default, or the shorter one for a live pitch. */
+  judgeVariant: JudgeVariant;
 }
 
 export const useFlow = create<FlowState>()(() => ({
@@ -34,7 +38,19 @@ export const useFlow = create<FlowState>()(() => ({
   confirmLeave: false,
   unsavedDraft: false,
   draftText: '',
+  judgeVariant: 'default',
 }));
+
+/** `?judge=pitch` selects the pitch variant, for the URL start and for the title button alike. */
+export function judgeVariantFromUrl(): JudgeVariant {
+  if (typeof location === 'undefined') return 'default';
+  return new URLSearchParams(location.search).get('judge') === 'pitch' ? 'pitch' : 'default';
+}
+
+/** Timing of the Judge Mode run in progress. */
+export function judgeTiming(): JudgeTiming {
+  return JUDGE_TIMING[useFlow.getState().judgeVariant];
+}
 
 export function isWalking(mode: string): boolean {
   return mode === 'familiarize' || mode === 'encode' || mode === 'recall';
@@ -64,15 +80,18 @@ function begin(mode: 'familiarize' | 'encode' | 'recall', deck: Deck, stops: num
 
 /**
  * Judge Mode: fixture deck, fast route preview, timed encode, multiple-choice recall.
+ * The pitch variant drops the preview and checks only some of the places afterwards.
  * Every run starts from the pristine fixture, so edits and review progress left by an
  * earlier run are cleared first. Nothing here touches the network.
  */
-export function startJudge(): void {
+export function startJudge(variant: JudgeVariant = judgeVariantFromUrl()): void {
   if (useDecks.getState().decks[JUDGE_DECK_ID]) useDecks.getState().remove(JUDGE_DECK_ID);
   useReview.getState().resetDeck(JUDGE_DECK_ID);
   const deck = getDeck(JUDGE_DECK_ID);
   if (!deck) return;
-  begin('familiarize', deck, stopsFor(deck, getLayout(deck.layoutId)), true);
+  useFlow.setState({ judgeVariant: variant });
+  const preview = JUDGE_TIMING[variant].previewSecondsPerStop > 0;
+  begin(preview ? 'familiarize' : 'encode', deck, stopsFor(deck, getLayout(deck.layoutId)), true);
 }
 
 /** Encode walk, preceded by the familiarization walk the first time a layout is used. */
@@ -126,7 +145,21 @@ export function advanceEncode(): void {
 
 export function beginRecallAfterEncode(): void {
   const s = useSession.getState();
-  if (s.deckId) startRecall(s.deckId, 'all', s.judge);
+  if (!s.deckId) return;
+  const spot = s.judge ? judgeTiming().spotCheckStops : null;
+  if (spot !== null && spot < s.stops.length) startSpotCheck(s.deckId, spot);
+  else startRecall(s.deckId, 'all', s.judge);
+}
+
+/** Judge pitch: recall `count` of the places, picked at random and visited in route order. */
+function startSpotCheck(deckId: string, count: number): void {
+  const deck = getDeck(deckId);
+  if (!deck) return;
+  const all = stopsFor(deck, getLayout(deck.layoutId));
+  const stops = shuffle(all)
+    .slice(0, count)
+    .sort((a, b) => a - b);
+  if (stops.length) begin('recall', deck, stops, true);
 }
 
 /** After the last recall stop: schedule every answered item, then show the results. */

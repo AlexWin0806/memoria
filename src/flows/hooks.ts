@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useSession } from '@/state/session';
 import { prefersReducedMotion } from '@/state/settings';
 import { isWalking, useFlow } from './flow';
+import { ARRIVED_FALLBACK_MS, CLOCK_TICK_MS } from './timing';
 
 /**
  * Safety net: the engine sets `arrived` when the camera settles. If it has not done so
  * within `ms` (engine missing, tab throttled, WebGL lost), the walk carries on anyway.
  */
-export function useArrivedFallback(ms = 6000): void {
+export function useArrivedFallback(ms = ARRIVED_FALLBACK_MS): void {
   const mode = useSession((s) => s.mode);
   const step = useSession((s) => s.step);
   const stops = useSession((s) => s.stops);
@@ -75,8 +76,9 @@ export function useWalkKeys(keys: WalkKeys): void {
 }
 
 /**
- * Runs `onDone` after `seconds` while `active`, restarting whenever `key` changes.
- * Returns progress 0..1 in quarter-second steps for a progress bar.
+ * Runs `onDone` once, `seconds` after becoming `active`, restarting whenever `key` changes.
+ * Returns progress 0..1 for a progress bar. The end is a timer of its own, so the wait is
+ * exactly `seconds` however coarse the progress steps are.
  */
 export function useCountdown(active: boolean, seconds: number, key: string | number, onDone: () => void): number {
   const [progress, setProgress] = useState(0);
@@ -87,18 +89,18 @@ export function useCountdown(active: boolean, seconds: number, key: string | num
   useEffect(() => {
     setProgress(0);
     if (!active) return;
+    const total = seconds * 1000;
     const started = Date.now();
-    const id = setInterval(() => {
-      const p = (Date.now() - started) / (seconds * 1000);
-      if (p >= 1) {
-        clearInterval(id);
-        setProgress(1);
-        done.current();
-      } else {
-        setProgress(p);
-      }
-    }, 250);
-    return () => clearInterval(id);
+    const tick = setInterval(() => setProgress(Math.min(1, (Date.now() - started) / total)), Math.min(250, total / 4));
+    const end = setTimeout(() => {
+      clearInterval(tick);
+      setProgress(1);
+      done.current();
+    }, total);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(end);
+    };
   }, [active, seconds, key]);
   return progress;
 }
@@ -117,7 +119,7 @@ export function useReducedMotion(setting: boolean | null): boolean {
 }
 
 /** A clock that ticks every `everyMs`, for "due in 10 minutes" labels. */
-export function useNow(everyMs = 30_000): number {
+export function useNow(everyMs = CLOCK_TICK_MS): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), everyMs);

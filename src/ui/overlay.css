@@ -336,14 +336,26 @@ textarea.field { resize: vertical; }
 }
 .notice--danger { border-left-color: var(--ui-danger); }
 
+/* The Leave question: a modal over everything. A flat paper scrim, no blur. */
+.modal {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ui-bg) 78%, transparent);
+}
 .confirm {
-  margin-bottom: 26px;
-  padding: 14px 16px 16px;
+  width: min(440px, 100%);
+  padding: 22px 26px 26px;
   border: 1px solid var(--ui-fg);
   border-radius: var(--ui-radius);
+  background: var(--ui-panel);
 }
+.confirm .question { margin-top: 0; }
 .confirm p { margin: 0; }
-.confirm .actions { margin-top: 14px; }
+.confirm .actions { margin-top: 20px; }
 
 /* ───────── Compose ───────── */
 
@@ -387,22 +399,29 @@ textarea.field { resize: vertical; }
 /* ───────── Title: low on the left, straight over the scene ───────── */
 
 .title {
+  /*
+   * A paper wash, not a panel: it only keeps the text legible over whatever the scene shows.
+   * It is the panel colour, because that is the surface --ui-fg is chosen to be read on (in a
+   * theme such as cyanotype --ui-bg is dark, like the text). At 92% the text keeps well over
+   * 4.5:1 even where the scene behind is pure black or pure white.
+   */
+  --title-wash: color-mix(in srgb, var(--ui-panel) 92%, transparent);
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  width: min(680px, 100%);
+  width: min(760px, 100%);
   display: flex;
   flex-direction: column;
   padding: 48px 56px 44px;
   overflow-y: auto;
-  /* A paper wash, not a panel: it only keeps the text legible over whatever the scene shows. */
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--ui-bg) 94%, transparent) 0%,
-    color-mix(in srgb, var(--ui-bg) 86%, transparent) 62%,
-    transparent 100%
-  );
+  /* Full strength under the whole text column (it ends at 56 + 520 px), fading out only beyond it. */
+  background: linear-gradient(90deg, var(--title-wash) 0, var(--title-wash) 600px, transparent 100%);
+}
+.title > * {
+  flex: none;
+  width: 100%;
+  max-width: 520px;
 }
 .title > :first-child { margin-top: auto; }
 .title .label,
@@ -421,7 +440,7 @@ textarea.field { resize: vertical; }
   font-style: italic;
 }
 .title .actions { margin-top: 26px; }
-.title__decks { max-width: 500px; margin-top: 40px; }
+.title__decks { margin-top: 40px; }
 .rowhead {
   display: flex;
   justify-content: space-between;
@@ -450,7 +469,7 @@ textarea.field { resize: vertical; }
   align-items: baseline;
   gap: 16px;
 }
-.settings { max-width: 500px; margin-top: 18px; }
+.settings { margin-top: 18px; }
 .settings summary { display: inline-block; cursor: pointer; }
 .settings summary::after { content: ' +'; }
 .settings[open] summary::after { content: ' −'; }
@@ -461,8 +480,33 @@ textarea.field { resize: vertical; }
   gap: 8px 18px;
   margin-top: 10px;
 }
+/*
+ * Narrow and portrait screens: the text column would span the whole width, so the title
+ * becomes a sheet along the bottom, like the walk panel, and the scene stays visible above it.
+ */
+@media (max-width: 899px) {
+  .title {
+    top: auto;
+    right: 0;
+    width: auto;
+    max-height: 72vh;
+    padding: 26px 32px 28px;
+    border-top: 1px solid var(--rule);
+    background: var(--title-wash);
+  }
+  .title > :first-child { margin-top: 0; }
+  .title__name { font-size: 64px; }
+  .title .actions { margin-top: 20px; }
+  .title__decks { margin-top: 28px; }
+}
 @media (max-width: 719px) {
-  .title { padding: 28px 22px 26px; }
-  .title__name { font-size: 60px; }
-  .title__pitch { font-size: 20px; }
+  .title { padding: 20px 20px 24px; }
+  .title__name { font-size: 52px; }
+  .title__pitch { margin-top: 8px; font-size: 20px; }
+  .pair { grid-template-columns: 1fr; gap: 0; }
+  .draft,
+  .place > .link,
+  .place > .muted { margin-left: 0; }
+  .term { font-size: 36px; }
+  .score { font-size: 56px; }
 }
