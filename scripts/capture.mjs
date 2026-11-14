@@ -3,11 +3,14 @@
  * Deterministic, frame-by-frame capture: smooth footage of the app from a machine that
  * renders a few frames a second (headless Chromium, WebGL in software).
  *
- *   npm run build
- *   node scripts/capture.mjs --scenario pitch  --width 960 --height 600 --fps 15 --mp4 docs/media/demo-pitch.mp4
- *   node scripts/capture.mjs --scenario recall --width 720 --height 450 --zoom 0.75 --fps 12 --gif docs/media/recall.gif --mp4 docs/media/recall.mp4
+ * The files in docs/media/ were made with (run from the repository root, after `npm run build`):
+ *   node scripts/capture.mjs --scenario pitch  --width 960 --height 600 --zoom 0.75 --fps 15 --mp4 docs/media/demo-pitch.mp4
+ *   node scripts/capture.mjs --scenario recall --width 720 --height 450 --zoom 0.75 --fps 12 --gif docs/media/recall.gif --gif-colors 160 --mp4 docs/media/recall.mp4
  *   node scripts/capture.mjs --scenario encode --width 720 --height 450 --zoom 0.75 --fps 12 --gif docs/media/encode.gif
- *   node scripts/capture.mjs --scenario stills-walk --width 1440 --height 900 --fps 6 --stills docs/media
+ *   node scripts/capture.mjs --scenario stills-walk    --width 1440 --height 900 --fps 6     # ui-encode, ui-recall, ui-results
+ *   node scripts/capture.mjs --scenario stills-compose --width 1440 --height 900 --fps 6     # ui-compose
+ *   node scripts/capture.mjs --scenario stills-compare --width 1440 --height 900 --fps 6     # ui-compare
+ * each with its own `--out <a scratch directory outside the repo>`.
  *
  * How it works. The page never sees real time. Playwright's fake clock (`page.clock`, 1.45 or
  * later) is installed and paused before navigation, so `requestAnimationFrame`,
@@ -17,8 +20,10 @@
  * lets React commit, moves CSS transitions on by the same amount, and takes a screenshot.
  * Camera glides, timed auto-advance and the flourish therefore play at the right speed however
  * long a frame takes to draw. `Math.random` is seeded (`--seed`), so a run repeats exactly:
- * re-running skips the frames that are already on disk, which is how an interrupted render
- * is resumed.
+ * re-running the same command skips the frames that are already on disk and draws only the
+ * missing ones, which is how an interrupted render is resumed. (Checked on greybox: frames
+ * deleted from the middle of a clip came back byte for byte.) Progress is printed every 15 s;
+ * `capture.json` in --out lists the frame range and the time of each step of the scenario.
  *
  * Scenarios drive the real interface by test id, the way a judge would, with pauses in
  * virtual time:
@@ -28,8 +33,10 @@
  *                  the question, the right answer, the reveal and flourish, the glide out
  *   encode         the same run, recording only one encode place: glide in, image, panel
  *   stills-walk    PNGs of a learner-paced walk: ui-encode, ui-recall, ui-results
- *   stills-compose PNG of the Architect's proposals for a pasted list: ui-compose
- *   stills-compare PNG of the comparison test's results with two participants: ui-compare
+ *   stills-compose PNG of the Architect's proposals for a pasted list: ui-compose (with no
+ *                  Architect to reach, as under `vite preview`, these are the offline planner's)
+ *   stills-compare PNG of the comparison test's results with two participants: ui-compare.
+ *                  The script answers for both, so the scores in it are not data from people.
  *
  * Options:
  *   --scenario <name>     see above (default pitch)
@@ -216,6 +223,9 @@ const freePort = () =>
     });
   });
 
+/** Thrown by a step past `--to`: the normal end of a run with an explicit window. */
+class PastWindow extends Error {}
+
 class Recorder {
   constructor(page) {
     this.page = page;
@@ -233,9 +243,8 @@ class Recorder {
     this.marks = [];
     this.ratios = new Set();
     this.stats = { captured: 0, capturedMs: 0, kept: 0, passed: 0, passedMs: 0 };
-    const existing = existsSync(outDir) ? readdirSync(outDir).filter((f) => /^f\d{6}\.jpg$/.test(f)).map((f) => Number(f.slice(1, 7))) : [];
-    /** Resume: frames up to here may already be on disk, so the canvas stays small until just before. */
-    this.resumeFrame = existing.length ? Math.max(...existing) : -1;
+    /** Resume: frames already on disk. The canvas stays small while every frame just ahead is among them. */
+    this.existing = new Set(existsSync(outDir) ? readdirSync(outDir).filter((f) => /^f\d{6}\.jpg$/.test(f)).map((f) => Number(f.slice(1, 7))) : []);
     this.startedAt = Date.now();
     this.lastPrint = 0;
   }
@@ -269,14 +278,17 @@ class Recorder {
 
   /** Whether the canvas has to be at full size for this frame. */
   needsFull(frame) {
+    const soon = from !== null || to !== null ? frame / fps >= (from ?? 0) - LEAD_SECONDS && frame / fps < (to ?? Infinity) : this.armed || this.recording;
+    if (!soon) return false;
     const lead = Math.round(LEAD_SECONDS * fps);
-    if (frame < this.resumeFrame - lead) return false;
-    if (from !== null || to !== null) return frame / fps >= (from ?? 0) - LEAD_SECONDS && frame / fps < (to ?? Infinity);
-    return this.armed || this.recording;
+    for (let f = frame; f <= frame + lead; f++) if (!this.existing.has(f)) return true;
+    return false;
   }
 
   /** One frame: move the clock, let the page draw, keep the picture if this frame is recorded. */
   async step() {
+    // With --to, nothing after the window is of interest: end the scenario there.
+    if (to !== null && this.frame / fps >= to) throw new PastWindow();
     const began = Date.now();
     this.frame += 1;
     await this.setSmall(!this.needsFull(this.frame));
@@ -538,9 +550,9 @@ const SCENARIOS = {
       }
       for (let i = 1; i <= 8; i++) {
         await rec.until((s) => 'encode' in s.ids && (s.ids['walk-label'] ?? '').startsWith(`Place ${i} of 8`), { what: `encode place ${i}` });
-        if (i === 2) rec.arm();
         await rec.until((s) => 'encode-term' in s.ids, { what: `the image at place ${i}` });
         if (i === 2) {
+          rec.arm();
           await rec.wait(2.5);
           await rec.still('ui-encode');
           rec.off();
@@ -554,11 +566,11 @@ const SCENARIOS = {
       await rec.click('recall-start');
       for (let i = 1; i <= 8; i++) {
         await rec.until((s) => 'recall' in s.ids && (s.ids['walk-label'] ?? '').startsWith(`Place ${i} of 8`), { what: `recall place ${i}` });
-        if (i === 3) rec.arm();
         await rec.until((s) => 'choice' in s.ids, { what: `the question at place ${i}` });
         const { place, options } = await question(page);
         const answer = termAt[place];
         if (i === 3) {
+          rec.arm();
           await rec.wait(2.5);
           await rec.still('ui-recall');
           rec.off();
@@ -592,7 +604,16 @@ const SCENARIOS = {
       await rec.click('compose-design');
       rec.arm();
       await rec.until((s) => 'proposal' in s.ids, { timeout: 90, what: "the Architect's proposals" });
-      await rec.wait(3);
+      await rec.wait(1.5);
+      // Scroll the panel, as a reader would, until the first proposals fill it.
+      const { x, y, down } = await page.evaluate(() => {
+        const row = document.querySelector('[data-testid=proposal-row]').getBoundingClientRect();
+        const head = document.querySelector('[data-testid=compose-title]')?.getBoundingClientRect() ?? row;
+        return { x: row.left + row.width / 2, y: row.top, down: Math.min(row.top, head.top) - 96 };
+      });
+      await page.mouse.move(x, Math.min(y, height / zoom - 200));
+      await page.mouse.wheel(0, Math.max(0, down));
+      await rec.wait(1.5);
       await rec.still('ui-compose');
     },
   },
@@ -754,14 +775,14 @@ try {
   rec.base = base;
   const query = [scenario.query, theme ? `theme=${theme}` : ''].filter(Boolean).join('&');
   console.log(`${scenarioName}: ${base}/?${query}  ${width}x${height} px at zoom ${zoom}, ${fps} fps, frames in ${outDir}`);
-  if (rec.resumeFrame >= 0) console.log(`  resuming: frames up to ${rec.resumeFrame} may already be on disk`);
+  if (rec.existing.size) console.log(`  resuming: ${rec.existing.size} frames are already on disk and will be kept`);
   await page.goto(`${base}/?${query}`, { waitUntil: 'load' });
   await page.evaluate(() => document.fonts.ready);
 
   // Loading: step the clock until the scene has drawn, small unless the first frame is recorded.
   const frameMs = Math.round(1000 / fps);
   const pinned = zoom <= 0.75 || fps >= MONITOR_SLOW_FPS;
-  const startSmall = !pinned || !scenario.recordAll || rec.resumeFrame > 0;
+  const startSmall = !pinned || !scenario.recordAll || rec.existing.has(1);
   for (let i = 0; !rec.s.ready; i++) {
     if (i > 2000) throw new Error('the scene never became ready');
     await rec.clock(frameMs);
@@ -788,7 +809,11 @@ try {
 
   rec.baseMs = rec.clockMs;
   if (scenario.recordAll) rec.on();
-  await scenario.run(rec);
+  try {
+    await scenario.run(rec);
+  } catch (e) {
+    if (!(e instanceof PastWindow)) throw e;
+  }
   rec.off();
   rec.progress('done');
 
