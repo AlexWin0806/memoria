@@ -32,7 +32,7 @@ function Structure({ plan }: { plan: PalacePlan }) {
     <group>
       {rooms.map((room) => (
         <group key={room.spec.id} position={room.origin}>
-          <kit.Room index={room.index} shape={room.shape} plan={room.plan} mirrored={room.mirrored} open={room.index < rooms.length - 1} />
+          <kit.Room index={room.index} shape={room.shape} plan={room.plan} plots={room.plots} mirrored={room.mirrored} open={room.index < rooms.length - 1} />
           {/* over the doorway into this room, on the face seen by whoever is about to walk in */}
           <Inscription
             text={room.spec.name}
@@ -56,6 +56,7 @@ const FEATURE_REACH = 2;
 
 function Places({ plan }: { plan: PalacePlan }) {
   const { rooms } = plan;
+  const Backdrop = plan.kit.Backdrop;
   const groups = useRef<(Group | null)[]>([]);
   const byRoom = useMemo(() => rooms.map((room) => plan.places.filter((p) => p.roomIndex === room.index)), [plan, rooms]);
   useFrame(({ camera }) => {
@@ -83,6 +84,12 @@ function Places({ plan }: { plan: PalacePlan }) {
                   <place.feature.Component accent={place.accent} />
                 </group>
               </LocusFeature>
+              {/* what a wall feature hangs on, in a kit without walls: architecture, so outside the feature */}
+              {Backdrop && place.feature.mount === 'wall' && (
+                <group position={place.position} rotation={[0, place.yaw, 0]}>
+                  <Backdrop />
+                </group>
+              )}
               {/* the counting marker is the route's, not the feature's: it stands whatever state the place is in */}
               {place.hand && <GoldenHand position={place.hand.position} facing={place.hand.facing} stem={0.86} />}
             </group>

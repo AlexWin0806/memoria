@@ -61,6 +61,21 @@ export interface RoomPlan {
   signHalfWidth: number;
 }
 
+/**
+ * One of the five plots of a room, in the room's own frame (mirroring applied): for a kit
+ * that wants to build by them (a lamp over each, a bay of fence behind each, a conveyor
+ * from one to the next). Whether a plot is built on is not told: a room must look the same
+ * when it fills up.
+ */
+export interface RoomPlot {
+  /** The point on the wall line the place stands before: a wall feature hangs here. */
+  wall: [x: number, z: number];
+  /** Unit vector from there into the room. */
+  normal: [x: number, z: number];
+  /** The middle of the plot on the floor: a free-standing feature stands about here. */
+  ground: [x: number, z: number];
+}
+
 export interface KitRoomProps {
   /**
    * Index of the room on the route, from 0. With `shape` it is the only thing the look of a
@@ -75,6 +90,8 @@ export interface KitRoomProps {
    */
   shape: 'hall' | 'ring';
   plan: RoomPlan;
+  /** The room's five plots, in route order. */
+  plots: readonly RoomPlot[];
   /**
    * True for every second hall (never for a ring): its places are mirrored left to right (the
    * first one stands by the right-hand wall). A kit that lights a room from one side may use
@@ -90,7 +107,7 @@ export interface KitRoomProps {
 }
 
 /**
- * An architectural style for generated palaces: a Gothic library, a Zen garden, a castle.
+ * An architectural style for generated palaces: a Gothic library, a Zen garden, a workshop.
  * Registered in src/layouts/kits/index.ts and listed for the UI and the Architect in
  * src/layouts/kits/list.ts.
  *
@@ -134,9 +151,28 @@ export interface KitDef {
    * no accent pigment: colour belongs to the places.
    *
    * Keep clear: the doorways; 5.2 m of height everywhere (a memory image floats up to 4.8 m);
-   * the name panel over each doorway (`RoomPlan.signBottom`..`signTop`); the side walls from
-   * the floor to 4 m within 1.6 m of each place (a wall feature hangs there), and the far wall
-   * either side of the doorway likewise. Few draw calls: merge what repeats (`Repeated`).
+   * the name panel over each doorway (`RoomPlan.signBottom`..`signTop`); the wall within 1.6 m
+   * of each plot (`plots[i].wall`), from the floor to 4 m (a wall feature hangs there); the
+   * floor within 1.3 m of each plot's `ground` (the generator sets a line into it), and the
+   * middle 3 m of the room from doorway to doorway (the camera walks there).
+   *
+   * Sight lines: one room is seen from another only through the doorways. The generator
+   * relies on it (it does not draw the features of rooms more than two rooms from the
+   * camera), so in every kit, open-air ones included, the walls across the route (the far
+   * wall of each room and the front wall) span the full width and stand at least 5 m high.
+   * Side walls may be as low as a fence; a room that can be seen out of also draws what
+   * lies beyond it (ground, hedges, hills). The sky is the style's.
+   *
+   * Few draw calls: weld what shares a slot into one mesh (`Welded` in ./build.tsx).
    */
   Room: FC<KitRoomProps>;
+  /**
+   * For a kit whose rooms have no wall behind the plots (a garden with low fences): what a
+   * wall feature hangs on. The generator draws one behind every feature with `mount: 'wall'`
+   * (the kit-neutral props include some), in the feature's own frame: its face is the plane
+   * z = 0, it stands on y = 0 and lies behind that plane, at least 2.4 m wide and 3.4 m high
+   * (a panel of garden wall, a screen). Neutral <Surface slot> materials only. A kit with
+   * walls leaves this out.
+   */
+  Backdrop?: FC;
 }

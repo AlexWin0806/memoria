@@ -1,7 +1,7 @@
 import type { AccentKey, CameraPose, Locus, PalaceLayoutMeta, PalaceRoomSpec, PalaceSpec, Room, Vec3 } from '@/core/types';
 import { getKit } from '@/layouts/kits';
 import { KIT_LIST } from '@/layouts/kits/list';
-import type { FeatureDef, KitDef, RoomPlan } from '@/layouts/kits/types';
+import type { FeatureDef, KitDef, RoomPlan, RoomPlot } from '@/layouts/kits/types';
 import { PROPS } from '@/layouts/props';
 import { ROOM_CAPACITY, normalizeSpec, palaceLayoutId, placeId } from '@/layouts/spec';
 
@@ -141,6 +141,8 @@ export interface RoomSite {
   /** World position of the room's origin (the threshold of its entrance doorway). */
   origin: Vec3;
   mirrored: boolean;
+  /** The five plots in the room's own frame, mirroring applied: what the kit's Room is given. */
+  plots: RoomPlot[];
 }
 
 /** One built place: what stands there and where, in world coordinates. */
@@ -251,11 +253,17 @@ export function roomSites(spec: PalaceSpec, kit: KitDef): RoomSite[] {
   return spec.rooms.map((room, index) => {
     // A kit that draws no ring room gets a hall: the plots of a ring would stand in mid-air in one.
     const shape = room.shape === 'ring' && kit.rings ? 'ring' : 'hall';
-    const { plan } = SHAPES[shape];
+    const { plan, slots } = SHAPES[shape];
     const origin: Vec3 = [0, 0, round(z)];
     z -= plan.length + plan.partition;
     // Every second hall is mirrored. A ring never is: its route always turns the same way.
-    return { index, spec: room, shape, plan, origin, mirrored: shape === 'hall' && index % 2 === 1 };
+    const mirrored = shape === 'hall' && index % 2 === 1;
+    const m = mirrored ? -1 : 1;
+    const plots = slots.map((slot): RoomPlot => {
+      const [gx, gz] = slotGround(slot);
+      return { wall: [round(m * slot.x), round(slot.z)], normal: [round(m * slot.nx), round(slot.nz)], ground: [round(m * gx), round(gz)] };
+    });
+    return { index, spec: room, shape, plan, origin, mirrored, plots };
   });
 }
 
@@ -276,12 +284,8 @@ export function planLayout(input: PalaceSpec): PalacePlan {
   const via: Record<string, Vec3[]> = {};
 
   for (const room of rooms) {
-    const m = room.mirrored ? -1 : 1;
     const { slots } = SHAPES[room.shape];
-    for (const slot of slots) {
-      const [x, z] = slotGround(slot);
-      plots.push(v3(room.origin[0] + m * x, 0, room.origin[2] + z));
-    }
+    for (const plot of room.plots) plots.push(v3(room.origin[0] + plot.ground[0], 0, room.origin[2] + plot.ground[1]));
     const count = Math.min(room.spec.places, ROOM_CAPACITY, slots.length);
     for (let slot = 0; slot < count; slot++) {
       const n = room.index * ROOM_CAPACITY + slot;

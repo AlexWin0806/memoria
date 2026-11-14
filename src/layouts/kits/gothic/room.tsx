@@ -244,7 +244,7 @@ function buildRing(props: KitRoomProps): Parts {
 }
 
 export function GothicRoom(props: KitRoomProps) {
-  const { index, shape, plan, mirrored, open } = props;
-  const make = useCallback(() => (shape === 'ring' ? buildRing : buildHall)({ index, shape, plan, mirrored, open }), [index, shape, plan, mirrored, open]);
+  const { index, shape, plan, plots, mirrored, open } = props;
+  const make = useCallback(() => (shape === 'ring' ? buildRing : buildHall)({ index, shape, plan, plots, mirrored, open }), [index, shape, plan, plots, mirrored, open]);
   return <Welded build={make} />;
 }
