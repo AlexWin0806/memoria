@@ -60,6 +60,7 @@
  *   --encode-only         no capture: encode the frames a previous run left in --out
  *   --url <base>          use a server that is already running instead of `vite preview`
  *   --no-ff               never shrink the canvas while nothing is recorded (slower)
+ *   --no-pointer          footage only: do not draw the mouse pointer (clicks then come half a second sooner)
  *
  * On a laptop with a real GPU: `npm i -D playwright && npx playwright install chromium`, then
  * the same commands. A frame then takes tens of milliseconds instead of most of a second, so
@@ -78,7 +79,10 @@
  *      before the next recorded frame, long enough for the view inset to ease back.
  *
  * CSS transitions and animations are paused and stepped with the virtual clock too (the
- * progress bars, the loading rule). The mouse pointer is not drawn by headless Chromium.
+ * progress bars, the loading rule). Headless Chromium draws no mouse pointer, so in footage
+ * the script adds one (a small arrow that follows the real pointer events, outside the app's
+ * root) and moves the real pointer to each button over half a second before it clicks: a
+ * hover or a press is then seen to come from somewhere. Stills have no pointer.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -118,6 +122,10 @@ const seed = num('seed', 7);
 const quality = num('quality', 90);
 const wrongAt = num('wrong', 3);
 const fastForward = !args.includes('--no-ff');
+/** Footage shows a pointer; stills do not. */
+const drawPointer = ['pitch', 'recall', 'encode'].includes(scenarioName) && !args.includes('--no-pointer');
+/** How long the drawn pointer takes to reach what it clicks. */
+const POINTER_SECONDS = 0.5;
 
 /** Virtual seconds at full size before a recorded frame: the view inset eases back in under one. */
 const LEAD_SECONDS = 2;
@@ -142,7 +150,22 @@ if (Object.keys(termAt).length !== 8) {
 const JUDGE_DECK_TITLE = 'The eight carpal bones';
 
 /** Runs in the page before anything else: seeded randomness, and the per-frame hook. */
-function pageSide({ seed, thumb }) {
+function pageSide({ seed, thumb, pointer }) {
+  if (pointer) {
+    // Headless Chromium draws no mouse pointer, so a hover or a click would come from nowhere.
+    // This arrow follows the real pointer events; it sits outside the app's root and takes no events.
+    const draw = () => {
+      const el = document.createElement('div');
+      el.setAttribute('aria-hidden', 'true');
+      el.style.cssText = 'position:fixed;left:0;top:0;width:24px;height:24px;z-index:2147483647;pointer-events:none;transform:translate(-100px,-100px)';
+      el.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path d="M4 2.5v16l4.3-3.7 2.8 6.4 2.6-1.1-2.8-6.3h5.6z" fill="#221b14" stroke="#f7efda" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+      document.documentElement.appendChild(el);
+      window.addEventListener('mousemove', (e) => (el.style.transform = `translate(${e.clientX - 4}px,${e.clientY - 2.5}px)`), true);
+    };
+    if (document.body) draw();
+    else document.addEventListener('DOMContentLoaded', draw);
+  }
   let a = seed >>> 0;
   Math.random = () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -373,8 +396,38 @@ class Recorder {
     this.clipRange = [first, last];
   }
 
+  /** Where the pointer rests before its first move: over the picture, clear of the panel. */
+  async parkPointer() {
+    this.pointer = { x: Math.round((width / zoom) * 0.45), y: Math.round((height / zoom) * 0.7) };
+    await this.page.mouse.move(this.pointer.x, this.pointer.y);
+  }
+
+  /** Move the drawn pointer to a point (CSS pixels) over half a virtual second, eased, as a hand would. */
+  async pointerTo(x, y) {
+    if (!drawPointer || !this.pointer) return;
+    const from = this.pointer;
+    const frames = Math.max(2, Math.round(POINTER_SECONDS * fps));
+    for (let i = 1; i <= frames; i++) {
+      const k = i / frames;
+      const eased = k * k * (3 - 2 * k);
+      await this.page.mouse.move(from.x + (x - from.x) * eased, from.y + (y - from.y) * eased);
+      await this.step();
+    }
+    this.pointer = { x, y };
+  }
+
+  /** Click the element with this test id. With the pointer drawn, it travels there first and rests a frame before pressing. */
   async click(id, nth = 0) {
-    await this.page.getByTestId(id).nth(nth).click();
+    const target = this.page.getByTestId(id).nth(nth);
+    if (drawPointer) {
+      await target.scrollIntoViewIfNeeded();
+      const box = await target.boundingBox();
+      if (box) {
+        await this.pointerTo(box.x + box.width / 2, box.y + box.height / 2);
+        await this.step();
+      }
+    }
+    await target.click();
     this.s = await this.page.evaluate(() => window.__capture.tick(0));
   }
 
@@ -404,9 +457,13 @@ const question = (page) =>
  */
 async function pitchRun(rec, hooks = {}) {
   const call = async (name, ...rest) => (hooks[name] ? await hooks[name](...rest) : undefined);
-  await rec.wait(2.5); // the title, waiting for its button
+  // The waits below are a judge's reading time less the half second the pointer takes to travel.
+  await rec.wait(2); // the title, waiting for its button
   rec.mark('button pressed');
   await rec.click('title-judge');
+  // The hand leaves the picture and waits in the panel's margin, where the next buttons will be.
+  await rec.wait(0.4);
+  await rec.pointerTo(width / zoom - 150, (height / zoom) * 0.76);
 
   for (let i = 1; i <= 8; i++) {
     await rec.until((s) => 'encode' in s.ids && (s.ids['walk-label'] ?? '').startsWith(`Place ${i} of 8`), { what: `encode place ${i}` });
@@ -418,7 +475,7 @@ async function pitchRun(rec, hooks = {}) {
   await rec.until((s) => 'interstitial' in s.ids, { what: 'the spot-check screen' });
   rec.mark('spot-check screen');
   if ((await call('interstitial')) === 'stop') return;
-  await rec.wait(3.5); // its eighteen words
+  await rec.wait(3); // its eighteen words
   await rec.click('recall-start');
 
   for (let i = 1; i <= 4; i++) {
@@ -430,7 +487,7 @@ async function pitchRun(rec, hooks = {}) {
     if (!options.includes(answer)) throw new Error(`spot check ${i} at ${place}: ${options} lack ${answer}`);
     rec.mark(`question ${i}: ${place}`);
     if ((await call('spotQuestion', i)) === 'stop') return;
-    await rec.wait(i === 1 ? 1.8 : 1.4); // read four options, pick one
+    await rec.wait(i === 1 ? 1.3 : 0.9); // read four options, pick one
     const right = i !== wrongAt;
     await rec.click('choice', right ? options.indexOf(answer) : options.findIndex((o) => o !== answer));
     rec.mark(`answer ${i}: ${right ? 'right' : 'wrong'}`);
@@ -451,7 +508,10 @@ const SCENARIOS = {
     async run(rec) {
       await pitchRun(rec, {
         async results() {
-          await rec.wait(8.5); // the score, then the tour of the palace behind it
+          await rec.wait(1.5); // the score
+          // The hand lets go of the answers: off the panel's text, down over the floor.
+          await rec.pointerTo((width / zoom) * 0.5, (height / zoom) * 0.88);
+          await rec.wait(6.5); // the tour of the palace behind the score
         },
       });
     },
@@ -765,7 +825,7 @@ try {
   const page = await context.newPage();
   page.setDefaultTimeout(120000);
   page.on('pageerror', (e) => console.error(`  page error: ${e}`));
-  await context.addInitScript(pageSide, { seed, thumb: THUMB });
+  await context.addInitScript(pageSide, { seed, thumb: THUMB, pointer: drawPointer });
   // A fixed moment, so that dates on the page are the same in every run. Paused: only the script moves it.
   const epoch = new Date('2026-11-15T14:30:00Z');
   await page.clock.install({ time: epoch });
@@ -807,6 +867,7 @@ try {
   }
   console.log(`  ready after ${Math.round((Date.now() - rec.startedAt) / 1000)} s; canvas ratio ${rec.s.ratio}`);
 
+  if (drawPointer) await rec.parkPointer();
   rec.baseMs = rec.clockMs;
   if (scenario.recordAll) rec.on();
   try {
