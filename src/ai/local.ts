@@ -3,7 +3,7 @@ import type { ArchitectPlan, ArchitectRequest, ArchitectStep, RegenerateRequest 
 import { FIXTURE_DECKS } from './fixtures';
 import { wordCount } from './glyphs';
 import { lookup, soundAlikes, tokens, withArticle, type LexEntry, type LinkKind, type PictureMatch } from './lexicon';
-import { deriveTerm, extractFacts, hashNumber, type ParsedFact } from './parse';
+import { deriveTerm, extractFacts, hashNumber, singularCounts, type ParsedFact } from './parse';
 
 /**
  * The local planner: a deterministic, offline stand-in for the Palace Architect.
@@ -18,31 +18,44 @@ export const newId = (): string => Math.random().toString(36).slice(2, 10);
 
 interface Template {
   action: ImagoAction;
-  /** The picture acting on the place. */
+  /** The picture acting on the place. The picture is always one thing, so verbs are singular. */
   plain: (picture: string, place: string) => string;
-  /** The same, with the word to remember said or written in the scene. */
+  /** The same, with the word to remember in the scene. Each template brings the word in differently. */
   carry: (picture: string, place: string, word: string) => string;
+  /** Second glyph for a scene that carries the word: what happens to the word, not a speech bubble. */
+  badge: string;
+  /** How the word is in the scene, for the end of the `reason`. */
+  how: string;
 }
 
-/** One scene per ImagoAction, so stepping through them makes neighbours move differently. */
+/**
+ * One scene per ImagoAction, so stepping through them makes neighbours move differently.
+ * When the scene has to carry the word (vocabulary: the picture is the meaning), each
+ * template does it another way, so a deck of ten words is not ten pictures saying a word:
+ * written on the floor, the noise of landing, painted on, given back by the echo, on a
+ * label, ordered by name, announced.
+ */
 const TEMPLATES: readonly Template[] = [
-  { action: 'orbit', plain: (p, l) => `${p} races in circles around ${l}.`, carry: (p, l, w) => `${p} circles ${l}, chanting "${w}".` },
-  { action: 'hop', plain: (p, l) => `${p} hops up and down on ${l}, thud, thud.`, carry: (p, l, w) => `${p} hops on ${l}, shouting "${w}" at every landing.` },
-  { action: 'swing', plain: (p, l) => `${p} swings from ${l}, back and forth.`, carry: (p, l, w) => `${p} swings from ${l} with "${w}" painted on it.` },
-  { action: 'shake', plain: (p, l) => `${p} rattles ${l} until the dust flies.`, carry: (p, l, w) => `${p} rattles ${l} until the echo answers "${w}".` },
-  { action: 'spin', plain: (p, l) => `${p} spins like a top on ${l}.`, carry: (p, l, w) => `${p} spins on ${l}, humming "${w}".` },
-  { action: 'pulse', plain: (p, l) => `${p} swells like a balloon beside ${l}, then shrinks.`, carry: (p, l, w) => `${p} swells beside ${l} and booms "${w}".` },
-  { action: 'bob', plain: (p, l) => `${p} floats just above ${l}, bobbing as if on water.`, carry: (p, l, w) => `${p} floats above ${l}, whispering "${w}".` },
+  { action: 'orbit', badge: '✏️', how: 'it writes the word on the floor', plain: (p, l) => `${p} races in circles around ${l}.`, carry: (p, l, w) => `${p} circles ${l}, scratching "${w}" into the floor.` },
+  { action: 'hop', badge: '💥', how: 'the word is the noise it lands with', plain: (p, l) => `${p} hops up and down on ${l}, thud, thud.`, carry: (p, l, w) => `${p} drops onto ${l} and lands with a loud "${w}".` },
+  { action: 'swing', badge: '🎨', how: 'the word is painted on it', plain: (p, l) => `${p} swings from ${l}, back and forth.`, carry: (p, l, w) => `${p} swings from ${l} with "${w}" painted on it.` },
+  { action: 'shake', badge: '🔊', how: 'the echo gives the word back', plain: (p, l) => `${p} rattles ${l} until the dust flies.`, carry: (p, l, w) => `${p} rattles ${l} until the echo answers "${w}".` },
+  { action: 'spin', badge: '🏷️', how: 'the word is on its label', plain: (p, l) => `${p} spins like a top on ${l}.`, carry: (p, l, w) => `${p} spins on ${l}; a label reading "${w}" swings from it.` },
+  { action: 'pulse', badge: '🛎️', how: 'it is ordered by its word', plain: (p, l) => `${p} swells like a balloon beside ${l}, then shrinks.`, carry: (p, l, w) => `A waiter by ${l} calls for "${w}", and ${p} swells with pride.` },
+  { action: 'bob', badge: '📣', how: 'it announces its own word', plain: (p, l) => `${p} floats just above ${l}, bobbing as if on water.`, carry: (p, l, w) => `${p} floats above ${l} and announces itself: "${w}".` },
 ];
 
 const giant = (p: string): string => `A giant ${p.replace(/^an? /i, '')}`;
 
 /** Used when the learner missed the item: bigger, simpler, one loud event. */
 const STRONG: readonly Template[] = [
-  { action: 'shake', plain: (p, l) => `${giant(p)} crashes down onto ${l} with a bang.`, carry: (p, l, w) => `${giant(p)} crashes onto ${l} and roars "${w}".` },
-  { action: 'pulse', plain: (p, l) => `${p} as big as a door glows red and blocks ${l}.`, carry: (p, l, w) => `${p} as big as a door blocks ${l}, flashing "${w}".` },
-  { action: 'hop', plain: (p, l) => `${p} leaps off ${l} into your arms, and it is heavy.`, carry: (p, l, w) => `${p} leaps off ${l} into your arms, yelling "${w}".` },
+  { action: 'shake', badge: '💥', how: 'it roars the word as it lands', plain: (p, l) => `${giant(p)} crashes down onto ${l} with a bang.`, carry: (p, l, w) => `${giant(p)} crashes onto ${l} and roars "${w}".` },
+  { action: 'pulse', badge: '🚨', how: 'the word flashes across it', plain: (p, l) => `${p} as big as a door glows red and blocks ${l}.`, carry: (p, l, w) => `${p} as big as a door blocks ${l}, flashing "${w}".` },
+  { action: 'hop', badge: '🙌', how: 'it yells the word as you catch it', plain: (p, l) => `${p} leaps off ${l} into your arms, and it is heavy.`, carry: (p, l, w) => `${p} leaps off ${l} into your arms, yelling "${w}".` },
 ];
+
+/** End of the reason for a picture that shows a short meaning; the template says how the word comes in. */
+const MEANING_TAIL = ': the picture shows the meaning and the scene says the word.';
 
 /** Plain objects that can carry a written word when there is no picture for it. */
 const NEUTRAL: readonly LexEntry[] = [
@@ -50,6 +63,9 @@ const NEUTRAL: readonly LexEntry[] = [
   ['📋', 'clipboard'], ['📮', 'postbox'], ['🚩', 'red flag'], ['🥁', 'drum'], ['🔔', 'bell'], ['🧱', 'brick'],
   ['🎈', 'balloon'], ['🪑', 'chair'], ['🛒', 'shopping trolley'], ['🪁', 'kite'],
 ].map(([emoji, noun]) => ({ word: '', emoji, noun }));
+
+/** Links where the picture is the fact itself, not a word that happens to be in it. */
+const STRONG_LINKS: ReadonlySet<LinkKind> = new Set<LinkKind>(['meaning', 'known', 'word']);
 
 /** Links where the picture alone would not give the word back, so the scene says it. */
 const CARRIES: ReadonlySet<LinkKind> = new Set<LinkKind>(['meaning', 'gloss', 'weak', 'none']);
@@ -111,7 +127,7 @@ function candidatesFor(fact: Fact): PictureMatch[] {
   if (short) {
     for (const e of lookup(meaning)) {
       const says = `${fact.term} means ${meaning}`;
-      push({ entry: e, link: 'meaning', reason: e.known && e.why ? `${says}. ${e.why}` : `${says}${e.why ? ` (${e.why})` : ''}: the picture shows the meaning and the scene says the word.` });
+      push({ entry: e, link: 'meaning', reason: e.known && e.why ? `${says}. ${e.why}` : `${says}${e.why ? ` (${e.why})` : ''}${MEANING_TAIL}` });
     }
   }
   for (const e of lookup(fact.term)) {
@@ -153,12 +169,15 @@ function compose(fact: Fact, locus: Locus, template: Template, match: PictureMat
   const word = CARRIES.has(match.link) ? carried(fact, match.link) : undefined;
   const withWord = word ? capitalise(template.carry(picture, place, word)) : '';
   const says = withWord !== '' && wordCount(withWord) <= 22;
+  // The second glyph shows what happens to the word (painted, labelled, echoed…), so that
+  // neighbours do not all wear the same badge.
+  const badge = says && template.badge !== match.entry.emoji ? [template.badge] : [];
+  const reason = says && match.reason.endsWith(MEANING_TAIL) ? `${match.reason.slice(0, -MEANING_TAIL.length)}: the picture is the meaning, and ${template.how}.` : match.reason;
   return {
     scene: says ? withWord : capitalise(template.plain(picture, place)),
-    // The speech bubble marks an image that says its word aloud.
-    glyphs: says ? [match.entry.emoji, '💬'] : [match.entry.emoji],
+    glyphs: [match.entry.emoji, ...badge],
     action: template.action,
-    reason: match.reason,
+    reason,
     source: 'fallback',
   };
 }
@@ -181,8 +200,8 @@ function genericHead(facts: ParsedFact[]): string | null {
 
 export function planLocally(req: ArchitectRequest, onStep?: (step: ArchitectStep) => void): ArchitectPlan {
   const steps: ArchitectStep[] = [];
-  const say = (kind: ArchitectStep['kind'], label: string): void => {
-    const step = { kind, label };
+  const say = (kind: ArchitectStep['kind'], text: string): void => {
+    const step = { kind, label: singularCounts(text) };
     steps.push(step);
     try {
       onStep?.(step);
@@ -223,7 +242,11 @@ export function planLocally(req: ArchitectRequest, onStep?: (step: ArchitectStep
       .sort((a, b) => a - b);
   }
   const keep = new Set(keptIndex);
-  const kept = facts.filter((_, i) => keep.has(i));
+  // A name that had to fall back on its position ("Step 7: NADH") takes its place on the
+  // route, which is what the learner will count, not its place in the notes.
+  const kept = facts
+    .filter((_, i) => keep.has(i))
+    .map((f, i) => (mode === 'notes' && f.score !== undefined ? { ...f, term: f.term.replace(/^Step \d+: /, `Step ${i + 1}: `) } : f));
   const overflow = facts.filter((_, i) => !keep.has(i)).map((f) => f.term);
   const left = dropped > 0 ? ` Left out ${dropped} that ${dropped === 1 ? 'was' : 'were'} empty or repeated.` : '';
 
@@ -255,11 +278,26 @@ export function planLocally(req: ArchitectRequest, onStep?: (step: ArchitectStep
   const used = new Set<string>();
   const links: Record<LinkKind, number> = { meaning: 0, known: 0, word: 0, gloss: 0, sound: 0, weak: 0, none: 0 };
 
+  // A picture that is the best one for a fact (its meaning, or the thing itself by name)
+  // is held back for that fact: an earlier sentence that merely mentions the word may not take it.
+  const pools = kept.map(candidatesFor);
+  const reserved = new Map<string, number>();
+  pools.forEach((pool, i) => {
+    for (const c of pool) if (STRONG_LINKS.has(c.link) && !reserved.has(c.entry.emoji)) reserved.set(c.entry.emoji, i);
+  });
+  // One word, one card: two sentences that both mention carbon do not both get a carbon picture.
+  const glossed = new Set<string>();
+
   const items: MemoryItem[] = kept.map((fact, i) => {
     const template = TEMPLATES[(start + i * 3) % TEMPLATES.length];
+    const free = (c: PictureMatch): boolean =>
+      !used.has(c.entry.emoji) &&
+      (STRONG_LINKS.has(c.link) || (reserved.get(c.entry.emoji) ?? i) === i) &&
+      !(c.link === 'gloss' && glossed.has(c.entry.word));
     // Never the same picture twice in one palace: the next candidate, or a labelled object.
-    const match = candidatesFor(fact).find((c) => !used.has(c.entry.emoji)) ?? placeholder(fact, used, i);
+    const match = pools[i].find(free) ?? placeholder(fact, used, i);
     used.add(match.entry.emoji);
+    if (match.link === 'gloss') glossed.add(match.entry.word);
     links[match.link]++;
     return { id: newId(), term: fact.term, meaning: fact.meaning, locusId: route[i].id, imago: compose(fact, route[i], template, match) };
   });
@@ -274,11 +312,14 @@ export function planLocally(req: ArchitectRequest, onStep?: (step: ArchitectStep
     const distinct = new Set(items.map((it) => it.imago.glyphs[0])).size === items.length;
     say('generate', `Drafted ${kept.length} ${kept.length === 1 ? 'image' : 'images'}${parts.length ? `: ${parts.join(', ')}` : ''}. ${distinct ? 'No picture is used twice, and neighbours' : 'Neighbours'} move differently.`);
     const weak = links.weak + links.none;
+    // Every draft whose reason carries a caution is counted here, so the trace and the cards agree.
+    const partial = links.sound + links.gloss;
+    const also = partial === 0 ? '' : ` ${partial} more ${partial === 1 ? 'is' : 'are'} tied only by sound or to one word of the fact, and ${partial === 1 ? 'says' : 'say'} so.`;
     say(
       'check',
       weak === 0
-        ? 'Checked each draft mechanically: every one has a stated link to its fact. They are still stock sentences, so make them yours.'
-        : `Checked each draft mechanically: ${weak} of ${kept.length} ${weak === 1 ? 'has' : 'have'} only a weak link or none, and ${weak === 1 ? 'is' : 'are'} flagged. Rewrite ${weak === 1 ? 'that one' : 'those'} first.`,
+        ? `Checked each draft mechanically: ${partial === 0 ? 'every one has a stated link to its fact' : 'none is without a link'}.${also} They are still stock sentences, so make them yours.`
+        : `Checked each draft mechanically: ${weak} of ${kept.length} ${weak === 1 ? 'has' : 'have'} only a weak link or none, and ${weak === 1 ? 'is' : 'are'} flagged. Rewrite ${weak === 1 ? 'that one' : 'those'} first.${also}`,
     );
   }
 

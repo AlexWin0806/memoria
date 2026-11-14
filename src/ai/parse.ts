@@ -47,6 +47,52 @@ const NOT_A_NAME = new Set(
   ),
 );
 
+/**
+ * A card is named with a noun phrase, never a fragment of the verb phrase ("Producing NADH",
+ * "Again releasing carbon dioxide"). There is no tagger here, only word shape and short
+ * lists, so these err towards dropping a word: a name that is one noun short still names.
+ */
+const ADVERBS = new Set(
+  'again then finally also next later still already once twice often usually always never sometimes now soon instead meanwhile afterwards eventually subsequently firstly secondly thirdly lastly thereby thereafter hence thus therefore however moreover furthermore together almost only just even too very quite rather'.split(
+    ' ',
+  ),
+);
+const LY_NOUNS = new Set('family assembly supply butterfly anomaly monopoly jelly belly ally rally italy july lily holly reply fly bully'.split(' '));
+const ING_NOUNS = new Set(
+  'thing king ring spring string wing sibling ceiling morning evening building painting meaning feeling beginning wedding clothing herring pudding lightning engineering being offspring sterling viking'.split(' '),
+);
+const ED_NOUNS = new Set('seed speed breed weed feed need reed creed greed deed shed hundred sacred naked wicked rugged kindred hatred embed'.split(' '));
+const ISE_NOUNS = new Set('enterprise expertise exercise paradise merchandise franchise premise promise surprise compromise treatise turquoise porpoise tortoise mayonnaise'.split(' '));
+/** Verbs common in notes that are rarely nouns. Their regular "-s" forms are derived below. */
+const VERB_STEMS =
+  'combine convert rearrange reduce generate regenerate remove lose contain include consist involve require allow enable become remain create destroy divide connect attach separate regulate secrete provide receive explain describe define discover develop evolve follow exist depend vary differ represent absorb emit bind enter add come go get put keep bring send let grow undergo react accept donate'.split(
+    ' ',
+  );
+const VERBS = new Set([
+  ...VERB_STEMS.flatMap((v) => [v, /(?:s|x|z|ch|sh|o)$/.test(v) ? `${v}es` : /[^aeiou]y$/.test(v) ? `${v.slice(0, -1)}ies` : `${v}s`]),
+  // Verbs already left out of names (NOT_A_NAME), listed again because here they mark where the subject ends.
+  ...'is are was were be been means refers has have had do does did can may must will would could should might take takes took yield yields give gives produce produces release releases make makes turn turns start starts begin begins end ends leave leaves join joins form forms carry carries occur occurs happen happens lost became went came got kept held brought sent broke grew underwent made gave found'.split(
+    ' ',
+  ),
+]);
+/** Words that add nothing to a name: two names that differ only by these are the same name. */
+const GENERIC_MODIFIERS = new Set('final first last next new old main other another same more most second third initial whole'.split(' '));
+/** Subjects that say nothing by themselves ("The next step oxidises succinate"). */
+const GENERIC_NOUNS = new Set(
+  'step stage phase process cycle reaction molecule cell thing part result product type kind form way example case number amount level rate system structure function group set series point time people person body area region side turn'.split(
+    ' ',
+  ),
+);
+const DETERMINERS = new Set('the a an its their this that these those each every'.split(' '));
+
+const isAdverb = (w: string): boolean => ADVERBS.has(w) || (w.length >= 5 && w.endsWith('ly') && !LY_NOUNS.has(w));
+const isVerbForm = (w: string): boolean =>
+  VERBS.has(w) ||
+  (w.length >= 7 && /(?:is|iz|ys|yz)e[sd]?$/.test(w) && !ISE_NOUNS.has(w.replace(/[sd]$/, ''))) ||
+  (w.length >= 6 && /if(?:y|ies)$/.test(w));
+const isEdForm = (w: string): boolean => w.length >= 5 && w.endsWith('ed') && !ED_NOUNS.has(w);
+const isIngForm = (w: string): boolean => w.length >= 6 && w.endsWith('ing') && !ING_NOUNS.has(w);
+
 interface Word {
   text: string;
   /** Ends a phrase: followed by a comma, bracket, colon or the end of the sentence. */
@@ -54,6 +100,13 @@ interface Word {
   content: boolean;
   proper: boolean;
   technical: boolean;
+  /** A finite verb or auxiliary: the subject ends before it. */
+  verb: boolean;
+  adverb: boolean;
+  /** "-ed" and "-ing" forms: part of the verb phrase unless they sit inside a noun phrase. */
+  ed: boolean;
+  ing: boolean;
+  determiner: boolean;
 }
 
 function readWords(sentence: string): Word[] {
@@ -64,69 +117,195 @@ function readWords(sentence: string): Word[] {
     // NADH, FADH2, acetyl-CoA: a digit among letters, or capitals inside the word.
     const technical = (/\d/.test(text) && /\p{L}/u.test(text)) || /\p{Ll}\p{Lu}|\p{Lu}{2,}/u.test(text);
     const capital = /^\p{Lu}/u.test(text);
+    // A capital that is not just the start of the sentence, or starts a run of capitals.
+    const proper = capital && (i > 0 || /^\p{Lu}/u.test(raw[i + 1] ?? ''));
+    // Names and formulas are never read as verbs or adverbs ("United", "Reading", "FADH2").
+    const lower = proper || technical ? '' : text.toLowerCase();
+    const verb = isVerbForm(lower);
+    const adverb = isAdverb(lower);
     return {
       text,
       breaks: /[,;:()—–]/.test(w) || /[.!?]$/.test(w),
-      content: text.length >= 2 && /\p{L}/u.test(text) && (technical || (plain.length >= 2 && !NOT_A_NAME.has(plain))),
-      // A capital that is not just the start of the sentence, or starts a run of capitals.
-      proper: capital && (i > 0 || /^\p{Lu}/u.test(raw[i + 1] ?? '')),
+      content: text.length >= 2 && /\p{L}/u.test(text) && !verb && !adverb && (technical || (plain.length >= 2 && !NOT_A_NAME.has(plain))),
+      proper,
       technical,
+      verb,
+      adverb,
+      ed: isEdForm(lower),
+      ing: isIngForm(lower),
+      determiner: DETERMINERS.has(text.toLowerCase()),
     };
   });
 }
 
-/**
- * A short name (five words at most, whole words only) for a sentence of notes.
- * Prefers a quoted or emphasised phrase, then the phrase with the most names and
- * technical words in it, with a nudge towards the subject of an "X is Y" sentence.
- * Never returns a name already in `used`.
- */
-export function deriveTerm(sentence: string, used: Set<string> = new Set()): string {
-  const s = sentence.replace(/\s+/g, ' ').trim();
-  const free = (t: string) => t.length > 0 && !used.has(key(t));
+interface Run {
+  text: string;
+  score: number;
+  single: boolean;
+  technical: boolean;
+  /** The grammatical subject: the first noun phrase that is followed by its verb. */
+  subject: boolean;
+  /** A sentence-opening "-ed" modifier left off the name ("Saturated" in "Saturated fats are…"). */
+  lead?: string;
+}
 
-  for (const m of s.matchAll(/["“]([^"”]{2,48})["”]|\*\*?([^*]{2,48})\*\*?|\b_([^_]{2,48})_\b/g)) {
-    const quoted = (m[1] ?? m[2] ?? m[3]).trim().replace(/[.,;:!?]+$/, '');
-    if (wordsOf(quoted).length <= TERM_WORDS && free(quoted)) return quoted;
-  }
-
-  const words = readWords(s);
-  interface Run { text: string; score: number; single: boolean; technical: boolean }
+/** The noun phrases of a sentence, in reading order, each scored as a name for it. */
+function nounPhrases(words: Word[]): Run[] {
   const runs: Run[] = [];
   let current: Word[] = [];
   let start = 0;
-  const close = (end: number) => {
+  let lead: string | undefined;
+  let subjectSeen = false;
+  const close = (end: number): void => {
     if (current.length === 0) return;
     // English noun phrases end on their head, so a long run keeps its last words.
     const kept = current.slice(-4);
-    const subject = start <= 2 && /^(?:is|are|was|were|means|refers)$/i.test(words[end]?.text ?? '');
+    let after = end;
+    while (words[after]?.adverb) after++;
+    const beforeVerb = !subjectSeen && start <= 6 && (words[after]?.verb ?? false);
+    if (beforeVerb) subjectSeen = true;
+    // "The next step oxidises succinate": the subject is there but says nothing.
+    const subject = beforeVerb && !kept.every((w) => GENERIC_NOUNS.has(w.text.toLowerCase().replace(/s$/, '')));
     const score =
       kept.reduce((sum, w) => sum + (w.proper ? 6 : 0) + (w.technical ? 6 : 0) + Math.min(4, Math.max(0, w.text.length - 5)), 0) +
       2 * (kept.length - 1) +
-      (subject ? 5 : 0);
-    runs.push({ text: kept.map((w) => w.text).join(' '), score, single: kept.length === 1, technical: kept.some((w) => w.technical) });
+      // More than an abbreviation at the end of the sentence earns (12): the subject names the card.
+      (subject ? 14 : 0);
+    runs.push({
+      text: kept.map((w) => w.text).join(' '),
+      score,
+      single: kept.length === 1,
+      technical: kept.some((w) => w.technical),
+      subject,
+      lead: current.length <= 4 ? lead : undefined,
+    });
     current = [];
+    lead = undefined;
   };
   words.forEach((w, i) => {
-    if (!w.content) return close(i);
+    const next = words[i + 1];
+    const nounFollows = !w.breaks && !!next && next.content && !next.ed && !next.ing;
+    if (w.content && (w.ed || w.ing)) {
+      const inPhrase = current.length > 0;
+      // "protein folding", "RNA splicing": a gerund that ends its phrase is the head noun.
+      const head = w.ing && inPhrase && !nounFollows;
+      // "the boiling point", "a fixed route": after a determiner it is part of the noun phrase.
+      const modifier = !inPhrase && nounFollows && (words[i - 1]?.determiner ?? false);
+      if (!head && !modifier) {
+        close(i);
+        // "Saturated fats are…": kept aside, and put back only if the name would otherwise clash.
+        if (w.ed && i === 0 && nounFollows) lead = w.text;
+        return;
+      }
+    } else if (!w.content) return close(i);
     if (current.length === 0) start = i;
     current.push(w);
     if (w.breaks) close(i + 1);
   });
   close(words.length);
+  return runs;
+}
 
-  const ranked = runs.filter((r) => free(r.text)).sort((a, b) => b.score - a.score);
+/** A name without the words that do not tell two names apart: "the final NADH" → "nadh". */
+function coreOf(term: string, participles = false): string {
+  const words = wordsOf(term.toLowerCase())
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
+    // `participles` keeps "-ed" and "-ing" words: "saturated fats" and "unsaturated fats" are two names.
+    .filter((w) => w && !GENERIC_MODIFIERS.has(w) && !DETERMINERS.has(w) && !isAdverb(w) && (participles || (!isIngForm(w) && !isEdForm(w))));
+  return words.length ? words.join(' ') : key(term);
+}
+
+interface Naming {
+  /** Candidate names, best first. */
+  options: string[];
+  runs: Run[];
+  /** The first words of the sentence without any leading adverb or participle: the last resort. */
+  opening: string;
+}
+
+function readSentence(sentence: string): Naming {
+  const s = sentence.replace(/\s+/g, ' ').trim();
+  const options: string[] = [];
+  const offer = (name: string): void => {
+    if (name && !options.some((o) => key(o) === key(name))) options.push(name);
+  };
+  for (const m of s.matchAll(/["“]([^"”]{2,48})["”]|\*\*?([^*]{2,48})\*\*?|\b_([^_]{2,48})_\b/g)) {
+    const quoted = (m[1] ?? m[2] ?? m[3]).trim().replace(/[.,;:!?]+$/, '');
+    if (wordsOf(quoted).length <= TERM_WORDS) offer(quoted);
+  }
+  const words = readWords(s);
+  const runs = nounPhrases(words);
+  const ranked = [...runs].sort((a, b) => b.score - a.score);
   const best = ranked[0];
   if (best) {
-    // "…yields three NADH, one FADH2 and one GTP": name the sentence after all three.
+    // "…yields three NADH, one FADH2 and one GTP": name the sentence after all three,
+    // unless it has a subject of its own to be named after.
     const labels = runs.filter((r) => r.single && r.technical);
-    const joined = labels.slice(0, 3).map((r) => r.text).join(', ');
-    if (best.single && best.technical && labels.length >= 2 && free(joined)) return joined;
-    return capitalise(best.text);
+    if (best.single && best.technical && !best.subject && labels.length >= 2) offer(labels.slice(0, 3).map((r) => r.text).join(', '));
+    for (const r of ranked) offer(capitalise(r.text));
   }
-  const opening = wordsOf(s.replace(/[.!?]+$/, '')).slice(0, TERM_WORDS).join(' ').replace(/[,;:]+$/, '');
+  const firstNoun = Math.max(0, words.findIndex((w) => !w.adverb && !w.verb && !(w.content && (w.ed || w.ing))));
+  const opening = wordsOf(s.replace(/[.!?]+$/, ''))
+    .slice(firstNoun, firstNoun + TERM_WORDS)
+    .join(' ')
+    .replace(/[,;:]+$/, '');
+  return { options, runs, opening: capitalise(opening) };
+}
+
+/** The last `n` words of a name: enough to recognise it when something is added before or after. */
+const lastWords = (name: string, n: number): string => wordsOf(name).slice(-n).join(' ');
+
+/**
+ * A short name (five words at most, whole words only) for a sentence of notes: a noun
+ * phrase, never a piece of the verb phrase. Prefers a quoted or emphasised phrase, then
+ * the subject of the sentence, then the phrase with the most names and technical words.
+ * Never returns a name already in `used`, nor one that differs from a used name only by
+ * a generic word ("Final NADH" beside "NADH").
+ */
+export function deriveTerm(sentence: string, used: Set<string> = new Set()): string {
+  const taken = new Set([...used].map((t) => coreOf(t)));
+  const free = (t: string) => t.length > 0 && !used.has(key(t)) && !taken.has(coreOf(t));
+  const { options, runs, opening } = readSentence(sentence);
+  for (const option of options) if (free(option)) return option;
+  for (const r of runs) if (r.lead && free(`${r.lead} ${r.text}`)) return capitalise(`${r.lead} ${r.text}`);
   if (free(opening)) return opening;
   for (let n = 2; ; n++) if (free(`${opening} (${n})`)) return `${opening} (${n})`;
+}
+
+/**
+ * Names for all the sentences of some notes at once, so that no two cards can only be
+ * told apart by guessing. Each sentence first gets its best name by itself. Names that
+ * are the same, or differ by one generic word, are lengthened with a detail that only
+ * their own sentence has; if they still clash they get their position in the notes
+ * ("Step 3: NADH"). `orders` gives each sentence's position, counting from one.
+ */
+export function nameSentences(sentences: string[], used: Set<string> = new Set(), orders?: number[]): string[] {
+  const read = sentences.map(readSentence);
+  const first = read.map((r) => r.options[0] ?? r.opening);
+  const taken = new Set([...used].map((t) => coreOf(t)));
+  const rivalsOf = (names: string[], i: number): number[] => names.map((_, j) => j).filter((j) => j !== i && coreOf(names[j]) === coreOf(names[i]));
+  const leadOf = (i: number): string | undefined => read[i].runs.find((r) => capitalise(r.text) === first[i])?.lead?.toLowerCase();
+  // Sentence-style capital off, unless the word is a name or a formula ("NADH", "Acetyl-CoA" stays).
+  const inline = (name: string): string => (/^\p{Lu}[\p{Ll}-]*(?:\s|$)/u.test(name) ? name.charAt(0).toLowerCase() + name.slice(1) : name);
+
+  const longer = first.map((name, i) => {
+    const rivals = rivalsOf(first, i);
+    if (rivals.length === 0 && !taken.has(coreOf(name))) return name;
+    const lead = leadOf(i);
+    if (lead && rivals.every((j) => leadOf(j) !== lead)) return capitalise(`${lead} ${inline(lastWords(name, TERM_WORDS - 1))}`);
+    // A detail no rival sentence has: the next-best noun phrase of this sentence.
+    const theirs = new Set(rivals.flatMap((j) => read[j].options.map((t) => coreOf(t))));
+    const detail = read[i].options.slice(1).find((o) => !o.includes(', ') && coreOf(o) !== coreOf(name) && !theirs.has(coreOf(o)) && !taken.has(coreOf(o)));
+    if (!detail) return name;
+    const base = lastWords(name, 3);
+    return `${base}, ${lastWords(inline(detail), TERM_WORDS - wordsOf(base).length)}`;
+  });
+
+  return longer.map((name, i) => {
+    // A participle put back to tell two names apart counts as a difference here.
+    const clash = used.has(key(name)) || taken.has(coreOf(name)) || longer.some((other, j) => j !== i && coreOf(other, true) === coreOf(name, true));
+    return clash ? `Step ${orders?.[i] ?? i + 1}: ${lastWords(first[i], TERM_WORDS - 2)}` : name;
+  });
 }
 
 /** "Mercury, Venus, Earth and Mars" → four short items; null when it is not a list. */
@@ -223,17 +402,38 @@ export function extractFacts(text: string): ExtractedFacts {
     }
   }
 
+  // Sentences are named together, after all of them have been read, so that two cards
+  // never end up with the same name or with names one generic word apart.
+  const drafts: (ParsedFact | { sentence: string })[] = [];
+  const heard = new Set<string>();
   for (const sentence of sentences) {
     // Nothing to picture or recall in "And so on." or a stray bullet.
-    if (!readWords(sentence).some((w) => w.content && w.text.length >= 3)) {
-      dropped++;
-      continue;
+    if (!readWords(sentence).some((w) => w.content && w.text.length >= 3)) dropped++;
+    else if (!isProse(sentence) && !/[.!?]$/.test(sentence)) drafts.push(parseLine(sentence) ?? { term: sentence });
+    else if (heard.has(key(sentence))) dropped++;
+    else {
+      heard.add(key(sentence));
+      drafts.push({ sentence });
     }
-    if (!isProse(sentence) && !/[.!?]$/.test(sentence)) add(parseLine(sentence) ?? { term: sentence });
-    else add({ term: deriveTerm(sentence, used), meaning: sentence, score: factScore(sentence) });
+  }
+  const toName = drafts.flatMap((d, i) => ('sentence' in d ? [{ sentence: d.sentence, order: i + 1 }] : []));
+  const given = new Set(drafts.flatMap((d) => ('sentence' in d ? [] : [key(d.term)])));
+  const names = nameSentences(
+    toName.map((n) => n.sentence),
+    given,
+    toName.map((n) => n.order),
+  );
+  let named = 0;
+  for (const d of drafts) {
+    if ('sentence' in d) add({ term: names[named++], meaning: d.sentence, score: factScore(d.sentence) });
+    else add(d);
   }
   return { title, facts, mode: 'notes', read: sentences.length, dropped };
 }
+
+/** "Drafted 1 images" → "Drafted 1 image": step labels are built from counts, here and on the server. */
+export const singularCounts = (label: string): string =>
+  label.replace(/\b(1) (images|facts|lines|sentences|places|items|drafts|pictures|cards)\b/g, (_, one: string, noun: string) => `${one} ${noun.slice(0, -1)}`);
 
 /** Small synchronous string hash (two FNV-1a passes). Used for cache keys and stable variety, not security. */
 export function hashText(s: string): string {

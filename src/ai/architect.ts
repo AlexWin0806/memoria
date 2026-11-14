@@ -1,6 +1,7 @@
 import type { DeckKind, Imago, Locus, MemoryItem, Room } from '@/core/types';
 import { cleanGlyphs, isImagoAction } from './glyphs';
 import { NO_STRONGER, newId, nextAlternate, planLocally, regenerateLocally } from './local';
+import { singularCounts } from './parse';
 import { cacheKey, callArchitect, networkLooksUsable, readCache, writeCache } from './remote';
 
 export { parseLine } from './parse';
@@ -106,7 +107,7 @@ function toPlan(raw: unknown, req: ArchitectRequest): ArchitectPlan | null {
     if (!isRecord(s)) return [];
     const label = text(s.label, 200);
     const kind = STEP_KINDS.find((k) => k === s.kind);
-    return label && kind ? [{ label, kind }] : [];
+    return label && kind ? [{ label: singularCounts(label), kind }] : [];
   });
   const overflow = (Array.isArray(raw.overflow) ? raw.overflow : []).flatMap((o) => text(o, 120) ?? []);
 
@@ -114,7 +115,7 @@ function toPlan(raw: unknown, req: ArchitectRequest): ArchitectPlan | null {
     title,
     kind: raw.kind,
     items,
-    steps: steps.length ? steps : [{ kind: 'generate', label: `Drafted ${items.length} images.` }],
+    steps: steps.length ? steps : [{ kind: 'generate', label: singularCounts(`Drafted ${items.length} images.`) }],
     source: 'api',
     overflow,
   };
