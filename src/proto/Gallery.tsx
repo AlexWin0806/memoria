@@ -137,8 +137,9 @@ function Measure() {
 
 /**
  * Feature gallery: every landmark on a plain floor against a plain wall, in the active theme.
- *   /?gallery                      all features in rows, orbit freely
- *   /?gallery&shot=<n>             row n only, fixed camera, for stills (`&per=` features a row, default 3)
+ *   /?gallery                      all features in rows of seven, orbit freely
+ *   /?gallery&shot=<n>             row n only, fixed camera, for stills (rows of three)
+ *   &per=<n>                       features in a row
  *   &ids=a,b,c                     only these features, in this order
  *   &yaw=<degrees>                 with shot: swing the camera round the row (0 = square on)
  *   &dev=0                         development of every place (ink: 0 is line alone); default 1
@@ -150,7 +151,7 @@ export function Gallery() {
   const theme = getTheme(q.get('theme'));
   const style = STYLES[theme.style] ?? STYLES.greybox;
   const shot = q.has('shot') ? Math.max(0, Number(q.get('shot')) || 0) : null;
-  const per = Math.max(1, Number(q.get('per')) || 3);
+  const per = Math.max(1, Number(q.get('per')) || (shot === null ? 7 : 3));
   const yaw = ((Number(q.get('yaw')) || 0) * Math.PI) / 180;
   const dev = q.has('dev') ? Math.min(1, Math.max(0, Number(q.get('dev')) || 0)) : null;
 

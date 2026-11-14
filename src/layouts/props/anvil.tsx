@@ -1,23 +1,20 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { plate } from './parts';
+import { plate, useGeometry } from './parts';
 
 /** An anvil on a tree stump: a flat face, a waist and one long horn, with a hammer left on it. */
 function Anvil({ accent }: { accent: AccentKey }) {
   // Side profile, foot to face; the horn points left.
-  const anvil = useMemo(
-    () =>
-      plate(
-        [
-          [-0.24, 0.49], [0.24, 0.49], [0.24, 0.56], [0.13, 0.62], [0.11, 0.74], [0.2, 0.8], [0.42, 0.8], [0.42, 0.92], [-0.2, 0.92],
-          [-0.56, 0.9], [-0.34, 0.82], [-0.16, 0.76], [-0.11, 0.72], [-0.13, 0.62], [-0.24, 0.56],
-        ],
-        0.24,
-        0.015,
-      ),
-    [],
+  const anvil = useGeometry(() =>
+    plate(
+      [
+        [-0.24, 0.49], [0.24, 0.49], [0.24, 0.56], [0.13, 0.62], [0.11, 0.74], [0.2, 0.8], [0.42, 0.8], [0.42, 0.92], [-0.2, 0.92],
+        [-0.56, 0.9], [-0.34, 0.82], [-0.16, 0.76], [-0.11, 0.72], [-0.13, 0.62], [-0.24, 0.56],
+      ],
+      0.24,
+      0.015,
+    ),
   );
   return (
     <group position={[0.07, 0, 0]}>

@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { type Placement, Repeated, UNIT_ROD, lathe, limb } from './parts';
+import { lathe, limb, type Placement, Repeated, UNIT_ROD, useGeometry } from './parts';
 
 const HUB_Y = 1.16;
 // Two legs splayed to the sides and a little forward, the third straight back.
@@ -14,12 +13,9 @@ const LEGS: Placement[] = [30, 150, 270].map((deg) => {
 /** A telescope on a tripod, its tube pointed up and away to one side. */
 function Telescope({ accent }: { accent: AccentKey }) {
   // Along the tube's own axis, eyepiece end first.
-  const eyepiece = useMemo(
-    () => lathe([[0, -0.56], [0.034, -0.56], [0.034, -0.46], [0.054, -0.46], [0.054, -0.14], [0, -0.14]], 16),
-    [],
-  );
-  const tube = useMemo(() => lathe([[0, -0.16], [0.078, -0.16], [0.078, 0.66], [0, 0.66]], 20), []);
-  const hood = useMemo(() => lathe([[0, 0.64], [0.1, 0.64], [0.1, 0.78], [0, 0.78]], 20), []);
+  const eyepiece = useGeometry(() => lathe([[0, -0.56], [0.034, -0.56], [0.034, -0.46], [0.054, -0.46], [0.054, -0.14], [0, -0.14]], 16));
+  const tube = useGeometry(() => lathe([[0, -0.16], [0.078, -0.16], [0.078, 0.66], [0, 0.66]], 20));
+  const hood = useGeometry(() => lathe([[0, 0.64], [0.1, 0.64], [0.1, 0.78], [0, 0.78]], 20));
   return (
     <group position={[-0.1, 0, 0]}>
       <Repeated items={LEGS} make={UNIT_ROD}>
@@ -55,6 +51,6 @@ export const TELESCOPE: FeatureDef = {
   hint: 'a slanting tube on three splayed legs',
   mount: 'floor',
   footprint: 0.65,
-  height: 1.9,
+  height: 1.91,
   Component: Telescope,
 };

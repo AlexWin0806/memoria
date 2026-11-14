@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { type Placement, Repeated, UNIT_ROD, limb, plate } from './parts';
+import { limb, type Placement, plate, Repeated, UNIT_ROD, useGeometry } from './parts';
 
 // Each string runs from the underside of the neck straight down to the soundboard: [x, foot, head].
 const STRINGS: Placement[] = (
@@ -14,17 +13,15 @@ const STRINGS: Placement[] = (
 
 /** A tall harp: an upright pillar, a slanted soundbox and a curved neck, strung between. */
 function Harp({ accent }: { accent: AccentKey }) {
-  const soundbox = useMemo(() => plate([[-0.3, 0.06], [-0.04, 0.06], [0.52, 1.42], [0.4, 1.49]], 0.26, 0.02), []);
-  const neck = useMemo(
-    () =>
-      plate(
-        [
-          [-0.46, 1.78], [-0.3, 1.74], [-0.1, 1.58], [0.1, 1.49], [0.3, 1.5], [0.4, 1.44], [0.53, 1.43], [0.5, 1.53], [0.3, 1.62],
-          [0.1, 1.6], [-0.1, 1.7], [-0.3, 1.86], [-0.46, 1.9],
-        ],
-        0.08,
-      ),
-    [],
+  const soundbox = useGeometry(() => plate([[-0.3, 0.06], [-0.04, 0.06], [0.52, 1.42], [0.4, 1.49]], 0.26, 0.02));
+  const neck = useGeometry(() =>
+    plate(
+      [
+        [-0.46, 1.78], [-0.3, 1.74], [-0.1, 1.58], [0.1, 1.49], [0.3, 1.5], [0.4, 1.44], [0.53, 1.43], [0.5, 1.53], [0.3, 1.62],
+        [0.1, 1.6], [-0.1, 1.7], [-0.3, 1.86], [-0.46, 1.9],
+      ],
+      0.08,
+    ),
   );
   return (
     <group>

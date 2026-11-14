@@ -1,16 +1,15 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { lathe, plate, tube } from './parts';
+import { lathe, plate, tube, useGeometry } from './parts';
 
 /** A round well under a little gabled roof, with a windlass, a crank and a hanging bucket. */
 function Well({ accent }: { accent: AccentKey }) {
-  const wall = useMemo(() => lathe([[0.61, 0], [0.61, 0.6], [0.67, 0.62], [0.67, 0.74], [0.48, 0.74], [0.48, 0.3], [0, 0.3]], 24), []);
+  const wall = useGeometry(() => lathe([[0.61, 0], [0.61, 0.6], [0.67, 0.62], [0.67, 0.74], [0.48, 0.74], [0.48, 0.3], [0, 0.3]], 24));
   // The gable in section; extruded, then turned so that the ridge runs along x.
-  const roof = useMemo(() => plate([[-0.56, 0], [0.56, 0], [0, 0.4]], 1.76), []);
-  const crank = useMemo(() => tube([[0.62, 1.42, 0], [0.8, 1.42, 0], [0.82, 1.4, 0], [0.82, 1.2, 0], [0.84, 1.18, 0], [0.97, 1.18, 0]], 0.02), []);
-  const bucket = useMemo(() => lathe([[0, 0], [0.12, 0], [0.16, 0.26], [0.14, 0.26], [0.11, 0.05], [0, 0.05]], 14), []);
+  const roof = useGeometry(() => plate([[-0.56, 0], [0.56, 0], [0, 0.4]], 1.76));
+  const crank = useGeometry(() => tube([[0.62, 1.42, 0], [0.8, 1.42, 0], [0.82, 1.4, 0], [0.82, 1.2, 0], [0.84, 1.18, 0], [0.97, 1.18, 0]], 0.02));
+  const bucket = useGeometry(() => lathe([[0, 0], [0.12, 0], [0.16, 0.26], [0.14, 0.26], [0.11, 0.05], [0, 0.05]], 14));
   return (
     <group>
       <mesh geometry={wall} castShadow receiveShadow>

@@ -1,23 +1,20 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { type Placement, Repeated, UNIT_BOX, lathe } from './parts';
+import { lathe, type Placement, Repeated, UNIT_BOX, useGeometry } from './parts';
 
 const BRACES: Placement[] = [-1, 1].map((s): Placement => ({ p: [s * 0.44, 1.66, 0], r: [0, 0, s * 0.72], s: [0.07, 0.56, 0.07] }));
 
 /** A bell hung from a timber frame: two posts, a headstock and the flared bell between them. */
 function Bell({ accent }: { accent: AccentKey }) {
   // Closed underneath by a recessed disc, so the mouth is not a hole seen from below.
-  const bell = useMemo(
-    () =>
-      lathe([
-        [0, 0.07], [0.3, 0.07], [0.35, 0], [0.37, 0.01], [0.335, 0.05], [0.27, 0.14], [0.215, 0.3], [0.19, 0.44],
-        [0.17, 0.54], [0.12, 0.6], [0, 0.63],
-      ], 28),
-    [],
+  const bell = useGeometry(() =>
+    lathe([
+      [0, 0.07], [0.3, 0.07], [0.35, 0], [0.37, 0.01], [0.335, 0.05], [0.27, 0.14], [0.215, 0.3], [0.19, 0.44],
+      [0.17, 0.54], [0.12, 0.6], [0, 0.63],
+    ], 28),
   );
-  const clapper = useMemo(() => lathe([[0, 0], [0.05, 0.02], [0.068, 0.07], [0.05, 0.12], [0.022, 0.15], [0.022, 0.3], [0, 0.3]], 14), []);
+  const clapper = useGeometry(() => lathe([[0, 0], [0.05, 0.02], [0.068, 0.07], [0.05, 0.12], [0.022, 0.15], [0.022, 0.3], [0, 0.3]], 14));
   return (
     <group>
       {[-1, 1].map((s) => (

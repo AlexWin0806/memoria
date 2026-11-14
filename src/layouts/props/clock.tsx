@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { type Placement, Repeated, UNIT_BOX, arc, frameGeometry, plate } from './parts';
+import { arc, frameGeometry, type Placement, plate, Repeated, UNIT_BOX, useGeometry } from './parts';
 
 const DIAL_Y = 1.8;
 // Ten past ten: each hand reaches from the centre of the dial.
@@ -20,8 +19,8 @@ const HANDS: Placement[] = (
 /** A longcase clock: a tall narrow case with an arched hood, a round dial and a pendulum in the trunk. */
 function Clock({ accent }: { accent: AccentKey }) {
   // The trunk is an open frame, so that the pendulum shows.
-  const trunk = useMemo(() => frameGeometry(-0.2, 0.2, 0.49, 1.51, 0.055, 0.26), []);
-  const arch = useMemo(() => plate(arc(0, 0, 0.29, 0, Math.PI, 14), 0.36), []);
+  const trunk = useGeometry(() => frameGeometry(-0.2, 0.2, 0.49, 1.51, 0.055, 0.26));
+  const arch = useGeometry(() => plate(arc(0, 0, 0.29, 0, Math.PI, 14), 0.36));
   return (
     <group>
       <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
@@ -35,7 +34,7 @@ function Clock({ accent }: { accent: AccentKey }) {
       <mesh geometry={trunk} position={[0, 0, -0.13]} castShadow>
         <Surface slot="wood" />
       </mesh>
-      <mesh position={[0, 1, -0.11]}>
+      <mesh position={[0, 1, -0.095]}>
         <boxGeometry args={[0.36, 1, 0.03]} />
         <Surface slot="wood" />
       </mesh>
@@ -43,7 +42,7 @@ function Clock({ accent }: { accent: AccentKey }) {
         <boxGeometry args={[0.58, 0.58, 0.36]} />
         <Surface slot="wood" />
       </mesh>
-      <mesh geometry={arch} position={[0, 2.07, 0]} castShadow>
+      <mesh geometry={arch} position={[0, 2.08, 0]} castShadow>
         <Surface slot="wood" />
       </mesh>
       <mesh position={[0, DIAL_Y, 0.19]} rotation={[Math.PI / 2, 0, 0]} castShadow>

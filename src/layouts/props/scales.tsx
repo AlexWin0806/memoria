@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { type Placement, Repeated, UNIT_ROD, lathe, limb } from './parts';
+import { lathe, limb, type Placement, Repeated, UNIT_ROD, useGeometry } from './parts';
 
 const TAU = Math.PI * 2;
 /** Tilt of the beam: the left pan hangs lower, as if something were being weighed. */
@@ -26,13 +25,11 @@ const PAN_GEOMETRY = () => lathe([[0, 0], [0.12, 0.005], [0.22, 0.04], [0.255, 0
 
 /** A standing balance: a slim column, a tilted beam, and a pan hung from each end. */
 function Scales({ accent }: { accent: AccentKey }) {
-  const column = useMemo(
-    () =>
-      lathe([
-        [0, 0.07], [0.2, 0.07], [0.2, 0.11], [0.075, 0.17], [0.045, 0.32], [0.035, 1.46], [0.07, 1.5], [0.07, 1.62], [0.035, 1.66],
-        [0.05, 1.71], [0, 1.78],
-      ], 20),
-    [],
+  const column = useGeometry(() =>
+    lathe([
+      [0, 0.07], [0.2, 0.07], [0.2, 0.11], [0.075, 0.17], [0.045, 0.32], [0.035, 1.46], [0.07, 1.5], [0.07, 1.62], [0.035, 1.66],
+      [0.05, 1.71], [0, 1.78],
+    ], 20),
   );
   return (
     <group>

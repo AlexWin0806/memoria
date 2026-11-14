@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { mirrored, plate } from './parts';
+import { mirrored, plate, useGeometry } from './parts';
 
 // Right half, bottom to top: pommel, grip, guard, blade.
 const SWORD_OUTLINE = mirrored([
@@ -15,9 +14,9 @@ const CROSS_OUTLINE = mirrored([[0.05, -0.4], [0.05, 0.13], [0.3, 0.13], [0.3, 0
 
 /** A shield hung on the wall over two crossed swords. */
 function Shield({ accent }: { accent: AccentKey }) {
-  const sword = useMemo(() => plate(SWORD_OUTLINE, 0.03, 0.008), []);
-  const shield = useMemo(() => plate(SHIELD_OUTLINE, 0.07, 0.015), []);
-  const cross = useMemo(() => plate(CROSS_OUTLINE, 0.025), []);
+  const sword = useGeometry(() => plate(SWORD_OUTLINE, 0.03, 0.008));
+  const shield = useGeometry(() => plate(SHIELD_OUTLINE, 0.07, 0.015));
+  const cross = useGeometry(() => plate(CROSS_OUTLINE, 0.025));
   return (
     <group position={[0, 1.7, 0]}>
       {/* one sword in front of the other, so that they do not share a plane where they cross */}
@@ -46,7 +45,7 @@ export const SHIELD: FeatureDef = {
   name: 'Shield',
   hint: 'a pointed shield on the wall, two swords crossed behind it',
   mount: 'wall',
-  footprint: 0.75,
-  height: 2.4,
+  footprint: 0.8,
+  height: 2.46,
   Component: Shield,
 };

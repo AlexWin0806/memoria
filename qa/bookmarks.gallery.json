@@ -3,5 +3,22 @@
   { "name": "gallery-1", "query": "gallery&shot=1&measure" },
   { "name": "gallery-2", "query": "gallery&shot=2&measure" },
   { "name": "gallery-3", "query": "gallery&shot=3&measure" },
-  { "name": "gallery-4", "query": "gallery&shot=4&measure" }
+  { "name": "gallery-4", "query": "gallery&shot=4&measure" },
+  { "name": "gallery-5", "query": "gallery&shot=5&measure" },
+  { "name": "gallery-6", "query": "gallery&shot=6&measure" },
+  { "name": "gallery-7", "query": "gallery&shot=7&measure" },
+  { "name": "gallery-8", "query": "gallery&shot=8&measure" },
+  { "name": "gallery-9", "query": "gallery&shot=9&measure" },
+  { "name": "line-0", "query": "gallery&shot=0&per=5&dev=0" },
+  { "name": "line-1", "query": "gallery&shot=1&per=5&dev=0" },
+  { "name": "line-2", "query": "gallery&shot=2&per=5&dev=0" },
+  { "name": "line-3", "query": "gallery&shot=3&per=5&dev=0" },
+  { "name": "line-4", "query": "gallery&shot=4&per=5&dev=0" },
+  { "name": "line-5", "query": "gallery&shot=5&per=5&dev=0" },
+  { "name": "turned-0", "query": "gallery&shot=0&per=5&yaw=38" },
+  { "name": "turned-1", "query": "gallery&shot=1&per=5&yaw=-38" },
+  { "name": "turned-2", "query": "gallery&shot=2&per=5&yaw=38" },
+  { "name": "turned-3", "query": "gallery&shot=3&per=5&yaw=-38" },
+  { "name": "turned-4", "query": "gallery&shot=4&per=5&yaw=38" },
+  { "name": "turned-5", "query": "gallery&shot=5&per=5&yaw=-38" }
 ]

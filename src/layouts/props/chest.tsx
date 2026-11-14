@@ -1,9 +1,8 @@
-import { useMemo } from 'react';
 import { IcosahedronGeometry } from 'three';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { type Placement, Repeated, UNIT_BOX, arc, plate } from './parts';
+import { arc, type Placement, plate, Repeated, UNIT_BOX, useGeometry } from './parts';
 
 const STRAPS: Placement[] = [-1, 1].map((s): Placement => ({ p: [s * 0.36, 0.315, 0], s: [0.09, 0.53, 0.73] }));
 
@@ -19,7 +18,7 @@ const HOARD: Placement[] = (
 /** A strapped chest standing open: a low box, its curved lid thrown back, heaped above the rim. */
 function Chest({ accent }: { accent: AccentKey }) {
   // The lid in section: a shallow arch on a flat underside. Extruded, then turned to run along x.
-  const lid = useMemo(() => plate(arc(0, -0.25, 0.43, 0.62, Math.PI - 0.62, 12), 1.2), []);
+  const lid = useGeometry(() => plate(arc(0, -0.25, 0.43, 0.62, Math.PI - 0.62, 12), 1.2));
   return (
     // Stands forward of its origin, because the open lid leans out behind.
     <group position={[0, 0, 0.1]}>
@@ -57,6 +56,6 @@ export const CHEST: FeatureDef = {
   hint: 'a low strapped box heaped full, its curved lid thrown open',
   mount: 'floor',
   footprint: 0.75,
-  height: 1.25,
+  height: 1.3,
   Component: Chest,
 };

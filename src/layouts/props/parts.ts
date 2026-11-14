@@ -1,9 +1,20 @@
 import { type BufferGeometry, CatmullRomCurve3, CylinderGeometry, ExtrudeGeometry, LatheGeometry, Path, Shape, SphereGeometry, SplineCurve, TubeGeometry, Vector2, Vector3 } from 'three';
+import { useEffect, useState } from 'react';
 import type { Vec3 } from '@/core/types';
 import { type Placement, limb } from '@/layouts/domus/parts';
 
 /** The house idiom, shared with the handcrafted palace. */
 export { type Placement, Repeated, UNIT_BOX, frameGeometry, lathe, limb, ribbonGeometry } from '@/layouts/domus/parts';
+
+/**
+ * A geometry built once for the life of the component and freed with it. A generated palace
+ * is rebuilt whenever it grows, so a feature that kept its buffers would leak them each time.
+ */
+export function useGeometry<G extends BufferGeometry>(make: () => G): G {
+  const [geometry] = useState(make);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return geometry;
+}
 
 /** One copy for `limb()` placements: radius 1, height 1, along y. */
 export const UNIT_ROD = () => new CylinderGeometry(1, 1, 1, 10);

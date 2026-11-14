@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
 import { Surface } from '@/styles';
-import { type Placement, Repeated, UNIT_BALL, UNIT_BOX, turned } from './parts';
+import { type Placement, Repeated, turned, UNIT_BALL, UNIT_BOX, useGeometry } from './parts';
 
 const TAU = Math.PI * 2;
 const CENTRE_Y = 0.95;
@@ -22,7 +21,7 @@ const BEARERS: Placement[] = [-1, 1].map((s): Placement => ({ p: [0, 0.34, s * 0
 function Drum({ accent }: { accent: AccentKey }) {
   // Turned about its own axis, then laid over so that the axis runs front to back. The belly is
   // much wider than the skins, so that the painted shell shows round the skin from the front.
-  const shell = useMemo(() => turned([[0.44, -0.4], [0.56, -0.24], [0.62, 0], [0.56, 0.24], [0.44, 0.4]], 32), []);
+  const shell = useGeometry(() => turned([[0.44, -0.4], [0.56, -0.24], [0.62, 0], [0.56, 0.24], [0.44, 0.4]], 32));
   return (
     <group>
       <Repeated items={RAILS} make={UNIT_BOX}>
