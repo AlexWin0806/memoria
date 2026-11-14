@@ -23,7 +23,9 @@ export const useDecks = create<DecksState>()(
         }),
       updateItem: (deckId, itemId, patch) =>
         set((s) => {
-          const deck = s.decks[deckId];
+          // Editing a fixture deck copies it into the learner's decks under the same id;
+          // the copy then shadows the fixture (see getDeck and useAllDecks).
+          const deck = s.decks[deckId] ?? FIXTURES[deckId];
           if (!deck) return s;
           const items = deck.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it));
           return { decks: { ...s.decks, [deckId]: { ...deck, items } } };
@@ -46,8 +48,13 @@ export function useDeck(deckId: string | null | undefined): Deck | undefined {
   return own ?? (deckId ? FIXTURES[deckId] : undefined);
 }
 
-/** Learner decks first (newest first), then fixtures. */
+/** Learner decks first (newest first), then fixtures. An edited fixture is listed once, in its fixture slot. */
 export function useAllDecks(): Deck[] {
   const own = useDecks((s) => s.decks);
-  return [...Object.values(own).sort((a, b) => b.createdAt - a.createdAt), ...FIXTURE_DECKS];
+  return [
+    ...Object.values(own)
+      .filter((d) => !FIXTURES[d.id])
+      .sort((a, b) => b.createdAt - a.createdAt),
+    ...FIXTURE_DECKS.map((d) => own[d.id] ?? d),
+  ];
 }

@@ -24,6 +24,8 @@ export interface SessionState {
   judge: boolean;
   /** Width in px that the overlay covers on the right; the engine re-centres the view. */
   insetRight: number;
+  /** Height in px that the overlay covers at the bottom (the sheet on narrow screens), else 0. */
+  insetBottom: number;
 
   toAttract: () => void;
   toCompose: () => void;
@@ -36,6 +38,7 @@ export interface SessionState {
   toResults: () => void;
   setArrived: (arrived: boolean) => void;
   setInsetRight: (px: number) => void;
+  setInsetBottom: (px: number) => void;
 }
 
 export const useSession = create<SessionState>()((set) => ({
@@ -48,6 +51,7 @@ export const useSession = create<SessionState>()((set) => ({
   results: [],
   judge: false,
   insetRight: 0,
+  insetBottom: 0,
 
   toAttract: () => set({ mode: 'attract', stops: [], step: -1, arrived: false, results: [], judge: false }),
   toCompose: () => set({ mode: 'compose', stops: [], step: -1, arrived: false, judge: false }),
@@ -68,6 +72,7 @@ export const useSession = create<SessionState>()((set) => ({
   toResults: () => set({ mode: 'results', arrived: false }),
   setArrived: (arrived) => set({ arrived }),
   setInsetRight: (insetRight) => set({ insetRight }),
+  setInsetBottom: (insetBottom) => set({ insetBottom }),
 }));
 
 /** True when the current stop is the last one of the walk. */
