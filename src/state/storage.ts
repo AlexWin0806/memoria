@@ -1,5 +1,6 @@
 import type { Deck, Imago, MemoryItem, PalaceLayoutMeta, RecallResult, ReviewCard, WalkRecord } from '@/core/types';
 import { DOMUS_META } from '@/layouts/domus/meta';
+import { parsePalaceId, specPlaces } from '@/layouts/spec';
 
 /**
  * Everything Memoria keeps in the browser is read through this file, so that a value left
@@ -121,7 +122,9 @@ const PLACES: Record<string, PalaceLayoutMeta> = { [DOMUS_META.id]: DOMUS_META }
  * the count on the title agrees with the walk). Returns the same array when nothing is dropped.
  */
 function onePerPlace(items: MemoryItem[], layoutId: unknown, t: Tally): MemoryItem[] {
-  const places = new Set(((str(layoutId) && PLACES[layoutId]) || DOMUS_META).loci.map((l) => l.id));
+  // A generated palace carries its own plan in its id (`gen:…`): its places are read from that.
+  const spec = str(layoutId) ? parsePalaceId(layoutId) : null;
+  const places = new Set(spec ? specPlaces(spec).map((p) => p.id) : ((str(layoutId) && PLACES[layoutId]) || DOMUS_META).loci.map((l) => l.id));
   const taken = new Set<string>();
   const kept = items.filter((it) => {
     if (!places.has(it.locusId) || taken.has(it.locusId)) return false;
