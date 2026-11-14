@@ -1,0 +1,6 @@
+[
+  { "name": "ink-wide", "query": "proto=1&theme=ink-vellum&shot=wide" },
+  { "name": "ink-fountain", "query": "proto=1&theme=ink-vellum&shot=fountain" },
+  { "name": "ink-door", "query": "proto=1&theme=ink-vellum&shot=door" },
+  { "name": "ink-develop", "query": "proto=1&theme=ink-vellum&shot=wide&dev=0.05,1,0.45" }
+]
