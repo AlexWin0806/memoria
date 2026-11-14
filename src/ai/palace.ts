@@ -1,11 +1,12 @@
 import type { Deck, DeckFocus, DeckKind, Imago, ItemLink, MemoryItem, PalaceSpec } from '@/core/types';
+import { DEFAULT_KIT_ID, KIT_LIST } from '@/layouts/kits/list';
 import { MAX_PLACES, MAX_ROOMS, ROOM_CAPACITY, extendSpec, palaceLayoutId, parsePalaceId, planSpec, specPlaces, specRoomLeft, type Growth } from '@/layouts/spec';
 import type { ArchitectPlan, ArchitectStep } from './architect';
 import { describeDrafts, draftImagos, newId, type Place } from './local';
 import { categoryOfRoom, outlineLocally } from './local-outline';
 import { singularCounts } from './parse';
 import { cacheKey, callArchitect, networkLooksUsable, readCache, writeCache } from './remote';
-import { NO_GLYPH, cleanLinks, cleanText, isRecord, linkCap, toImago, toItemLinks, toOutline, toSteps, type Outline, type OutlineItem, type OutlineLink } from './wire';
+import { NO_GLYPH, cleanLinks, cleanText, isRecord, linkCap, roomSizes, toImago, toItemLinks, toOutline, toSteps, type Outline, type OutlineItem, type OutlineLink } from './wire';
 
 /**
  * Generated palaces: the palace is built from the structure of the material. Each category
@@ -25,8 +26,8 @@ import { NO_GLYPH, cleanLinks, cleanText, isRecord, linkCap, toImago, toItemLink
  * planner outlines the palace from headings and plain link phrases. Every function resolves.
  */
 
-/** The kit used when nothing else is known. `src/layouts/kits` owns the real list; the app passes it in. */
-export const DEFAULT_KIT = 'gothic';
+/** The kit used when nothing else is known, or when one is asked for that does not exist. */
+export const DEFAULT_KIT = DEFAULT_KIT_ID;
 
 export interface KitOption {
   id: string;
@@ -50,7 +51,7 @@ export interface PalaceRequest {
   kind?: DeckKind;
   /** A kit id, or `auto` (the default): the Architect picks one of `kits` and says why. */
   kit?: string;
-  /** The kits the learner can choose from. */
+  /** The kits the learner can choose from. Default: every kit there is (`KIT_LIST`). */
   kits?: KitOption[];
   /** Fewer than the 30 a palace can hold, if the app wants a smaller one. */
   maxItems?: number;
@@ -145,6 +146,8 @@ const MAX_TEXT = 12_000;
 const MAX_REDRAWS = 3;
 
 const roomOf = (placeId: string): string => placeId.slice(0, placeId.lastIndexOf('-'));
+/** As `planSpec` numbers the rooms a category continues in. */
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth'];
 /** What an offline draft calls a place when the app has not said what stands there. */
 const plainPlace = (placeId: string): Place => ({ name: `${ORDINALS[Number(placeId.slice(placeId.lastIndexOf('-') + 1)) - 1] ?? 'next'} place`, hint: '' });
@@ -152,7 +155,7 @@ const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n =
 const clampCap = (n: number | undefined): number => Math.max(1, Math.min(MAX_PLACES, Math.round(n ?? MAX_PLACES) || MAX_PLACES));
 
 const cleanKits = (kits: KitOption[] | undefined): KitOption[] =>
-  (kits ?? [])
+  (kits ?? KIT_LIST)
     .filter((k) => /^[a-z0-9-]{1,24}$/.test(k.id) && k.name.trim())
     .slice(0, 12)
     .map((k) => ({ id: k.id, name: k.name.trim().slice(0, 40), ...(k.blurb?.trim() ? { blurb: k.blurb.trim().slice(0, 200) } : {}) }));
@@ -415,7 +418,13 @@ interface Built {
 /** Turns an outline into a palace: rooms from the categories, a place for every fact, an offline draft in every place. */
 function build(outline: Outline, kit: PalaceKitChoice, source: 'api' | 'local', seed: string, places: PalaceOptions['places']): Built {
   const groups = outline.categories.map((c, k) => ({ ...c, items: outline.items.filter((it) => it.category === k) })).filter((g) => g.items.length > 0);
-  const planned = planSpec(kit.id, groups.map((g) => ({ name: g.name, count: g.items.length, shape: g.shape })));
+  // A category of more than five continues next door ("Past", "Past II"), and never with a
+  // last room of one place: six are three and three (see `roomSizes`).
+  const wings = groups.flatMap((g, group) =>
+    roomSizes(g.items.length).map((count, part) => ({ group, name: part === 0 ? g.name : `${g.name} ${ROMAN[part + 1] ?? part + 1}`, count, shape: g.shape })),
+  );
+  const built = planSpec(kit.id, wings.map(({ name, count, shape }) => ({ name, count, shape })));
+  const planned = { spec: built.spec, places: groups.map((_, group) => wings.flatMap((w, i) => (w.group === group ? (built.places[i] ?? []) : []))) };
   const spec = planned.spec;
   const layoutId = palaceLayoutId(spec);
   const info = placesOf(layoutId, places);
@@ -480,10 +489,15 @@ function build(outline: Outline, kit: PalaceKitChoice, source: 'api' | 'local', 
   return { plan, low, rooms, ids, links };
 }
 
+/** The kit asked for by id, if it exists. A kit that is not in the list is never built: the default takes its place. */
+const askedKit = (req: PalaceRequest, kits: KitOption[]): string | undefined =>
+  req.kit && req.kit !== 'auto' && (kits.length === 0 || kits.some((k) => k.id === req.kit)) ? req.kit : undefined;
+
 function kitFor(req: PalaceRequest, kits: KitOption[], outline?: Outline): PalaceKitChoice {
-  if (req.kit && req.kit !== 'auto') return { id: req.kit, chosenBy: 'learner' };
+  const asked = askedKit(req, kits);
+  if (asked) return { id: asked, chosenBy: 'learner' };
   if (outline?.kit) return { id: outline.kit.id, chosenBy: 'architect', ...(outline.kit.reason ? { reason: outline.kit.reason } : {}) };
-  return { id: kits[0]?.id ?? DEFAULT_KIT, chosenBy: 'default' };
+  return { id: kits.find((k) => k.id === DEFAULT_KIT)?.id ?? kits[0]?.id ?? DEFAULT_KIT, chosenBy: 'default' };
 }
 
 const emit = (plan: PalacePlan, onProgress: PalaceOptions['onProgress']): void => {
@@ -536,7 +550,7 @@ export async function designPalace(req: PalaceRequest, opts?: PalaceOptions): Pr
     const kits = cleanKits(req.kits);
     const cap = clampCap(req.maxItems);
     if (text && text.length <= MAX_TEXT) {
-      const body = { op: 'outline' as const, text, ...(req.kind ? { kind: req.kind } : {}), maxItems: cap, kit: req.kit && req.kit !== 'auto' ? req.kit : 'auto', kits };
+      const body = { op: 'outline' as const, text, ...(req.kind ? { kind: req.kind } : {}), maxItems: cap, kit: req.kit && req.kit !== 'auto' ? (askedKit(req, kits) ?? DEFAULT_KIT) : 'auto', kits };
       const key = cacheKey({ palace: 1, ...body });
       const cached = fromCache(readCache(key), req, kits, cap, opts?.places);
       if (cached) {
@@ -610,8 +624,8 @@ export function designPalaceLocal(req: PalaceRequest, opts?: PalaceOptions): Pal
   try {
     const outline = outlineLocally(req.text, { cap: clampCap(req.maxItems), kind: req.kind });
     plan = build(outline, kit, 'local', req.text, opts?.places).plan;
-    if (kit.chosenBy === 'default' && kits.length > 1) {
-      plan.steps.push({ kind: 'plan', label: `No kit was suggested offline: this palace uses ${kits[0].name}. Choose another if it suits the material better.` });
+    if (kit.chosenBy === 'default' && kits.length > 1 && (!req.kit || req.kit === 'auto')) {
+      plan.steps.push({ kind: 'plan', label: `No kit was suggested offline: this palace uses ${kits.find((k) => k.id === kit.id)?.name ?? kit.id}. Choose another if it suits the material better.` });
     }
   } catch {
     const spec = planSpec(kit.id, []).spec;
@@ -674,8 +688,53 @@ interface Grown {
 function grow(deck: Deck, standing: StandingPalace, outline: Outline, source: 'api' | 'local', seed: string, places: ExtendOptions['places']): Grown {
   const { spec } = standing;
   const groups = outline.categories.map((c, k) => ({ ...c, items: outline.items.filter((it) => it.category === k) })).filter((g) => g.items.length > 0);
-  const growth: Growth[] = groups.map((g) => ({ roomName: g.room !== undefined ? categoryNameOf(spec, g.room) : g.name, count: g.items.length }));
-  const extended = extendSpec(spec, growth);
+  const shared: string[] = [];
+  // A palace has no rooms of one place. A new category of a single fact shares a room: with
+  // the new category beside it, or else with the last room, if that has a free place.
+  for (let i = 0; i < groups.length; i++) {
+    const lone = groups[i];
+    if (lone.room !== undefined || lone.items.length !== 1) continue;
+    const beside = [groups[i - 1], groups[i + 1]].find((g) => g && g.room === undefined && g.items.length < ROOM_CAPACITY);
+    if (beside) {
+      if (beside === groups[i - 1]) beside.items.push(...lone.items);
+      else beside.items.unshift(...lone.items);
+      beside.shape = 'hall';
+      shared.push(`"${lone.name}" had one fact and shares a room with "${beside.name}".`);
+      groups.splice(i--, 1);
+      continue;
+    }
+    const last = spec.rooms.length - 1;
+    const bound = groups.filter((g) => g.room === last).reduce((n, g) => n + g.items.length, 0);
+    if (ROOM_CAPACITY - spec.rooms[last].places > bound) {
+      shared.push(`"${lone.name}" had one fact and shares a room with "${spec.rooms[last].name}".`);
+      lone.room = last;
+    }
+  }
+
+  // Grow the palace one category at a time. A category that outgrows its room continues next
+  // door, but never in a room of one place: when exactly one fact would be left over, one is
+  // held back from the room that stands, so that the new room opens with two.
+  let current: PalaceSpec = spec;
+  const landed: string[][] = groups.map(() => []);
+  const growBy = (group: number, entry: Growth): void => {
+    if (entry.count <= 0) return;
+    const step = extendSpec(current, [entry]);
+    current = step.spec;
+    landed[group].push(...(step.added[0] ?? []));
+  };
+  groups.forEach((g, k) => {
+    const name = g.room !== undefined ? categoryNameOf(spec, g.room) : g.name;
+    const lower = name.trim().toLowerCase();
+    const homes = current.rooms.filter((r) => r.name.trim().toLowerCase() === lower || r.name.toLowerCase().startsWith(`${lower} `));
+    const free = homes.reduce((n, r) => n + (ROOM_CAPACITY - r.places), 0);
+    const over = g.items.length - free;
+    const sizes = over > 0 ? roomSizes(over + (over % ROOM_CAPACITY === 1 && free >= 1 ? 1 : 0)) : [];
+    const wing = (n: number): string | undefined => (n === 0 ? name : ROMAN[n + 1] ? `${name} ${ROMAN[n + 1]}` : undefined);
+    if (over <= 0 || sizes.some((_, j) => wing(homes.length + j) === undefined)) return growBy(k, { roomName: name, count: g.items.length });
+    growBy(k, { roomName: name, count: g.items.length - sizes.reduce((n, size) => n + size, 0) });
+    sizes.forEach((size, j) => growBy(k, { roomName: wing(homes.length + j), count: size }));
+  });
+  const extended = { spec: current, added: landed };
   const before = new Set(spec.rooms.map((r) => r.id));
   // A new room that holds a cycle is round. Rooms that stand keep their shape.
   groups.forEach((g, k) => {
@@ -720,6 +779,7 @@ function grow(deck: Deck, standing: StandingPalace, outline: Outline, source: 'a
   });
 
   const steps = [...outline.steps];
+  for (const label of shared) steps.push({ kind: 'plan', label: label.slice(0, 200) });
   if (noRoom.length > 0) steps.push({ kind: 'plan', label: `The palace is full (${MAX_PLACES} places, in ${MAX_ROOMS} rooms of ${ROOM_CAPACITY}): left out ${plural(noRoom.length, 'new fact')}.` });
   if (source === 'local') for (const d of describeDrafts(drafts.imagos, drafts.links)) steps.push({ kind: d.kind, label: singularCounts(d.text) });
 
