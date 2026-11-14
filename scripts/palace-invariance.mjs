@@ -62,6 +62,7 @@ try {
     { label: 'rings first and last', spec: planSpec('gothic', [{ name: 'Calvin cycle', count: 5, shape: 'ring' }, { name: 'Light reactions', count: 4 }, { name: 'Cell cycle', count: 4, shape: 'ring' }]).spec },
     { label: 'a category of twelve', spec: planSpec('gothic', [{ name: 'Cranial nerves', count: 12 }]).spec },
     { label: 'an unknown kit', spec: planSpec('atlantis', [{ name: 'Alpha', count: 2 }, { name: 'Beta', count: 2 }]).spec },
+    { label: 'workshop: a ring among halls', spec: planSpec('workshop', [{ name: 'Glycolysis', count: 5 }, { name: 'Krebs cycle', count: 5, shape: 'ring' }, { name: 'Electron transport', count: 3 }]).spec },
     { label: 'six full rooms', spec: planSpec('gothic', ['I', 'II', 'III', 'IV', 'V', 'VI'].map((name) => ({ name, count: 5 }))).spec },
   ];
   /** Chains of growth applied one after another to every start. */
