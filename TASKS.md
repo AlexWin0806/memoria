@@ -16,13 +16,14 @@ to 30 places; past scores and trends. The build that was demo-ready before Part 
 | Contracts: `PalaceSpec` in the layout id (append-only), `ItemLink`, `WalkRecord`, `survey` mode, `SceneView.integrity`, `FeatureDef`, `LocusFeature` | Lead | done | `src/core/types.ts`, `src/layouts/spec.ts`, `src/layouts/kits/types.ts` |
 | Bug: scroll bar in the middle of the title screen | Lead | done | The title column scrolled on its own; it now spans the window |
 | Bug: statue flickers at its base; ruin and repair mechanic; 32 loci | Engine | doing | `agent/engine-repair` |
-| Survey walk, integrity rules, Judge Mode starts in ruins, walk history, Progress view | App | doing | `agent/app-survey` |
+| Survey walk, integrity rules, Judge Mode starts in ruins (confirmed by Alex), walk history, Progress view | App | doing | `agent/app-survey` |
 | Palace generator and the Gothic library kit | Engine | doing | `agent/engine-generator` |
 | Twenty kit-neutral landmarks | Engine | doing | `agent/engine-props` |
 | Architect: categories to rooms, links, kit suggestion, 30 items, extension; two showcase fixtures | AI | doing | `agent/ai-rooms-links` |
 | Evidence for the diagnostic, rooms and links; facts about Mnemorium and memoryOS | Researcher | doing | `docs/research.md`, new Part 2 section |
+| Upload a PDF: its text is read in the browser and becomes the notes | App | doing | `agent/app-pdf`; asked for by Alex at 2:27 PM |
 | Compose: choose the architecture and rooms, edit links, extend a palace | App | todo | After the generator and the Architect land |
-| Links drawn between places; Zen garden and castle kits | Engine | todo | After the generator lands |
+| Links drawn between places; Zen garden and castle kits (confirmed by Alex) | Engine | todo | After the generator lands |
 | QA review 4; pitch, README, Devpost, Doc, media for Part 2 | QA, Scribe | todo | |
 
 ## Status at Sat 12:55 PM ET
