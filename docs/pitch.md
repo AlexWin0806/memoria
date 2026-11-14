@@ -13,9 +13,9 @@ Open the site with `?judge=pitch` before the judge arrives. It waits on the titl
 | 0:10 | Speaker | **Hand over.** "Press the big button. For the next forty seconds, just walk and look. At each place there is one strange picture. Picture it happening." |
 | 0:15 | Judge | **Encode walk**, eight places, about 40 seconds. Speaker stays quiet: talking over it would make the judge worse at it. |
 | 0:55 | Speaker | "Now the pictures are gone. We will check four of the eight places. What did you leave there?" |
-| 0:58 | Judge | **Recall, spot check.** Four of the eight places, chosen at random, multiple choice, about 25 seconds. Colour floods back into the palace around every place they get right. |
-| 1:25 | Speaker | **What just happened.** "That is the method of loci. It is about 2,100 years old in writing, memory competitors still use it, and two meta-analyses find a medium-to-large gain in recall for lists like this, though they rate the quality of that evidence as low. The catch has always been setup: you need a palace, a route and a picture for every fact." |
-| 1:40 | Speaker | **What we built.** "Memoria removes the setup. Paste your notes; an AI architect picks the facts, invents the pictures, checks them against the classical rules and rewrites the weak ones; you approve or change every one. Then it tests you instead of letting you re-read, and schedules reviews at growing intervals, which is what the research says makes memories last." |
+| 0:58 | Judge | **Recall, spot check.** Four of the eight places, chosen at random, multiple choice, about 25 seconds. Each place takes on colour when they get it right. |
+| 1:25 | Speaker | **What just happened.** "That is the method of loci. It is about 2,100 years old in writing. Two meta-analyses find a medium-to-large gain in recall for lists like this; one warns of a high risk of bias in the studies, and a later review rates the evidence as low quality. The catch has always been setup: you need a palace, a route and a picture for every fact." |
+| 1:40 | Speaker | **What we built.** "Memoria removes the setup. Paste your notes; an AI architect picks the facts, invents the pictures and checks them against the classical rules; you read through them and can change any of them. Then it tests you instead of letting you re-read, and schedules reviews at growing intervals, which is what the research says makes memories last." |
 | 1:53 | Speaker | **Close.** "It is free, it runs from a link on an ordinary laptop, and next we want you to be able to scan your own home and use that as your palace." |
 | 2:00 | | Stop. |
 
@@ -26,6 +26,11 @@ Open the site with `?judge=pitch` before the judge arrives. It waits on the titl
 - **Why not flashcards?** "Flashcards give you spacing and testing but no encoding strategy. A palace gives you the encoding but nothing after. This is both, in one loop."
 - **What is it bad at?** "Understanding. It is for ordered, discrete facts. And one list per route: load two similar lists onto the same route and they interfere."
 - **Why 3D at all?** "A 2012 study with 142 people found a virtual place explored for a few minutes worked as well as a familiar real one for loci. Rendering the images in the place goes beyond what that study tested, and we say so."
+
+## Say only if verified
+
+- "It rewrites its own weak images": true of the live Architect (a second pass scores and revises). Offline it only flags them. Say it only once the live path has been tested with a real key.
+- The venue numbers in "Does it work?" must be filled in from the real test, or the sentence dropped.
 
 ## Do not say
 
