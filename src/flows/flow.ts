@@ -182,6 +182,19 @@ export function startEncode(deckId: string): void {
   begin(known ? 'encode' : 'familiarize', deck, stops, false);
 }
 
+/**
+ * The walks for places added to a palace that is already in use (a deck that was extended):
+ * a survey of the new items only, then their study walk and their recall walk. The places
+ * the learner already knows are not walked again, and nothing about them changes.
+ */
+export function startSection(deckId: string, itemIds: string[]): void {
+  const deck = getDeck(deckId);
+  if (!deck) return;
+  const stops = stopsFor(deck, getLayout(deck.layoutId), itemIds);
+  if (!stops.length) return;
+  begin('survey', deck, stops, false);
+}
+
 /** Recall walk over the whole deck, or only over the loci whose items are due. */
 export function startRecall(deckId: string, scope: 'all' | 'due', judge = false): void {
   const deck = getDeck(deckId);
