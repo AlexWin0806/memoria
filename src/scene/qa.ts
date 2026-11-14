@@ -42,6 +42,7 @@ declare global {
  *   &debug=stores                        the stores only, no posts (for clean screenshots of driven states)
  *   ?perf                                frame-time overlay
  *   ?theme=<id>                          override the theme from settings
+ *   ?layout=<layout id>                  show that palace without a deck (a generated one: `gen:…`, URL-encoded)
  */
 export interface Qa {
   shot: RailNode | null;
@@ -100,4 +101,9 @@ export function readQa(lociCount: number, search = location.search): Qa {
     perf: q.has('perf'),
     theme: q.get('theme'),
   };
+}
+
+/** `?layout=`: the palace to start in, whatever the session would choose. Read before the first render. */
+export function qaLayoutId(search = typeof location === 'undefined' ? '' : location.search): string | null {
+  return new URLSearchParams(search).get('layout');
 }
