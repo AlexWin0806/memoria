@@ -1,0 +1,84 @@
+{
+  "id": "ink-vellum",
+  "name": "Ink & Vellum",
+  "style": "ink",
+  "palette": {
+    "paper": "#efe4c8",
+    "ink": "#2b2018",
+    "inkSoft": "#6e5a45",
+    "surfaces": {
+      "floor": "#e2d5b3",
+      "wall": "#dccdaa",
+      "ceiling": "#d6c6a0",
+      "trim": "#cdb88c",
+      "stone": "#d9cba8",
+      "wood": "#c0a377",
+      "metal": "#bfb08e",
+      "water": "#a9c2bb",
+      "foliage": "#a8b48c",
+      "cloth": "#d3bfa0",
+      "glow": "#f0d9a0"
+    },
+    "accents": {
+      "red": "#b8402a",
+      "amber": "#c8922e",
+      "green": "#4f8a6b",
+      "teal": "#3f7f86",
+      "blue": "#34508f",
+      "plum": "#7b3f5e"
+    },
+    "sky": ["#efe4c8", "#d6c6a0"],
+    "fog": "#efe4c8"
+  },
+  "light": {
+    "ambient": 1,
+    "keyColor": "#fff6e0",
+    "keyIntensity": 1,
+    "keyDirection": [0.6, -0.75, -0.25],
+    "fillColor": "#efe4c8",
+    "fillIntensity": 0,
+    "locusGlow": 0
+  },
+  "fog": { "near": 30, "far": 120 },
+  "post": {
+    "lineWidth": 2.2,
+    "creaseWeight": 0.62,
+    "inkOpacity": 0.94,
+    "wobble": 1.2,
+    "wobbleScale": 64,
+    "depthThreshold": 0.008,
+    "normalThreshold": 0.16,
+    "distanceFade": 0.7,
+    "toneLit": 0.36,
+    "toneShade": -0.12,
+    "washLit": 0.22,
+    "washLitPigment": 0.74,
+    "washHalf": 0.85,
+    "shadeMix": 0.2,
+    "washThreshold": 0.2,
+    "bleed": 0.34,
+    "pool": 0.16,
+    "granulation": 0.07,
+    "hatchSpacing": 7.5,
+    "hatchWidth": 1.1,
+    "hatchStrength": 0.6,
+    "grain": 0.06,
+    "fibre": 0.05,
+    "blotch": 0.05,
+    "vignette": 0.9
+  },
+  "type": {
+    "display": "'IM Fell English', 'Iowan Old Style', Georgia, serif",
+    "text": "'EB Garamond', Garamond, Georgia, serif"
+  },
+  "ui": {
+    "bg": "#efe4c8",
+    "panel": "#f5ecd6",
+    "fg": "#2b2018",
+    "muted": "#6e5a45",
+    "accent": "#b8402a",
+    "success": "#3d6e55",
+    "danger": "#9a3220",
+    "radius": 2
+  }
+}
