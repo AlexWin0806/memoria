@@ -1,4 +1,5 @@
 import { useDecks } from './decks';
+import { useHistory } from './history';
 import { useReview } from './review';
 import { useSettings } from './settings';
 import { repairStoredKey } from './storage';
@@ -13,6 +14,7 @@ export function syncStoresAcrossTabs(): () => void {
     'memoria.decks.v1': useDecks,
     'memoria.review.v1': useReview,
     'memoria.settings.v1': useSettings,
+    'memoria.history.v1': useHistory,
   };
   const onStorage = (e: StorageEvent) => {
     if (!e.key || !stores[e.key]) return;

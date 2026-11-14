@@ -76,7 +76,8 @@ export function Recall() {
     if (!deck || !item || !arrived || result) return;
     const right = answerOf(item);
     const correct = input === 'choice' ? given === right : typedMatches(given, right);
-    answerRecall({ itemId: item.id, correct, given, ms: Date.now() - arrivedAt.current });
+    // "I cannot recall it" gives no answer at all: the walk history counts it apart from a wrong one.
+    answerRecall({ itemId: item.id, correct, given, ms: Date.now() - arrivedAt.current, ...(given === '' ? { unknown: true } : {}) });
   };
 
   useWalkKeys({
@@ -192,6 +193,12 @@ export function Recall() {
             </p>
             {item.meaning && <p className="body">{item.meaning}</p>}
             <p className="scene">{item.imago.scene}</p>
+            {/* In a surveyed palace the answer also decides the state of the place (a timed Judge run has no time for the line). */}
+            {!judge && deck.surveyedAt !== undefined && (
+              <p className="state" data-testid="recall-place-state">
+                {result.correct ? 'This place is restored.' : 'This place needs another repair: it comes back for review soon.'}
+              </p>
+            )}
           </div>
         )}
       </div>

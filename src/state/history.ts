@@ -1,0 +1,137 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { WalkRecord } from '@/core/types';
+import { cleanHistoryState, newTally, STORE_KEYS } from './storage';
+
+/**
+ * How many walks are kept in all. A learner who reviews every day for a year makes a few
+ * hundred; past this the oldest go first, except each palace's first survey, which is the
+ * baseline every later score is read against.
+ */
+export const HISTORY_MAX = 400;
+
+interface HistoryState {
+  /** Finished walks, oldest first. */
+  records: WalkRecord[];
+  /**
+   * Keep a finished walk. A record with the same id replaces the earlier one, so that
+   * finishing the same walk twice (a double press, a resumed walk) counts once.
+   */
+  add: (record: WalkRecord) => void;
+  /** Forget a palace's walks (the palace was deleted). */
+  removeDeck: (deckId: string) => void;
+}
+
+/** Drops the oldest walks beyond the cap, never a palace's first survey. */
+function capped(records: WalkRecord[]): WalkRecord[] {
+  if (records.length <= HISTORY_MAX) return records;
+  const baselines = new Set<string>();
+  const seen = new Set<string>();
+  for (const r of records) {
+    if (r.kind === 'survey' && !seen.has(r.deckId)) {
+      seen.add(r.deckId);
+      baselines.add(r.id);
+    }
+  }
+  let over = records.length - HISTORY_MAX;
+  return records.filter((r) => {
+    if (over <= 0 || baselines.has(r.id)) return true;
+    over--;
+    return false;
+  });
+}
+
+/**
+ * The walk history: one record per finished survey, recall or review walk. Written by the
+ * flow controllers (src/flows/flow.ts) and by nothing else; a Judge run and the comparison
+ * test never reach them, so neither leaves a record.
+ */
+export const useHistory = create<HistoryState>()(
+  persist(
+    (set) => ({
+      records: [],
+      add: (record) => set((s) => ({ records: capped([...s.records.filter((r) => r.id !== record.id), record]) })),
+      removeDeck: (deckId) => set((s) => ({ records: s.records.filter((r) => r.deckId !== deckId) })),
+    }),
+    {
+      name: STORE_KEYS.history,
+      // Records of the wrong shape are dropped when read: see ./storage.
+      merge: (stored, current) => ({ ...current, ...cleanHistoryState(stored, newTally()) }),
+    },
+  ),
+);
+
+/** A palace's walks, oldest first. */
+export function walksOf(records: WalkRecord[], deckId: string): WalkRecord[] {
+  return records.filter((r) => r.deckId === deckId).sort((a, b) => a.at - b.at);
+}
+
+/** The palace's survey: the baseline. The first one, if it was ever taken again. */
+export function surveyOf(records: WalkRecord[], deckId: string): WalkRecord | undefined {
+  return walksOf(records, deckId).find((r) => r.kind === 'survey');
+}
+
+/** A survey nobody walked: "I know none of this" pressed before any answer. */
+export function isSkippedSurvey(record: WalkRecord): boolean {
+  return record.kind === 'survey' && record.ms === 0 && record.unknown === record.total;
+}
+
+export interface WalkComparison {
+  /** How many places of this walk the comparison covers. */
+  of: number;
+  /** Right answers on those places in the earlier walk, and in this one. */
+  before: number;
+  now: number;
+}
+
+/**
+ * This walk against an earlier one, counted over the places both asked about: a review of
+ * three places is compared with what the survey found at those three, not with all eight.
+ * null when the earlier walk asked about none of them.
+ */
+export function compareWalks(earlier: WalkRecord, current: WalkRecord): WalkComparison | null {
+  const was = new Map(earlier.items.map((it) => [it.itemId, it.correct]));
+  const shared = current.items.filter((it) => was.has(it.itemId));
+  if (!shared.length) return null;
+  return {
+    of: shared.length,
+    before: shared.filter((it) => was.get(it.itemId)).length,
+    now: shared.filter((it) => it.correct).length,
+  };
+}
+
+/** The latest walk before `current` that tested memory after study (not the survey) and shares a place with it. */
+export function previousWalk(records: WalkRecord[], current: WalkRecord): WalkRecord | undefined {
+  const asked = new Set(current.items.map((it) => it.itemId));
+  return walksOf(records, current.deckId)
+    .filter((r) => r.id !== current.id && r.kind !== 'survey' && r.at <= current.at && r.items.some((it) => asked.has(it.itemId)))
+    .pop();
+}
+
+export interface WeakPlace {
+  itemId: string;
+  misses: number;
+  /** How many recall or review walks asked about it. */
+  asked: number;
+}
+
+/**
+ * The places missed most often on recall and review walks, worst first. The survey is left
+ * out: not knowing something before studying it is the starting point, not a weakness.
+ */
+export function weakestPlaces(records: WalkRecord[], deckId: string, limit = 3): WeakPlace[] {
+  const tally = new Map<string, WeakPlace>();
+  for (const r of walksOf(records, deckId)) {
+    if (r.kind === 'survey') continue;
+    for (const it of r.items) {
+      const row = tally.get(it.itemId) ?? { itemId: it.itemId, misses: 0, asked: 0 };
+      row.asked++;
+      if (!it.correct) row.misses++;
+      tally.set(it.itemId, row);
+    }
+  }
+  return [...tally.values()]
+    .filter((p) => p.misses > 0)
+    .sort((a, b) => b.misses - a.misses || b.misses / b.asked - a.misses / a.asked)
+    .slice(0, limit);
+}

@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { leave, requestLeave, startJudge, useFlow } from '@/flows/flow';
 import { useArrivedFallback, useReducedMotion } from '@/flows/hooks';
+import type { Mode } from '@/core/types';
+import { useDeck } from '@/state/decks';
 import { draftIsUnsaved, hasDraft, useDraft } from '@/state/draft';
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
@@ -8,13 +10,18 @@ import { syncStoresAcrossTabs } from '@/state/sync';
 import { useActiveTheme } from '@/themes/active';
 import { Compare } from '@/ab/Compare';
 import { Compose } from './Compose';
+import { installDebugHook } from './debug';
+import { Progress } from './Progress';
 import { Recall } from './Recall';
 import { Results } from './Results';
 import { Review } from './Review';
+import { Survey } from './Survey';
 import { Title } from './Title';
 import { Encode, Familiarize } from './Walk';
 import { applyThemeVars } from './theme';
 import './overlay.css';
+import './survey.css';
+import './progress.css';
 
 const query = () => new URLSearchParams(location.search);
 
@@ -33,6 +40,7 @@ function OverlayRoot() {
   const theme = useActiveTheme();
   const reduced = useReducedMotion(useSettings((s) => s.reducedMotion));
   const confirmLeave = useFlow((s) => s.confirmLeave);
+  const progress = useFlow((s) => s.progress);
   useArrivedFallback();
 
   // Before first paint, so the overlay never flashes unstyled.
@@ -57,6 +65,11 @@ function OverlayRoot() {
   useEffect(() => syncStoresAcrossTabs(), []);
 
   useEffect(() => {
+    // Scripts and the console read the overlay's state through this, as they read the engine's through `window.__memoria`.
+    if (import.meta.env.DEV || query().has('debug')) installDebugHook();
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
@@ -79,19 +92,22 @@ function OverlayRoot() {
 
   return (
     <main className="ov" data-mode={mode} data-reduced-motion={reduced ? 'true' : 'false'}>
-      {mode === 'attract' ? (
+      {mode === 'attract' && !progress ? (
         <Title />
       ) : (
-        <Panel wide={mode === 'compose'}>
+        <Panel wide={mode === 'compose' || progress}>
+          {/* Progress opens over the title or the results. The results stay mounted (hidden) under it, so an open editor keeps its text. */}
+          {progress && <Progress />}
           {mode === 'compose' && <Compose />}
           {mode === 'familiarize' && <Familiarize />}
+          {mode === 'survey' && <Survey />}
           {mode === 'encode' && <Encode />}
           {mode === 'recall' && <Recall />}
           {mode === 'results' && <Results />}
           {mode === 'review' && <Review />}
         </Panel>
       )}
-      {confirmLeave && <LeaveConfirm recall={mode === 'recall'} />}
+      {confirmLeave && <LeaveConfirm mode={mode} />}
       <Compare />
     </main>
   );
@@ -146,8 +162,10 @@ function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
  * the box, Escape cancels (the overlay's Escape handler toggles it), and on closing focus
  * returns to whatever had it before. Walk shortcuts and Judge timers pause meanwhile.
  */
-function LeaveConfirm({ recall }: { recall: boolean }) {
+function LeaveConfirm({ mode }: { mode: Mode }) {
   const box = useRef<HTMLDivElement>(null);
+  const deck = useDeck(useSession((s) => s.deckId));
+  const surveyed = !useSession((s) => s.judge) && deck?.surveyedAt !== undefined;
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const buttons = () => Array.from(box.current?.querySelectorAll<HTMLElement>('button') ?? []);
@@ -185,9 +203,13 @@ function LeaveConfirm({ recall }: { recall: boolean }) {
           Leave this walk?
         </h2>
         <p id="leave-d">
-          {recall
+          {mode === 'recall'
             ? 'The answers you have given so far are recorded. The places you have not reached stay as they were.'
-            : 'Nothing has been tested yet, so nothing is recorded. You can start the walk again from the title.'}
+            : mode === 'survey'
+              ? 'The survey is not finished, so nothing from it is kept. It starts again the next time you open this palace.'
+              : surveyed
+                ? 'What the survey found is kept, and so is every image you have placed. The study walk starts again from the title.'
+                : 'Nothing has been tested yet, so nothing is recorded. You can start the walk again from the title.'}
         </p>
         <div className="actions">
           <button type="button" className="btn btn--primary" onClick={() => useFlow.setState({ confirmLeave: false })} data-testid="leave-stay">

@@ -3,15 +3,17 @@ import { regenerateImago } from '@/ai/architect';
 import type { Imago, Locus, MemoryItem } from '@/core/types';
 import { emojiOnly, splitGlyphs } from '@/flows/answers';
 import { withDeadline } from '@/flows/deadline';
-import { itemAt, leave, startRecall, useFlow } from '@/flows/flow';
+import { itemAt, leave, openProgress, startRecall, useFlow } from '@/flows/flow';
 import { formatDuration, formatWhen, numberWord } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
 import { isNoStrongerSuggestion, NO_MORE_OFFLINE } from '@/flows/suggest';
-import { JUDGE_REGENERATE_TIMEOUT_MS, REGENERATE_TIMEOUT_MS } from '@/flows/timing';
+import { JUDGE_REGENERATE_TIMEOUT_MS, JUDGE_STARTS_IN_RUINS, REGENERATE_TIMEOUT_MS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDeck, useDecks } from '@/state/decks';
+import { compareWalks, previousWalk, surveyOf, useHistory } from '@/state/history';
 import { useReview } from '@/state/review';
 import { useSession } from '@/state/session';
+import { RepairLegend } from './Legend';
 
 /**
  * `by` says where the text in the editor came from: a new image from the Architect, an
@@ -28,6 +30,10 @@ const sameScene = (a: string, b: string) => a.trim().toLowerCase() === b.trim().
 export function Results() {
   const { stops, results, deckId, layoutId, judge } = useSession();
   const recallMs = useFlow((s) => s.recallMs);
+  const walkId = useFlow((s) => s.walkId);
+  // The Progress view opens over this screen, which stays mounted so that an open editor keeps its text.
+  const covered = useFlow((s) => s.progress);
+  const history = useHistory((s) => s.records);
   const cards = useReview((s) => s.cards);
   const deck = useDeck(deckId);
   const layout = getLayout(layoutId);
@@ -39,9 +45,10 @@ export function Results() {
   const [long, setLong] = useState(false);
 
   // The score is the first thing a screen reader should land on, and Tab then reaches the actions.
+  // It is also where the focus returns when the Progress view closes.
   useEffect(() => {
-    score.current?.focus({ preventScroll: true });
-  }, []);
+    if (!covered) score.current?.focus({ preventScroll: true });
+  }, [covered]);
   useEffect(() => {
     const el = body.current;
     const scroller = el?.parentElement;
@@ -72,6 +79,15 @@ export function Results() {
     return item ? [{ locus, item, result: results.find((r) => r.itemId === item.id) }] : [];
   });
   const right = rows.filter((r) => r.result?.correct).length;
+  // This walk in the history (a Judge run has none), against the survey and against the walk before it.
+  // Each comparison counts only the places this walk asked about, so a review of three is read against the same three.
+  const record = judge ? undefined : history.find((r) => r.id === walkId && r.deckId === deck.id);
+  const survey = record ? surveyOf(history, deck.id) : undefined;
+  const sinceSurvey = record && survey ? compareWalks(survey, record) : null;
+  const earlier = record ? previousWalk(history, record) : undefined;
+  const sinceEarlier = record && earlier ? compareWalks(earlier, record) : null;
+  // Places stand, fall and are rebuilt only in a surveyed palace, or in a Judge run that starts in ruins.
+  const ruins = judge ? JUDGE_STARTS_IN_RUINS : deck.surveyedAt !== undefined;
   // Judge pitch: the recall walk checked only some of the places.
   const spot = judge && rows.length < deck.items.length;
   const setDraft = (id: string, d: Draft | undefined) =>
@@ -122,7 +138,7 @@ export function Results() {
   };
 
   return (
-    <section className="screen results" data-long={long ? 'true' : 'false'} ref={body} data-testid="results">
+    <section className="screen results" hidden={covered} data-long={long ? 'true' : 'false'} ref={body} data-testid="results">
       <p className="label">
         {spot ? 'Spot check' : 'Results'} · {deck.title}
       </p>
@@ -138,12 +154,28 @@ export function Results() {
       <p className="body" data-testid="results-time">
         Recalled from memory in {formatDuration(recallMs)}.
       </p>
+      {(sinceSurvey || sinceEarlier) && (
+        // The survey's score is always called what it is: the score before study.
+        <div className="trend" data-testid="results-trend">
+          {sinceSurvey && (
+            <p data-testid="results-vs-survey">
+              Before study: {sinceSurvey.before} of {sinceSurvey.of}. Now: {sinceSurvey.now} of {sinceSurvey.of}.
+            </p>
+          )}
+          {sinceEarlier && (
+            <p data-testid="results-vs-previous">
+              The walk before this one: {sinceEarlier.before} of {sinceEarlier.of}.
+            </p>
+          )}
+        </div>
+      )}
       {judge && (
         // A Judge run is a sandbox: no review card is written, and the learner's own are left alone.
         <p className="body" data-testid="results-demo">
           This demo run was not added to your reviews.
         </p>
       )}
+      {ruins && <RepairLegend />}
       <div className="actions results__actions" data-testid="results-actions">
         {judge && (
           <button type="button" className="btn btn--primary" onClick={() => useSession.getState().toCompose()} data-testid="results-build">
@@ -158,6 +190,11 @@ export function Results() {
         >
           {spot ? `Recall all ${numberWord(deck.items.length)}` : 'Recall again'}
         </button>
+        {!judge && (
+          <button type="button" className="btn" onClick={openProgress} data-testid="results-progress">
+            Progress
+          </button>
+        )}
         <button type="button" className="btn" onClick={leave} data-testid="results-home">
           Back to palaces
         </button>
@@ -178,6 +215,7 @@ export function Results() {
                   <span className="place__term">{item.term}</span>
                   <span className="place__meta" data-testid="result-meta">
                     {locus.name} · {ok ? (result?.selfMarked ? 'right (self-marked)' : 'right') : 'missed'}
+                    {ruins ? ` · ${ok ? 'restored' : 'needs another repair'}` : ''}
                     {card ? ` · ${ok ? 'next review' : 'again'} ${formatWhen(card.dueAt, now)}` : ''}
                   </span>
                 </span>

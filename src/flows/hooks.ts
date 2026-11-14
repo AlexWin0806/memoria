@@ -26,6 +26,8 @@ export interface WalkKeys {
   back?: () => void;
   /** 0-based option index for keys 1 to 4. */
   pick?: (index: number) => void;
+  /** The 0 key, or the question mark: "I don't know" on the survey walk. */
+  unknown?: () => void;
   /** The P key: pause or resume a timed stop. */
   pause?: () => void;
   /** Set while a timed stop is paused: Space resumes it instead of moving on. */
@@ -43,7 +45,8 @@ function activatesItself(el: EventTarget | null): boolean {
 }
 
 /**
- * Walk shortcuts: Right / Space / Enter next, Left back, 1 to 4 pick an option, P pause.
+ * Walk shortcuts: Right / Space / Enter next, Left back, 1 to 4 pick an option, 0 or ? for
+ * "I don't know" (survey), P pause.
  * Keys are left alone while a text field has focus, and Space / Enter are left to a
  * focused button so that one press never counts twice.
  */
@@ -74,6 +77,10 @@ export function useWalkKeys(keys: WalkKeys): void {
         if (isTextField(t) || !k.pause) return;
         e.preventDefault();
         k.pause();
+      } else if (e.key === '0' || e.key === '?') {
+        if (isTextField(t) || !k.unknown) return;
+        e.preventDefault();
+        k.unknown();
       } else if (/^[1-4]$/.test(e.key)) {
         if (isTextField(t) || !k.pick) return;
         e.preventDefault();

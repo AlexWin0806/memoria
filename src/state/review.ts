@@ -26,6 +26,15 @@ interface ReviewState {
    * call counts as a walk of its own.
    */
   record: (deckId: string, results: RecallResult[], opts?: { walkId?: string; now?: number }) => void;
+  /**
+   * Keep what the survey found for each item, and the answer the learner gave (`given`: an
+   * empty string for "I don't know", absent for a place the survey never reached). It changes
+   * no schedule: an item that has only been surveyed is still new, nothing is due on it, and a
+   * right answer there (which may be a guess) earns no interval. The first recall walk does that.
+   */
+  setSurvey: (deckId: string, found: Record<string, { known: boolean; given?: string }>) => void;
+  /** The item's image has been placed on a study walk. The first time is the one that is kept. */
+  markStudied: (deckId: string, itemId: string, now?: number) => void;
   /** Forget all progress for a deck. */
   resetDeck: (deckId: string) => void;
 }
@@ -50,6 +59,21 @@ export const useReview = create<ReviewState>()(
           }
           return { cards, walk };
         }),
+      setSurvey: (deckId, found) =>
+        set((s) => {
+          const cards = { ...s.cards };
+          for (const [itemId, { known, given }] of Object.entries(found)) {
+            const { surveyGiven: _earlier, ...card } = cards[itemId] ?? newCard(itemId, deckId);
+            cards[itemId] = { ...card, survey: known ? 'known' : 'unknown', ...(given === undefined ? {} : { surveyGiven: given }) };
+          }
+          return { cards };
+        }),
+      markStudied: (deckId, itemId, now = Date.now()) =>
+        set((s) => {
+          const card = s.cards[itemId] ?? newCard(itemId, deckId);
+          if (card.studiedAt !== undefined) return s;
+          return { cards: { ...s.cards, [itemId]: { ...card, studiedAt: now } } };
+        }),
       resetDeck: (deckId) =>
         set((s) => ({
           cards: Object.fromEntries(Object.entries(s.cards).filter(([, c]) => c.deckId !== deckId)),
@@ -71,6 +95,36 @@ export const useReview = create<ReviewState>()(
  */
 function studied(card: ReviewCard | undefined): card is ReviewCard {
   return card !== undefined && card.reps > 0;
+}
+
+/**
+ * How whole an item's place is, from what is saved about the item (see `SceneView.integrity`):
+ *   recalled, and the last answer was right       1    restored
+ *   recalled, and the last answer was a miss      0.3  damaged (a miss sends the card to box 1)
+ *   known in the survey, not recalled yet         1    it never fell
+ *   studied, not recalled yet                     0.6  under repair
+ *   unknown in the survey, or never surveyed      0    in ruins
+ * Only meaningful for a deck that has been surveyed; `deriveSceneView` decides that.
+ */
+export const INTEGRITY = { ruins: 0, damaged: 0.3, repair: 0.6, whole: 1 } as const;
+
+export function savedIntegrity(card: ReviewCard | undefined): number {
+  if (card && card.reps > 0) return card.box >= 2 ? INTEGRITY.whole : INTEGRITY.damaged;
+  if (card?.survey === 'known') return INTEGRITY.whole;
+  return card?.studiedAt !== undefined ? INTEGRITY.repair : INTEGRITY.ruins;
+}
+
+/** How many of a deck's places are in each state of repair, from saved state. */
+export function repairCounts(deck: Deck, cards: Record<string, ReviewCard>): { ruins: number; damaged: number; repair: number; whole: number } {
+  const counts = { ruins: 0, damaged: 0, repair: 0, whole: 0 };
+  for (const it of deck.items) {
+    const v = savedIntegrity(cards[it.id]);
+    if (v === INTEGRITY.ruins) counts.ruins++;
+    else if (v === INTEGRITY.damaged) counts.damaged++;
+    else if (v === INTEGRITY.repair) counts.repair++;
+    else counts.whole++;
+  }
+  return counts;
 }
 
 /** Items of a deck that have been recalled at least once and are due again now. */

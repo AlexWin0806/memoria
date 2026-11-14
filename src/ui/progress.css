@@ -1,0 +1,170 @@
+/*
+ * The Progress view, its chart, and the one-line legend of the three states of a place.
+ * Like overlay.css: every colour, face and radius comes from the CSS variables written by
+ * applyThemeVars(). No literal colours in this file. The chart is drawn in the same hand as
+ * the page: an ink line, hairline rules, no fills, no panel of its own.
+ */
+
+.legend {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+.legend__state {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.09em;
+  font-size: 18px;
+}
+.lede p { margin: 0 0 8px; }
+.lede p:last-child { margin-bottom: 0; }
+
+/* The results stay mounted under the Progress view; `hidden` must win over their own display. */
+.screen[hidden] { display: none; }
+
+/* The title's row of links: Progress next to Reviews. */
+.rowhead__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 18px;
+}
+
+/* ───────── One palace ───────── */
+
+.palace {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule-strong);
+}
+.palace__name {
+  font-family: var(--type-display);
+  font-size: 26px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.palace__meta {
+  margin: 2px 0 10px;
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+.palace .body { margin-bottom: 8px; }
+.palace__sub {
+  margin: 18px 0 4px;
+  font-weight: 400;
+}
+
+/* ───────── The chart ───────── */
+
+.chart {
+  margin: 14px 0 0;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.chart svg {
+  display: block;
+  overflow: visible;
+  /* The nearest walk follows the pointer: the whole plot is the target, not the dots. */
+  touch-action: pan-y;
+}
+.chart text {
+  font-family: var(--type-text);
+  font-size: 16px;
+  fill: var(--ui-muted);
+}
+.chart__grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+/* A reference level, not a grid line: the score before study. */
+.chart__baseline {
+  stroke: var(--ui-muted);
+  stroke-width: 1;
+  stroke-dasharray: 5 5;
+}
+.chart__line {
+  fill: none;
+  stroke: var(--ui-fg);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+/* Every mark wears a ring of the paper, so the line stops short of it. */
+.chart__mark {
+  fill: var(--ui-fg);
+  stroke: var(--ui-panel);
+  stroke-width: 2;
+  paint-order: stroke;
+}
+.chart__mark--survey {
+  fill: var(--ui-panel);
+  stroke: var(--ui-fg);
+  paint-order: normal;
+}
+.chart__halo {
+  fill: none;
+  stroke: var(--ui-accent);
+  stroke-width: 2;
+}
+.chart text.chart__value { fill: var(--ui-fg); }
+.chart text.chart__note { font-style: italic; }
+.chart__readout {
+  margin: 4px 0 0;
+  font-size: 16px;
+  color: var(--ui-fg);
+}
+.chart__key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+  margin: 4px 0 0;
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+.chart__keyitem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart__keyitem svg { flex: none; }
+
+/* ───────── The table twin of the chart ───────── */
+
+.walks { margin-top: 12px; }
+.walks summary { display: inline-block; cursor: pointer; }
+.walks summary::after { content: ' +'; }
+.walks[open] summary::after { content: ' −'; }
+.walks__table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 16px;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.walks__table th,
+.walks__table td {
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: baseline;
+}
+.walks__table th {
+  font-weight: 400;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.09em;
+  color: var(--ui-muted);
+  border-bottom-color: var(--rule-strong);
+}
+
+.weak {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.weak li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.weak__name { overflow-wrap: anywhere; }
+.weak__meta { font-size: 16px; color: var(--ui-muted); }

@@ -256,6 +256,20 @@ export interface ReviewCard {
   lastReviewedAt?: number;
   reps: number;
   lapses: number;
+  /**
+   * What the survey (the diagnostic taken before any study) found for this item: `unknown`
+   * covers a wrong answer and "I don't know" alike. Absent = the item was never surveyed.
+   * A card that holds only this (reps 0, box 0) is not a studied card: nothing is due on it.
+   */
+  survey?: 'known' | 'unknown';
+  /**
+   * What the learner picked or typed in the survey, shown beside the right answer on the study
+   * walk. An empty string = they chose "I don't know". Absent = the survey never reached the
+   * item (it was skipped), or the item was never surveyed.
+   */
+  surveyGiven?: string;
+  /** Epoch ms when the item's image was first placed on a study walk. Absent = not studied yet. */
+  studiedAt?: number;
 }
 
 export interface RecallResult {

@@ -1,0 +1,87 @@
+/*
+ * The survey walk and the state-of-repair lines it adds to the other walk screens.
+ * Like overlay.css: every colour, face and radius comes from the CSS variables written by
+ * applyThemeVars(). No literal colours in this file.
+ */
+
+/* Said to assistive technology only: what the scene shows a sighted learner. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The meaning the question is about: set in the display face, like a line quoted from the notes. */
+.survey__cue {
+  margin: 6px 0 2px;
+  font-family: var(--type-display);
+  font-size: 26px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.survey__cue[data-length='long'] { font-size: 22px; line-height: 1.3; }
+.survey__cue[data-length='very-long'] { font-size: 19px; line-height: 1.35; }
+.survey__question {
+  margin: 4px 0 10px;
+  font-size: 22px;
+  color: var(--ui-muted);
+}
+
+/*
+ * The learner's own pick, after answering: marked in ink, the same for a term and for
+ * "I don't know". Never the right/wrong colours: the survey gives no verdict.
+ */
+.choice[data-state='picked'] {
+  border-left-color: var(--ui-fg);
+  background: var(--wash);
+}
+
+.survey__ack {
+  margin: 18px 0 0;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.09em;
+}
+.survey__given {
+  font-variant-caps: normal;
+  letter-spacing: 0;
+  color: var(--ui-muted);
+}
+.survey .hint { margin-top: 18px; }
+.survey__skip {
+  margin: 14px 0 0;
+  font-size: 16px;
+}
+.survey .place__term { display: block; }
+
+/* One quiet line on a walk screen: the state of repair of the place the learner is standing at. */
+.state {
+  margin: 8px 0 12px;
+  padding-left: 12px;
+  border-left: 3px solid var(--rule-strong);
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+.reveal .state {
+  margin: 8px 0 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+/* Results: this walk against the survey and against the walk before it. */
+.trend {
+  margin: 0 0 14px;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--ui-accent);
+}
+.trend p { margin: 0; }
+.trend p + p { margin-top: 2px; }
+
+@media (max-width: 719px) {
+  .survey__cue { font-size: 22px; }
+}
