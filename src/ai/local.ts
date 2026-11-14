@@ -79,7 +79,7 @@ const bare = (s: string): string => s.replace(/[.!?]+$/, '').trim();
  * Taken from the hint (what makes the place unlike its neighbours) so the image
  * touches that feature; falls back to the locus name.
  */
-export function placePhrase(locus: Locus): string {
+export function placePhrase(locus: Place): string {
   const name = locus.name.replace(/^the\s+/i, '').toLowerCase();
   const first = locus.hint.split(/[,.;:]| with | in | on | at | against | you | full of | leaning | under | that | which | left of | right of /i)[0].trim();
   const phrase = first.replace(/^(?:an?|the)\s+/i, '').toLowerCase();
@@ -91,7 +91,10 @@ export function placePhrase(locus: Locus): string {
   return `the ${phrase}`;
 }
 
-interface Fact {
+/** What the planner needs to know about a place: any Locus, or a place of a generated palace. */
+export type Place = Pick<Locus, 'name' | 'hint'>;
+
+export interface Fact {
   term: string;
   meaning?: string;
 }
@@ -163,7 +166,7 @@ function carried(fact: Fact, link: LinkKind): string | undefined {
   return wordCount(word) <= 6 && !word.includes('"') ? word : undefined;
 }
 
-function compose(fact: Fact, locus: Locus, template: Template, match: PictureMatch): Imago {
+function compose(fact: Fact, locus: Place, template: Template, match: PictureMatch): Imago {
   const place = placePhrase(locus);
   const picture = withArticle(match.entry.noun);
   const word = CARRIES.has(match.link) ? carried(fact, match.link) : undefined;
@@ -196,6 +199,85 @@ function genericHead(facts: ParsedFact[]): string | null {
   for (const f of pairs) counts.set(headOf(f.term), (counts.get(headOf(f.term)) ?? 0) + 1);
   const [head, n] = [...counts].sort((a, b) => b[1] - a[1])[0];
   return n >= Math.max(3, pairs.length * 0.6) ? head : null;
+}
+
+/** How each draft is tied to its fact, counted, so that the trace can say so. */
+export type DraftLinks = Record<LinkKind, number>;
+
+/**
+ * One draft image per fact, at its place, in route order. Deterministic for a given `seed`.
+ * `taken`: first glyphs already used in the palace (when new facts join a standing one).
+ */
+export function draftImagos(
+  facts: readonly Fact[],
+  places: readonly Place[],
+  seed: string,
+  taken: Iterable<string> = [],
+): { imagos: Imago[]; links: DraftLinks; low: boolean[] } {
+  // A stable starting point per text, then a step of 3 through 7 templates: every
+  // action is used before any repeats, and two neighbours never share one.
+  const start = hashNumber(seed) % TEMPLATES.length;
+  const used = new Set<string>(taken);
+  const links: DraftLinks = { meaning: 0, known: 0, word: 0, gloss: 0, sound: 0, weak: 0, none: 0 };
+
+  // A picture that is the best one for a fact (its meaning, or the thing itself by name)
+  // is held back for that fact: an earlier sentence that merely mentions the word may not take it.
+  const pools = facts.map(candidatesFor);
+  const reserved = new Map<string, number>();
+  pools.forEach((pool, i) => {
+    for (const c of pool) if (STRONG_LINKS.has(c.link) && !reserved.has(c.entry.emoji)) reserved.set(c.entry.emoji, i);
+  });
+  // One word, one card: two sentences that both mention carbon do not both get a carbon picture.
+  const glossed = new Set<string>();
+  // True where the picture is a generic stand-in (a labelled box) or only a weak sound-alike:
+  // nothing in it shows the fact, so the learner should be asked for a better one.
+  const low: boolean[] = [];
+
+  const imagos = facts.map((fact, i) => {
+    const template = TEMPLATES[(start + i * 3) % TEMPLATES.length];
+    const free = (c: PictureMatch): boolean =>
+      !used.has(c.entry.emoji) &&
+      (STRONG_LINKS.has(c.link) || (reserved.get(c.entry.emoji) ?? i) === i) &&
+      !(c.link === 'gloss' && glossed.has(c.entry.word));
+    // Never the same picture twice in one palace: the next candidate, or a labelled object.
+    const match = pools[i].find(free) ?? placeholder(fact, used, i);
+    used.add(match.entry.emoji);
+    if (match.link === 'gloss') glossed.add(match.entry.word);
+    links[match.link]++;
+    low.push(match.link === 'none' || match.link === 'weak');
+    return compose(fact, places[i], template, match);
+  });
+  return { imagos, links, low };
+}
+
+/** The two lines of the trace that say what the drafts are and how far to trust them. */
+export function describeDrafts(imagos: readonly Imago[], links: DraftLinks): { kind: ArchitectStep['kind']; text: string }[] {
+  const count = imagos.length;
+  if (count === 0) return [];
+  const parts = [
+    links.meaning ? `${links.meaning} show the meaning` : '',
+    links.known ? `${links.known} known by name` : '',
+    links.word + links.gloss ? `${links.word + links.gloss} from a word in the fact` : '',
+    links.sound ? `${links.sound} by sound` : '',
+  ].filter(Boolean);
+  const distinct = new Set(imagos.map((im) => im.glyphs[0])).size === count;
+  const weak = links.weak + links.none;
+  // Every draft whose reason carries a caution is counted here, so the trace and the cards agree.
+  const partial = links.sound + links.gloss;
+  const also = partial === 0 ? '' : ` ${partial} more ${partial === 1 ? 'is' : 'are'} tied only by sound or to one word of the fact, and ${partial === 1 ? 'says' : 'say'} so.`;
+  return [
+    {
+      kind: 'generate',
+      text: `Drafted ${count} ${count === 1 ? 'image' : 'images'}${parts.length ? `: ${parts.join(', ')}` : ''}. ${distinct ? 'No picture is used twice, and neighbours' : 'Neighbours'} move differently.`,
+    },
+    {
+      kind: 'check',
+      text:
+        weak === 0
+          ? `Checked each draft mechanically: ${partial === 0 ? 'every one has a stated link to its fact' : 'none is without a link'}.${also} They are still stock sentences, so make them yours.`
+          : `Checked each draft mechanically: ${weak} of ${count} ${weak === 1 ? 'has' : 'have'} only a weak link or none, and ${weak === 1 ? 'is' : 'are'} flagged. Rewrite ${weak === 1 ? 'that one' : 'those'} first.${also}`,
+    },
+  ];
 }
 
 export function planLocally(req: ArchitectRequest, onStep?: (step: ArchitectStep) => void): ArchitectPlan {
@@ -272,56 +354,9 @@ export function planLocally(req: ArchitectRequest, onStep?: (step: ArchitectStep
     }
   }
 
-  // A stable starting point per text, then a step of 3 through 7 templates: every
-  // action is used before any repeats, and two neighbours never share one.
-  const start = hashNumber(req.text) % TEMPLATES.length;
-  const used = new Set<string>();
-  const links: Record<LinkKind, number> = { meaning: 0, known: 0, word: 0, gloss: 0, sound: 0, weak: 0, none: 0 };
-
-  // A picture that is the best one for a fact (its meaning, or the thing itself by name)
-  // is held back for that fact: an earlier sentence that merely mentions the word may not take it.
-  const pools = kept.map(candidatesFor);
-  const reserved = new Map<string, number>();
-  pools.forEach((pool, i) => {
-    for (const c of pool) if (STRONG_LINKS.has(c.link) && !reserved.has(c.entry.emoji)) reserved.set(c.entry.emoji, i);
-  });
-  // One word, one card: two sentences that both mention carbon do not both get a carbon picture.
-  const glossed = new Set<string>();
-
-  const items: MemoryItem[] = kept.map((fact, i) => {
-    const template = TEMPLATES[(start + i * 3) % TEMPLATES.length];
-    const free = (c: PictureMatch): boolean =>
-      !used.has(c.entry.emoji) &&
-      (STRONG_LINKS.has(c.link) || (reserved.get(c.entry.emoji) ?? i) === i) &&
-      !(c.link === 'gloss' && glossed.has(c.entry.word));
-    // Never the same picture twice in one palace: the next candidate, or a labelled object.
-    const match = pools[i].find(free) ?? placeholder(fact, used, i);
-    used.add(match.entry.emoji);
-    if (match.link === 'gloss') glossed.add(match.entry.word);
-    links[match.link]++;
-    return { id: newId(), term: fact.term, meaning: fact.meaning, locusId: route[i].id, imago: compose(fact, route[i], template, match) };
-  });
-
-  if (kept.length > 0) {
-    const parts = [
-      links.meaning ? `${links.meaning} show the meaning` : '',
-      links.known ? `${links.known} known by name` : '',
-      links.word + links.gloss ? `${links.word + links.gloss} from a word in the fact` : '',
-      links.sound ? `${links.sound} by sound` : '',
-    ].filter(Boolean);
-    const distinct = new Set(items.map((it) => it.imago.glyphs[0])).size === items.length;
-    say('generate', `Drafted ${kept.length} ${kept.length === 1 ? 'image' : 'images'}${parts.length ? `: ${parts.join(', ')}` : ''}. ${distinct ? 'No picture is used twice, and neighbours' : 'Neighbours'} move differently.`);
-    const weak = links.weak + links.none;
-    // Every draft whose reason carries a caution is counted here, so the trace and the cards agree.
-    const partial = links.sound + links.gloss;
-    const also = partial === 0 ? '' : ` ${partial} more ${partial === 1 ? 'is' : 'are'} tied only by sound or to one word of the fact, and ${partial === 1 ? 'says' : 'say'} so.`;
-    say(
-      'check',
-      weak === 0
-        ? `Checked each draft mechanically: ${partial === 0 ? 'every one has a stated link to its fact' : 'none is without a link'}.${also} They are still stock sentences, so make them yours.`
-        : `Checked each draft mechanically: ${weak} of ${kept.length} ${weak === 1 ? 'has' : 'have'} only a weak link or none, and ${weak === 1 ? 'is' : 'are'} flagged. Rewrite ${weak === 1 ? 'that one' : 'those'} first.${also}`,
-    );
-  }
+  const { imagos, links, low } = draftImagos(kept, route, req.text);
+  const items: MemoryItem[] = kept.map((fact, i) => ({ id: newId(), term: fact.term, meaning: fact.meaning, locusId: route[i].id, imago: imagos[i] }));
+  for (const label of describeDrafts(imagos, links)) say(label.kind, label.text);
 
   const listLike = mode === 'notes' || numbered * 2 >= kept.length;
   const kind = req.kind ?? (kept.length > 0 && !listLike && kept.filter((f) => f.pair).length * 2 >= kept.length ? 'pairs' : 'list');
@@ -334,7 +369,7 @@ export function planLocally(req: ArchitectRequest, onStep?: (step: ArchitectStep
           ? `${kept[0].term}, ${kept[1].term} and ${kept.length - 2} more`
           : `${kept[0].term} and ${kept.length - 1} more`;
 
-  return { title: title ?? fallbackTitle, kind, items, steps, source: 'local', overflow };
+  return { title: title ?? fallbackTitle, kind, items, steps, source: 'local', overflow, lowConfidence: items.filter((_, i) => low[i]).map((it) => it.id) };
 }
 
 /** Prefix of the `reason` returned when the offline planner has nothing better to offer. */

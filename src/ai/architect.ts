@@ -1,15 +1,38 @@
 import type { DeckKind, Imago, Locus, MemoryItem, Room } from '@/core/types';
-import { cleanGlyphs, isImagoAction } from './glyphs';
 import { NO_STRONGER, newId, nextAlternate, planLocally, regenerateLocally } from './local';
 import { singularCounts } from './parse';
 import { cacheKey, callArchitect, networkLooksUsable, readCache, writeCache } from './remote';
+import { NO_GLYPH, cleanText as text, isRecord, toImago, toSteps } from './wire';
 
 export { parseLine } from './parse';
+// Generated palaces (rooms from categories, links, kits, extension) live in ./palace.
+export {
+  DEFAULT_KIT,
+  designPalace,
+  designPalaceLocal,
+  extendPalace,
+  extendPalaceLocal,
+  type ExtendOptions,
+  type KitOption,
+  type PalaceCategory,
+  type PalaceExtension,
+  type PalaceKitChoice,
+  type PalaceOptions,
+  type PalacePlan,
+  type PalaceRequest,
+  type PlaceInfo,
+} from './palace';
 
 /**
  * The Palace Architect, as the app sees it. The app engineer codes against these
  * signatures; the AI engineer owns the implementation (server call in api/architect.ts,
  * local fallback, caching). Every function must resolve without a network connection.
+ *
+ *   planPalace / planPalaceLocal      a deck for a handcrafted palace with a fixed route (Domus)
+ *   designPalace / designPalaceLocal  a generated palace: rooms from the categories of the
+ *                                     material, links between facts, a kit, up to 30 places
+ *   extendPalace / extendPalaceLocal  new notes added to a generated palace, nothing moved
+ *   regenerateImago                   another image for one item, in either kind of palace
  */
 export interface ArchitectRequest {
   /** A pasted list (one item per line) or raw notes. */
@@ -39,6 +62,12 @@ export interface ArchitectPlan {
   source: 'api' | 'local';
   /** Items that did not fit (more facts than loci). */
   overflow: string[];
+  /**
+   * Ids of items whose image needs a better picture: an offline draft that is only a generic
+   * stand-in (a labelled box) or a weak sound-alike, or an image with no usable glyph. The
+   * proposal list should flag these first. Absent or empty = nothing to flag.
+   */
+  lowConfidence?: string[];
 }
 
 export interface RegenerateRequest {
@@ -56,29 +85,6 @@ export interface RegenerateRequest {
 const PLAN_TIMEOUT_MS = 55_000;
 const REGENERATE_TIMEOUT_MS = 24_000;
 const MAX_TEXT = 12_000;
-const STEP_KINDS: readonly ArchitectStep['kind'][] = ['plan', 'generate', 'check', 'revise', 'fallback'];
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-
-const text = (v: unknown, max: number): string | undefined => {
-  if (typeof v !== 'string') return undefined;
-  const t = v.replace(/\s+/g, ' ').trim();
-  return t ? t.slice(0, max) : undefined;
-};
-
-/** Accepts only what an Imago may hold; anything else means "do not trust this payload". */
-function toImago(raw: unknown): Imago | null {
-  if (!isRecord(raw)) return null;
-  const scene = text(raw.scene, 280);
-  if (!scene) return null;
-  return {
-    scene,
-    glyphs: cleanGlyphs(raw.glyphs),
-    action: isImagoAction(raw.action) ? raw.action : 'bob',
-    reason: text(raw.reason, 200),
-    source: 'architect',
-  };
-}
 
 /** Validates a server plan against the request it answers. Null = fall back to the local planner. */
 function toPlan(raw: unknown, req: ArchitectRequest): ArchitectPlan | null {
@@ -103,12 +109,7 @@ function toPlan(raw: unknown, req: ArchitectRequest): ArchitectPlan | null {
   }
   items.sort((a, b) => route.get(a.locusId)! - route.get(b.locusId)!);
 
-  const steps: ArchitectStep[] = (Array.isArray(raw.steps) ? raw.steps : []).flatMap((s) => {
-    if (!isRecord(s)) return [];
-    const label = text(s.label, 200);
-    const kind = STEP_KINDS.find((k) => k === s.kind);
-    return label && kind ? [{ label: singularCounts(label), kind }] : [];
-  });
+  const steps = toSteps(raw.steps);
   const overflow = (Array.isArray(raw.overflow) ? raw.overflow : []).flatMap((o) => text(o, 120) ?? []);
 
   return {
@@ -118,6 +119,7 @@ function toPlan(raw: unknown, req: ArchitectRequest): ArchitectPlan | null {
     steps: steps.length ? steps : [{ kind: 'generate', label: singularCounts(`Drafted ${items.length} images.`) }],
     source: 'api',
     overflow,
+    lowConfidence: items.filter((it) => it.imago.glyphs[0] === NO_GLYPH).map((it) => it.id),
   };
 }
 

@@ -3,11 +3,19 @@
  * Checks a deployed copy of Memoria from the outside, the way a visitor would:
  *
  *   node scripts/live-check.mjs --url https://<your-deployment>
- *   node scripts/live-check.mjs --url https://<your-deployment> --facts 12   # a full palace
+ *   node scripts/live-check.mjs --url https://<your-deployment> --facts 12   # a full Domus palace
+ *   node scripts/live-check.mjs --url https://<your-deployment> --facts 30 --no-browser   # a 30-place generated palace, API only
  *   node scripts/live-check.mjs --url http://localhost:4173 --offline-ok   # dry run on `npm run preview`
  *
  *   1. The page is public (no login redirect) and serves the current bundle.
  *   2. The API endpoint answers with its guard rails (405 for GET, 400 for a bad body).
+ *   2b. A generated palace through the deployed API, driven by the app's own client code
+ *      (src/ai, loaded here through Vite): `--facts N` Spanish words under headings (up to
+ *      30), then a six-step process, then an extension of it. Reports the rooms, the links,
+ *      what the Architect says it did, and for every request when it started, how long it
+ *      took and the server's own timing of each model call. Fails if the palace is not from
+ *      the live Architect, if a room did not answer, or if it took more than 30 s.
+ *      `--no-browser` stops here.
  *   3. In a real browser: the title screen appears and the scene renders.
  *   4. In a real browser: "Build a palace" with a short list. Reports whether the plan came
  *      from the live Architect (`source: api`) or from the offline planner, how long it
@@ -26,6 +34,7 @@ import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const args = process.argv.slice(2);
@@ -35,7 +44,7 @@ const flag = (name, fallback) => {
 };
 const base = (flag('url') ?? '').replace(/\/+$/, '');
 if (!base) {
-  console.error('Usage: node scripts/live-check.mjs --url https://<your-deployment> [--theme greybox] [--out <dir>]');
+  console.error('Usage: node scripts/live-check.mjs --url https://<your-deployment> [--facts 6..30] [--no-browser] [--theme greybox] [--out <dir>]');
   process.exit(2);
 }
 const theme = flag('theme', 'greybox');
@@ -91,6 +100,175 @@ if (failed) {
   process.exit(1);
 }
 
+// ── 2b: a generated palace through the deployed API, with the app's own client ─────────
+// Runs src/ai (designPalace, extendPalace) in this process with `fetch` pointed at the
+// deployment, so the requests, their order and their timing are exactly the browser's:
+// one outline call, then one request per room and the link check at the same time.
+const SPANISH = {
+  Kitchen: ['cuchara - spoon', 'tenedor - fork', 'cuchillo - knife', 'plato - plate', 'vaso - glass'],
+  Animals: ['perro - dog', 'gato - cat', 'caballo - horse', 'vaca - cow', 'pájaro - bird'],
+  Colours: ['rojo - red', 'azul - blue', 'verde - green', 'amarillo - yellow', 'negro - black'],
+  Family: ['madre - mother', 'padre - father', 'hermana - sister', 'hermano - brother', 'abuela - grandmother'],
+  Weather: ['lluvia - rain', 'nieve - snow', 'viento - wind', 'sol - sun', 'nube - cloud'],
+  Body: ['mano - hand', 'pie - foot', 'ojo - eye', 'boca - mouth', 'cabeza - head'],
+};
+/** `n` Spanish words under their headings, five to a heading, with the pairs the notes state. */
+function vocabulary(n) {
+  const lines = ['# Everyday Spanish'];
+  let left = n;
+  for (const [heading, words] of Object.entries(SPANISH)) {
+    if (left <= 0) break;
+    lines.push(`## ${heading}`, ...words.slice(0, left));
+    left -= words.length;
+  }
+  if (n >= 17) lines.push('Matched pairs: madre and padre are a pair.');
+  if (n >= 19) lines.push('Matched pairs: hermana and hermano are a pair.');
+  return lines.join('\n');
+}
+const BREAD = [
+  'How a loaf of bread is made, step by step.',
+  'Mixing: flour, water, yeast and salt are stirred into a rough dough. Mixing leads to kneading.',
+  'Kneading: the dough is worked until it is smooth and stretchy. Kneading leads to proving.',
+  'Proving: the dough rests and the yeast makes it rise. Proving leads to shaping.',
+  'Shaping: the risen dough is folded into a loaf. Shaping leads to baking.',
+  'Baking: the loaf is baked in a hot oven until the crust is brown. Baking leads to cooling.',
+  'Cooling: the loaf rests on a rack before it is sliced.',
+].join('\n');
+const KITS = [
+  { id: 'gothic', name: 'Gothic library', blurb: 'Stone vaults, lecterns, tall windows.' },
+  { id: 'zen', name: 'Zen garden', blurb: 'Raked gravel, stones, water and a tea house.' },
+  { id: 'castle', name: 'Castle', blurb: 'A keep with a great hall, armour and banners.' },
+];
+
+async function palaceCheck(facts) {
+  let createServer;
+  try {
+    ({ createServer } = await import('vite'));
+  } catch {
+    note('vite is not installed here, so the generated-palace check was skipped (run `npm ci` in the repository).');
+    return;
+  }
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const vite = await createServer({ root, logLevel: 'error', appType: 'custom', server: { middlewareMode: true, hmr: false, ws: false, watch: null }, optimizeDeps: { noDiscovery: true } });
+  const realFetch = globalThis.fetch;
+  const store = new Map();
+  const calls = [];
+  globalThis.window = globalThis;
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, String(v)), removeItem: (k) => void store.delete(k), key: (i) => [...store.keys()][i] ?? null, get length() { return store.size; } };
+  globalThis.fetch = async (url, init) => {
+    if (url !== '/api/architect') return realFetch(url, init);
+    const op = JSON.parse(init.body).op;
+    const room = JSON.parse(init.body).room?.name;
+    const call = { op: room ? `${op} (${room})` : op, at: Date.now(), ms: 0, status: 0, timing: '', error: '' };
+    calls.push(call);
+    try {
+      const res = await realFetch(`${base}/api/architect`, init);
+      call.status = res.status;
+      call.timing = res.headers.get('server-timing') ?? '';
+      if (!res.ok) call.error = (await res.clone().text()).slice(0, 160);
+      return res;
+    } catch (e) {
+      call.error = String(e?.cause?.code ?? e?.message ?? e).slice(0, 160);
+      throw e;
+    } finally {
+      call.ms = Date.now() - call.at;
+    }
+  };
+  const report = (label, startedAt, wall) => {
+    for (const c of calls) {
+      const slow = c.ms > 25_000 ? '  <- close to the 30 s that some networks allow' : '';
+      note(`  +${String(c.at - startedAt).padStart(5)} ms  ${c.op.padEnd(28)} HTTP ${c.status || '---'}  ${String(c.ms).padStart(5)} ms  ${c.timing}${c.error ? `  ${c.error}` : ''}${slow}`);
+    }
+    const longest = Math.max(0, ...calls.map((c) => c.ms));
+    note(`  ${label}: ${calls.length} requests, wall time ${(wall / 1000).toFixed(1)} s, longest single request ${(longest / 1000).toFixed(1)} s`);
+    return longest;
+  };
+  try {
+    const { designPalace, extendPalace } = await vite.ssrLoadModule('/src/ai/architect.ts');
+    const { parsePalaceId } = await vite.ssrLoadModule('/src/layouts/spec.ts');
+    const termIn = (items) => (id) => items.find((it) => it.id === id)?.term ?? '?';
+    const describe = (plan, items) => {
+      const spec = parsePalaceId(plan.layoutId ?? plan.deck.layoutId);
+      note(`  rooms: ${spec.rooms.map((r) => `${r.name} (${r.places}${r.shape === 'ring' ? ', ring' : ''})`).join(', ')}; kit ${spec.kit}${plan.kit?.reason ? ` (${plan.kit.chosenBy}: ${plan.kit.reason})` : ''}`);
+      const term = termIn(items);
+      note(`  links: ${plan.links.length ? plan.links.map((l) => `${term(l.from)} ${l.kind} ${term(l.to)}${l.label ? ` (${l.label})` : ''}`).join('; ') : 'none'}`);
+      for (const s of plan.steps) note(`  step (${s.kind}): ${s.label}`);
+      return spec;
+    };
+
+    // (a) vocabulary under headings: categories become rooms.
+    let started = Date.now();
+    const arrivals = [];
+    const plan = await designPalace({ text: vocabulary(facts), kits: KITS }, { onProgress: (p) => arrivals.push(`${((Date.now() - started) / 1000).toFixed(1)} s: ${p.items.filter((it) => it.imago.source === 'architect').length} images`) });
+    let wall = Date.now() - started;
+    let longest = report(`${facts} facts`, started, wall);
+    const drawn = plan.items.filter((it) => it.imago.source === 'architect').length;
+    if (plan.source !== 'api' || drawn === 0) {
+      const first = calls[0];
+      bad(`the generated palace came from the offline planner (first request: HTTP ${first?.status || 'none'} ${first?.error ?? ''}). 400 "op" means this deployment predates the outline operation; 503 means no key is set.`);
+    } else {
+      const spec = describe(plan, plan.items);
+      note(`  images arrived: ${arrivals.join(' | ')}`);
+      for (const it of plan.items.slice(0, 5)) note(`  image: ${it.locusId} ${it.imago.glyphs.join('')} ${it.term}: ${it.imago.scene}  [${it.imago.reason ?? ''}]`);
+      const wanted = Math.min(facts, 30);
+      if (plan.items.length !== wanted) bad(`expected ${wanted} facts in the palace, got ${plan.items.length} (left out: ${plan.overflow.join(', ') || 'none'})`);
+      else if (drawn !== plan.items.length) bad(`${plan.items.length - drawn} of ${plan.items.length} images are offline drafts: a room did not answer`);
+      else if (wall > 30_000) bad(`the ${facts}-fact palace took ${(wall / 1000).toFixed(1)} s of wall time; the target is well under 30 s`);
+      else ok(`a ${plan.items.length}-fact palace in ${spec.rooms.length} rooms with ${plan.links.length} links, every image from the live Architect, in ${(wall / 1000).toFixed(1)} s`);
+      if (longest > 29_000) bad(`one request took ${(longest / 1000).toFixed(1)} s: a network that cuts requests at 30 s would lose it`);
+      if (new Set(plan.items.map((it) => it.imago.glyphs[0])).size !== plan.items.length) note('  two images share a first glyph (see the "revise" step)');
+      if (plan.lowConfidence.length) note(`  flagged for a better picture: ${plan.lowConfidence.length}`);
+    }
+
+    // (b) a process: the steps are chained, and the palace says so.
+    calls.length = 0;
+    started = Date.now();
+    const bread = await designPalace({ text: BREAD, kit: 'castle' });
+    wall = Date.now() - started;
+    report('a six-step process', started, wall);
+    if (bread.source === 'api') {
+      describe(bread, bread.items);
+      const chain = bread.items.slice(0, -1).every((it, i) => bread.links.some((l) => l.kind === 'becomes' && l.from === it.id && l.to === bread.items[i + 1].id));
+      if (bread.focus === 'process' && chain) ok(`the six steps came back as a process, each step linked to the next (${(wall / 1000).toFixed(1)} s)`);
+      else bad(`the bread notes came back as focus "${bread.focus}" with ${chain ? 'a whole' : 'a broken'} chain of steps`);
+
+      // (c) extend it: nothing that stands may move.
+      calls.length = 0;
+      started = Date.now();
+      const deck = { id: 'live-check', title: bread.title, kind: bread.kind, layoutId: bread.layoutId, items: bread.items, createdAt: Date.now(), links: bread.links, focus: bread.focus };
+      const grown = await extendPalace(deck, 'Slicing: the cooled loaf is cut with a serrated knife. Cooling leads to slicing.\nToasting: a slice is browned until crisp. Slicing leads to toasting.');
+      wall = Date.now() - started;
+      report('extending it with two notes', started, wall);
+      const kept = deck.items.every((it) => grown.deck.items.includes(it));
+      const term = termIn(grown.deck.items);
+      note(`  added: ${grown.added.map((it) => `${it.term} at ${it.locusId} ${it.imago.glyphs.join('')}`).join('; ') || 'nothing'}; new links: ${grown.links.map((l) => `${term(l.from)} ${l.kind} ${term(l.to)}`).join('; ') || 'none'}`);
+      for (const s of grown.steps) note(`  step (${s.kind}): ${s.label}`);
+      if (grown.source === 'api' && grown.added.length >= 1 && kept) ok(`extended the palace with ${grown.added.length} new ${grown.added.length === 1 ? 'fact' : 'facts'}; nothing that stood was touched (${(wall / 1000).toFixed(1)} s)`);
+      else bad(`extension: source ${grown.source}, ${grown.added.length} added, existing items ${kept ? 'kept' : 'CHANGED'}`);
+    } else {
+      bad('the process palace came from the offline planner');
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.window;
+    delete globalThis.localStorage;
+    await vite.close();
+  }
+}
+
+if (!offlineOk) {
+  try {
+    await palaceCheck(Math.max(3, Math.min(30, Number(flag('facts', '6')))));
+  } catch (e) {
+    bad(`the generated-palace check stopped: ${e.message.split('\n')[0]}`);
+  }
+}
+if (args.includes('--no-browser')) {
+  console.log(failed ? `\n${failed} check(s) failed.` : '\nAll live checks passed (the browser checks were skipped).');
+  process.exit(failed ? 1 : 0);
+}
+
+
 // ── 3 to 5: a real browser ───────────────────────────────────────────────────
 let chromium;
 try {
@@ -136,7 +314,7 @@ const FACTS = [
   'Vacuole - stores water in plant cells',
   'Centrosome - organises the spindle in division',
 ];
-// --facts 6 (default) or up to 12: a full palace is the slow case worth measuring.
+// --facts 6 (default) or up to 12 here: the Compose screen plans for the twelve places of Domus.
 const LIST = FACTS.slice(0, Math.max(3, Math.min(12, Number(flag('facts', '6'))))).join('\n');
 
 try {
