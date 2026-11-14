@@ -3,6 +3,28 @@
 Agent-level tasks. Human tasks live in the Google Doc "To-Do List" tab.
 Status: `todo`, `doing`, `done`, `blocked`. Feature ids match `docs/plan-snapshot.md`.
 
+## Part 2, started Sat 2:10 PM ET (direction from Alex)
+
+The learner is the architect: a diagnostic walk first (with "I don't know"), the palace falls
+into ruin where the fact was unknown and is repaired by learning it; categories become rooms;
+relationships are drawn between places; a choice of architecture; palaces can be extended, up
+to 30 places; past scores and trends. The build that was demo-ready before Part 2 is commit
+`34d496c` (roll back to it in Vercel if Part 2 is not stable by late evening).
+
+| Task | Owner | Status | Notes |
+|---|---|---|---|
+| Contracts: `PalaceSpec` in the layout id (append-only), `ItemLink`, `WalkRecord`, `survey` mode, `SceneView.integrity`, `FeatureDef`, `LocusFeature` | Lead | done | `src/core/types.ts`, `src/layouts/spec.ts`, `src/layouts/kits/types.ts` |
+| Bug: scroll bar in the middle of the title screen | Lead | done | The title column scrolled on its own; it now spans the window |
+| Bug: statue flickers at its base; ruin and repair mechanic; 32 loci | Engine | doing | `agent/engine-repair` |
+| Survey walk, integrity rules, Judge Mode starts in ruins, walk history, Progress view | App | doing | `agent/app-survey` |
+| Palace generator and the Gothic library kit | Engine | doing | `agent/engine-generator` |
+| Twenty kit-neutral landmarks | Engine | doing | `agent/engine-props` |
+| Architect: categories to rooms, links, kit suggestion, 30 items, extension; two showcase fixtures | AI | doing | `agent/ai-rooms-links` |
+| Evidence for the diagnostic, rooms and links; facts about Mnemorium and memoryOS | Researcher | doing | `docs/research.md`, new Part 2 section |
+| Compose: choose the architecture and rooms, edit links, extend a palace | App | todo | After the generator and the Architect land |
+| Links drawn between places; Zen garden and castle kits | Engine | todo | After the generator lands |
+| QA review 4; pitch, README, Devpost, Doc, media for Part 2 | QA, Scribe | todo | |
+
 ## Status at Sat 12:55 PM ET
 
 Everything below is merged to `main` and pushed unless marked running. All three suites
