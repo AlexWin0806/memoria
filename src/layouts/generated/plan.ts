@@ -97,13 +97,15 @@ function hallSlots(plan: RoomPlan): Slot[] {
 
 /**
  * A ring: places before the sides 45, 90 and 135 degrees round from the entrance, then, past
- * the far doorway, 225 and 270. Each view stands a little past the middle of the room.
+ * the far doorway, 225 and 270. Each view stands near the middle of the room, a step towards
+ * the place before: that one then leaves the picture on the left, and the next one stands
+ * at its right edge, where the walk panel is.
  */
 function ringSlots(plan: RoomPlan): Slot[] {
   const r = plan.halfWidth;
   return [45, 90, 135, 225, 270].map((degrees): Slot => {
     const a = (degrees * Math.PI) / 180;
-    return { x: -r * Math.sin(a), z: -r + r * Math.cos(a), nx: Math.sin(a), nz: -Math.cos(a), standoff: 1, margin: 0.15, swing: 0.3, turn: 0.2 };
+    return { x: -r * Math.sin(a), z: -r + r * Math.cos(a), nx: Math.sin(a), nz: -Math.cos(a), standoff: 1, margin: 0.15, swing: 0.15, turn: 0.1 };
   });
 }
 
@@ -252,7 +254,8 @@ export function roomSites(spec: PalaceSpec, kit: KitDef): RoomSite[] {
     const { plan } = SHAPES[shape];
     const origin: Vec3 = [0, 0, round(z)];
     z -= plan.length + plan.partition;
-    return { index, spec: room, shape, plan, origin, mirrored: index % 2 === 1 };
+    // Every second hall is mirrored. A ring never is: its route always turns the same way.
+    return { index, spec: room, shape, plan, origin, mirrored: shape === 'hall' && index % 2 === 1 };
   });
 }
 

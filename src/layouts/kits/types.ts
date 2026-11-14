@@ -76,8 +76,9 @@ export interface KitRoomProps {
   shape: 'hall' | 'ring';
   plan: RoomPlan;
   /**
-   * True for every second room: its places are mirrored left to right (the first one stands
-   * by the right-hand wall). A kit that lights a room from one side may use this, or ignore it.
+   * True for every second hall (never for a ring): its places are mirrored left to right (the
+   * first one stands by the right-hand wall). A kit that lights a room from one side may use
+   * this, or ignore it.
    */
   mirrored: boolean;
   /**

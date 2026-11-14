@@ -27,8 +27,8 @@ const layoutId = flag('layout') ?? 'gen:gothic;r1~5~hall~Past%20tense;r2~4~hall~
 const theme = flag('theme') ?? 'greybox';
 /** Generous: the machine that runs this is usually busy, and a cut plus a glide takes a few seconds. */
 const ARRIVE_MS = 15000;
-/** The plan of a hall, as HALL in src/layouts/generated/plan.ts. */
-const HALL = { halfWidth: 4.6, length: 16, partition: 0.6, doorHalf: 1.1 };
+/** The plan of a hall, as HALL in src/layouts/generated/plan.ts (a ring is wider: the hall's width is the stricter test). */
+const HALL = { halfWidth: 4.6, partition: 0.6, doorHalf: 1.1 };
 
 let base = flag('url');
 let server;
@@ -68,12 +68,14 @@ try {
   await page.waitForFunction(() => Boolean(window.__memoria?.session && window.__memoria.camera), null, { timeout: 5000 });
   const layout = await page.evaluate(() => {
     const l = window.__memoria.layout;
-    return { id: l.id, rooms: l.rooms.map((r) => r.center), loci: l.loci.map((x) => ({ id: x.id, name: x.name, view: x.view.position })) };
+    const doors = Object.entries(l.via ?? {}).filter(([key]) => key !== 'entry>0').map(([, points]) => points[0][2]);
+    return { id: l.id, rooms: l.rooms.length, doors, loci: l.loci.map((x) => ({ id: x.id, name: x.name, view: x.view.position })) };
   });
-  check(layout.id.startsWith('gen:') && layout.loci.length > 0, `palace on show: ${layout.rooms.length} rooms, ${layout.loci.length} places`);
+  check(layout.id.startsWith('gen:') && layout.loci.length > 0, `palace on show: ${layout.rooms} rooms, ${layout.loci.length} places`);
 
-  // The walls that cross the route: the front wall, and the far wall of every room.
-  const walls = [{ z0: 0, z1: HALL.partition }, ...layout.rooms.map((c) => ({ z0: c[2] - HALL.length / 2 - HALL.partition, z1: c[2] - HALL.length / 2 }))];
+  // The walls that cross the route: the front wall, and the wall between two rooms, which
+  // stands 1.3 m beyond the first waypoint of the rail through its doorway (plan.ts).
+  const walls = [{ z0: 0, z1: HALL.partition }, ...layout.doors.map((z) => ({ z0: z - 1.3 - HALL.partition, z1: z - 1.3 }))];
   const clips = ([x, y, z]) => {
     if (y < 1.4 || y > 2.3) return 'height';
     if (walls.some((w) => z > w.z0 - 0.25 && z < w.z1 + 0.25)) return Math.abs(x) > HALL.doorHalf - 0.3 ? 'a doorway' : '';

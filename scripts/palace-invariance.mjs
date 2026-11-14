@@ -59,6 +59,7 @@ try {
     { label: 'one room, one place', spec: { kit: 'gothic', rooms: [{ id: 'r1', name: 'Only', places: 1 }] } },
     { label: 'Spanish verbs 5+4+4', spec: planSpec('gothic', [{ name: 'Past tense', count: 5 }, { name: 'Present tense', count: 4 }, { name: 'Future tense', count: 4 }]).spec },
     { label: 'a ring among halls', spec: planSpec('gothic', [{ name: 'Glycolysis', count: 3 }, { name: 'Krebs cycle', count: 5, shape: 'ring' }, { name: 'Electron transport', count: 2 }]).spec },
+    { label: 'rings first and last', spec: planSpec('gothic', [{ name: 'Calvin cycle', count: 5, shape: 'ring' }, { name: 'Light reactions', count: 4 }, { name: 'Cell cycle', count: 4, shape: 'ring' }]).spec },
     { label: 'a category of twelve', spec: planSpec('gothic', [{ name: 'Cranial nerves', count: 12 }]).spec },
     { label: 'an unknown kit', spec: planSpec('atlantis', [{ name: 'Alpha', count: 2 }, { name: 'Beta', count: 2 }]).spec },
     { label: 'six full rooms', spec: planSpec('gothic', ['I', 'II', 'III', 'IV', 'V', 'VI'].map((name) => ({ name, count: 5 }))).spec },
