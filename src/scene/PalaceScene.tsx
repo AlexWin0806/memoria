@@ -12,6 +12,7 @@ import { DebugPosts } from './DebugPosts';
 import { DevelopmentDriver } from './DevelopmentDriver';
 import { ImagoToken } from './ImagoToken';
 import { LocusLabel } from './LocusLabel';
+import { PalaceLinks } from './PalaceLinks';
 import { FlourishPulse, FlourishRing, createFlourish, holdFlourish, startFlourish } from './RecallFlourish';
 import { setIntegrity } from './integrity';
 import type { Qa } from './qa';
@@ -106,6 +107,8 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
     [tokens, layout],
   );
   const [leaving, drop] = useLeaving(shown, !still);
+  // The deck whose links are drawn: the session's, or the one a QA switch puts on show.
+  const linked = useDeck(qa.tokensAll || qa.links !== null ? (qa.deck ?? JUDGE_DECK_ID) : null) ?? deck;
   const current = typeof view.camera === 'number' ? layout.loci[view.camera] : undefined;
 
   // Results: a tour of the places just walked, in place of the overview.
@@ -158,6 +161,8 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
           />
         </FlourishPulse>
       ))}
+      {/* The links between the facts, on the floor: those of the deck whose images are in the scene. */}
+      <PalaceLinks layout={layout} deck={linked} tokens={tokens} held={qa.links} still={still} veil={veil} />
       <FlourishRing flourish={flourish} layout={layout} />
       {view.labels && current && arrived && !qa.frozen && (
         <LocusLabel
