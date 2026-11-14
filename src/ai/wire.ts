@@ -1,4 +1,5 @@
 import type { DeckFocus, DeckKind, Imago, ItemLink, LinkKind } from '@/core/types';
+import { MAX_ROOMS, ROOM_CAPACITY } from '@/layouts/spec';
 import type { ArchitectStep } from './architect';
 import { cleanGlyphs, isImagoAction, isSafeGlyph } from './glyphs';
 import { singularCounts } from './parse';
@@ -158,6 +159,135 @@ export function chainLinks(order: readonly string[], links: readonly OutlineLink
 }
 
 /**
+ * How many places each room of a run of `n` facts gets: fives, and never a last room of one
+ * (six facts are three and three, eleven are five, three and three).
+ */
+export function roomSizes(n: number): number[] {
+  if (n <= 0) return [];
+  const full = Math.floor(n / ROOM_CAPACITY);
+  const rest = n % ROOM_CAPACITY;
+  const fives = (k: number): number[] => Array.from({ length: k }, () => ROOM_CAPACITY);
+  if (rest === 0) return fives(full);
+  if (rest === 1 && full >= 1) return [...fives(full - 1), 3, 3];
+  return [...fives(full), rest];
+}
+
+const roomsNeeded = (sizes: readonly number[]): number => sizes.reduce((sum, n) => sum + roomSizes(n).length, 0);
+
+/**
+ * What a room is. Applied to every outline, whoever wrote it (the server applies the same
+ * rules; this is the check on arrival, and the offline planner's only one).
+ *
+ *   A process   A room is a phase, never a step: the steps are stations along a hall, up to
+ *               five a room, in order. The notes' own phases are kept when each covers at
+ *               least two steps (a phase of one step joins the phase beside it); otherwise
+ *               one room named for the process, or "Steps 1 to 5", "Steps 6 to 8".
+ *   A cycle     One round room when it fits (up to five steps). A longer cycle runs through
+ *               halls, and the link from its last step back to its first closes it: a ring
+ *               closes on itself, so a cycle spread over two rings would read as two.
+ *   Facts       The learner's own categories, but a category of a single fact shares the
+ *               room of a neighbour when the two fit: a palace has no rooms of one place.
+ *
+ * Returns the categories and items rearranged (items in walking order, `category` reindexed)
+ * and what was changed, in plain words. Applying it twice changes nothing more.
+ */
+export function arrangeRooms(
+  categories: readonly OutlineCategory[],
+  items: readonly OutlineItem[],
+  opts: { focus: DeckFocus; closed: boolean; title: string },
+): { categories: OutlineCategory[]; items: OutlineItem[]; notes: string[] } {
+  interface Group {
+    name: string;
+    shape: 'hall' | 'ring';
+    items: OutlineItem[];
+    /** A phase of the notes with at least two steps of its own. */
+    multi?: boolean;
+  }
+  const all = [...items].sort((a, b) => a.category - b.category);
+  let groups: Group[] = categories.map((c, k) => ({ name: c.name, shape: c.shape, items: all.filter((it) => it.category === k) })).filter((g) => g.items.length > 0);
+  const notes: string[] = [];
+  const total = all.length;
+  const done = (): { categories: OutlineCategory[]; items: OutlineItem[]; notes: string[] } => ({
+    categories: groups.map((g) => ({ name: g.name, shape: g.shape })),
+    items: groups.flatMap((g, k) => g.items.map((it) => ({ ...it, category: k }))),
+    notes,
+  });
+  // A palace being extended is arranged by what already stands.
+  if (categories.some((c) => c.room !== undefined) || total === 0) return { categories: [...categories], items: all, notes };
+
+  if (opts.focus === 'process' && total >= 2) {
+    const before = groups.map((g) => `${g.name}:${g.items.length}`).join('|');
+    const plain = (name: string): boolean => !name || /^(?:Part|Steps) \d/.test(name);
+    const stations = (): Group[] => {
+      const sizes = roomSizes(total);
+      const only = groups.length === 1 && !plain(groups[0].name) ? groups[0].name : '';
+      const titled = opts.title.trim().split(/\s+/).length <= 3 && !plain(opts.title.trim()) ? opts.title.trim() : '';
+      if (sizes.length === 1) return [{ name: only || titled || (opts.closed ? 'The cycle' : 'The process'), shape: 'hall', items: all }];
+      let at = 0;
+      return sizes.map((size) => {
+        const group: Group = { name: `Steps ${at + 1} to ${at + size}`, shape: 'hall', items: all.slice(at, at + size) };
+        at += size;
+        return group;
+      });
+    };
+    let phases: Group[] | null = groups.length >= 2 && groups.every((g) => !plain(g.name)) ? groups.map((g) => ({ ...g, items: [...g.items], multi: g.items.length >= 2 })) : null;
+    const joined: string[] = [];
+    while (phases && phases.some((p) => p.items.length === 1)) {
+      const i = phases.findIndex((p) => p.items.length === 1);
+      const single = phases[i];
+      const prev = phases[i - 1];
+      const next = phases[i + 1];
+      const host = prev?.multi && prev.items.length < ROOM_CAPACITY ? prev : next?.multi && next.items.length < ROOM_CAPACITY ? next : undefined;
+      if (!host) {
+        phases = null;
+        break;
+      }
+      if (host === prev) host.items.push(...single.items);
+      else host.items.unshift(...single.items);
+      joined.push(`"${single.name}" is a single step, so it stands in "${host.name}".`);
+      phases.splice(i, 1);
+    }
+    if (phases && roomsNeeded(phases.map((p) => p.items.length)) > MAX_ROOMS) phases = null;
+    groups = phases ?? stations();
+    if (phases) notes.push(...joined);
+    // A ring closes on itself, so only a cycle that fits one room is drawn as one.
+    const round = opts.closed && groups.length === 1 && total <= ROOM_CAPACITY && total >= 3;
+    for (const g of groups) g.shape = round ? 'ring' : 'hall';
+    const after = groups.map((g) => `${g.name}:${g.items.length}`).join('|');
+    if (!phases && after !== before) {
+      notes.push(`A room is a phase, never a single step: the ${total} steps are stations in ${groups.length === 1 ? 'one room' : `${groups.length} rooms`}, in order.`);
+    }
+    if (opts.closed && !round && total > ROOM_CAPACITY && categories.some((c) => c.shape === 'ring')) {
+      notes.push(`A cycle of ${total} steps does not fit one round room (${ROOM_CAPACITY} places), so it runs through halls; the link from the last step back to the first closes it.`);
+    }
+    return done();
+  }
+
+  // Facts: a category of one shares a room with the category beside it, when the two fit.
+  for (let from = 0; groups.length > 1; ) {
+    const i = groups.findIndex((g, k) => k >= from && g.items.length === 1);
+    if (i < 0) break;
+    const single = groups[i];
+    const prev = groups[i - 1];
+    const next = groups[i + 1];
+    const host = prev && prev.items.length < ROOM_CAPACITY ? prev : next && next.items.length < ROOM_CAPACITY ? next : undefined;
+    // Both neighbours full: it keeps a room of its own.
+    if (!host) {
+      from = i + 1;
+      continue;
+    }
+    if (host === prev) host.items.push(...single.items);
+    else host.items.unshift(...single.items);
+    host.shape = 'hall';
+    notes.push(`"${single.name}" had one fact and shares a room with "${host.name}".`);
+    groups.splice(i, 1);
+    from = i;
+  }
+  for (const g of groups) if (g.shape === 'ring' && (g.items.length < 3 || g.items.length > ROOM_CAPACITY)) g.shape = 'hall';
+  return done();
+}
+
+/**
  * Validates an outline from the server (or from the cache). `existingRooms` and
  * `existingFacts` are set when a palace is being extended: a category may then name a room
  * that stands, and a link may name a fact that stands (`e1`…). Null = do not trust it.
@@ -206,7 +336,13 @@ export function toOutline(raw: unknown, ctx: { cap: number; kitIds?: readonly st
   let links: OutlineLink[] = cleanLinks(proposed, { known, max: Number.MAX_SAFE_INTEGER, fresh: (ref) => refs.has(ref) });
   // Extending never changes what a deck is for, so only a new palace can be a process.
   const focus: DeckFocus = raw.focus === 'process' && !ctx.existingRooms && items.length >= 2 ? 'process' : 'facts';
-  if (focus === 'process') links = chainLinks(items.map((it) => it.ref), links, categories.every((c) => c.shape === 'ring'));
+  // A cycle: the server marks its room round, or (when it is too long for one round room)
+  // sends the link from the last step back to the first.
+  const order = items.map((it) => it.ref);
+  const closed = categories.every((c) => c.shape === 'ring') || links.some((l) => l.kind === 'becomes' && l.from === order[order.length - 1] && l.to === order[0]);
+  // The room rules again, on arrival: they must hold whatever the server sent.
+  const arranged = arrangeRooms(categories, items, { focus, closed, title });
+  if (focus === 'process') links = chainLinks(arranged.items.map((it) => it.ref), links, closed);
   links = links.slice(0, linkCap(items.length));
   const focusReason = focus === 'process' ? cleanText(raw.focusReason, 160) : undefined;
 
@@ -222,11 +358,11 @@ export function toOutline(raw: unknown, ctx: { cap: number; kitIds?: readonly st
     ...(kit ? { kit } : {}),
     focus,
     ...(focusReason ? { focusReason } : {}),
-    categories,
-    items,
+    categories: arranged.categories,
+    items: arranged.items,
     links,
     overflow: (Array.isArray(raw.overflow) ? raw.overflow : []).flatMap((o) => cleanText(o, 120) ?? []),
-    steps: toSteps(raw.steps),
+    steps: [...toSteps(raw.steps), ...arranged.notes.map((label): ArchitectStep => ({ kind: 'plan', label }))],
   };
 }
 

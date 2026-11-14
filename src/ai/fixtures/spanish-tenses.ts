@@ -32,7 +32,11 @@ const { spec, places } = planSpec('gothic', ROOMS);
 
 const image = (scene: string, glyphs: string[], action: ImagoAction, reason: string): Imago => ({ scene, glyphs, action, reason, source: 'fixture' });
 
-/** [term, meaning, image, alternate], five per tense, in the order yo, tú, él/ella, nosotros, ellos/ellas. */
+/**
+ * [term, meaning, image, alternate], five per tense, in the order yo, tú, él/ella, nosotros, ellos/ellas.
+ * The meaning is the question on the survey and recall walks, so each one fits exactly one form:
+ * "you ate" alone would also fit comió (usted) and comieron (ustedes).
+ */
 const FORMS: readonly (readonly [string, string, Imago, Imago])[][] = [
   [
     [
@@ -41,13 +45,13 @@ const FORMS: readonly (readonly [string, string, Imago, Imago])[][] = [
       image('You drop your empty takeaway box in the bin: "comí".', ['🥡', '🙋'], 'hop', 'Comí means I ate: you are the eater, and the box is empty.'),
     ],
     [
-      'comiste', 'you ate',
+      'comiste', 'you ate (tú: one person, informal)',
       image('You wag a finger at your friend\'s picked-clean bone: "¡comiste!"', ['🦴', '👉'], 'shake', 'Comiste means you ate: you point at the friend, and only the bone is left.'),
       image('You hold up your friend\'s banana peel: "¡comiste!"', ['🍌', '👉'], 'swing', 'Comiste means you ate: you point at the friend, and only the peel is left.'),
     ],
     [
-      'comió', 'he or she ate',
-      image('The king snores over his scraped-out soup bowl, mumbling "comió".', ['🥣', '👑'], 'bob', 'Comió means he or she ate: the king is the third person, and his bowl is empty.'),
+      'comió', 'he or she ate (also usted, formal you)',
+      image('The king snores over his scraped-out soup bowl; you whisper "comió".', ['🥣', '👑'], 'bob', 'Comió means he or she ate: the king is the third person, and his bowl is empty.'),
       image('The king frowns at his empty pie dish: "comió".', ['🥧', '👑'], 'pulse', 'Comió means he or she ate: the king is the third person, and the pie is gone.'),
     ],
     [
@@ -56,8 +60,8 @@ const FORMS: readonly (readonly [string, string, Imago, Imago])[][] = [
       image('Your team scrapes the last rice from the pan: "comimos".', ['🥘', '👥'], 'shake', 'Comimos means we ate: the team is "we", and the pan is all but empty.'),
     ],
     [
-      'comieron', 'they ate',
-      image('Ants parade around an emptied picnic basket, chanting "comieron".', ['🧺', '🐜'], 'orbit', 'Comieron means they ate: the ants are "they", and the basket is already empty.'),
+      'comieron', 'they ate (also ustedes, you plural)',
+      image('Ants parade around an emptied picnic basket; you sigh "comieron".', ['🧺', '🐜'], 'orbit', 'Comieron means they ate: the ants are "they", and the basket is already empty.'),
       image('Ants leave only the rind of the cheese: "comieron".', ['🧀', '🐜'], 'bob', 'Comieron means they ate: the ants are "they", and only the rind is left.'),
     ],
   ],
@@ -68,13 +72,13 @@ const FORMS: readonly (readonly [string, string, Imago, Imago])[][] = [
       image('You munch a carrot loudly, like a rabbit: "como".', ['🥕', '🙋'], 'hop', 'Como means I eat: you are eating the carrot right now.'),
     ],
     [
-      'comes', 'you eat',
+      'comes', 'you eat (tú: one person, informal)',
       image('Your friend twirls and slurps noodles while you point: "comes".', ['🍜', '👉'], 'spin', 'Comes means you eat: the friend you point at is eating right now.'),
       image('Your friend bites a huge burger as you point: "comes".', ['🍔', '👉'], 'pulse', 'Comes means you eat: the friend you point at is eating right now.'),
     ],
     [
-      'come', 'he or she eats',
-      image('The king gnaws a drumstick on his throne, mumbling "come".', ['🍗', '👑'], 'bob', 'Come means he or she eats: the king is eating right now.'),
+      'come', 'he or she eats (also usted, formal you)',
+      image('The king gnaws a drumstick on his throne; you whisper "come".', ['🍗', '👑'], 'bob', 'Come means he or she eats: the king is eating right now.'),
       image('The king pops grapes into his mouth, one by one: "come".', ['🍇', '👑'], 'swing', 'Come means he or she eats: the king is eating right now.'),
     ],
     [
@@ -83,7 +87,7 @@ const FORMS: readonly (readonly [string, string, Imago, Imago])[][] = [
       image('Your team crunches one giant watermelon together: "comemos".', ['🍉', '👥'], 'shake', 'Comemos means we eat: the whole team is eating right now.'),
     ],
     [
-      'comen', 'they eat',
+      'comen', 'they eat (also ustedes, you plural)',
       image('Ants swarm over a dropped lollipop, munching away: "comen".', ['🍭', '🐜'], 'hop', 'Comen means they eat: the ants are eating right now.'),
       image('Ants nibble a doughnut down to a ring: "comen".', ['🍩', '🐜'], 'orbit', 'Comen means they eat: the ants are eating right now.'),
     ],
@@ -95,12 +99,12 @@ const FORMS: readonly (readonly [string, string, Imago, Imago])[][] = [
       image('You wait by a boiling egg, spoon ready: "comeré".', ['🥚', '🙋'], 'bob', 'Comeré means I will eat: the egg is still boiling, so you have not eaten yet.'),
     ],
     [
-      'comerás', 'you will eat',
+      'comerás', 'you will eat (tú: one person, informal)',
       image('You hand your friend a wrapped sandwich for later: "comerás".', ['🥪', '👉'], 'swing', 'Comerás means you will eat: the sandwich is still wrapped, for later.'),
       image('You tuck a chocolate bar into your friend\'s pocket: "comerás".', ['🍫', '👉'], 'hop', 'Comerás means you will eat: the chocolate is saved for later.'),
     ],
     [
-      'comerá', 'he or she will eat',
+      'comerá', 'he or she will eat (also usted, formal you)',
       image('The king unrolls a long menu, stomach growling: "comerá".', ['📜', '👑'], 'shake', 'Comerá means he or she will eat: the king is still choosing from the menu.'),
       image('The king chases a live turkey round the yard: "comerá".', ['🦃', '👑'], 'orbit', 'Comerá means he or she will eat: the king has not caught his dinner yet.'),
     ],
@@ -110,14 +114,14 @@ const FORMS: readonly (readonly [string, string, Imago, Imago])[][] = [
       image('Your team stacks unopened tins for the trip: "comeremos".', ['🥫', '👥'], 'pulse', 'Comeremos means we will eat: the tins are not opened yet.'),
     ],
     [
-      'comerán', 'they will eat',
+      'comerán', 'they will eat (also ustedes, you plural)',
       image('Ants march in line toward a far-off honey pot: "comerán".', ['🍯', '🐜'], 'bob', 'Comerán means they will eat: the ants have not reached the honey yet.'),
       image('Ants queue outside the bakery before it opens: "comerán".', ['🍞', '🐜'], 'shake', 'Comerán means they will eat: the bakery has not opened yet.'),
     ],
   ],
 ];
 
-const PERSONS = ['yo', 'tú', 'él, ella', 'nosotros', 'ellos, ellas'];
+const PERSONS = ['yo', 'tú', 'él, ella, usted', 'nosotros', 'ellos, ellas, ustedes'];
 const itemId = (tense: number, person: number): string => `es-tenses-${tense + 1}${person + 1}`;
 
 const items: MemoryItem[] = FORMS.flatMap((forms, tense) =>

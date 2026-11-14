@@ -5,6 +5,11 @@ Status: `todo`, `doing`, `done`, `blocked`. Feature ids match `docs/plan-snapsho
 
 ## Part 2, started Sat 2:10 PM ET (direction from Alex)
 
+First wave merged to `main` and deployed at Sat 4:57 PM ET (commit `6e8e54e`). On that build: `smoke.mjs` 15 of 15,
+`ab-smoke.mjs` 3 of 3, `pdf-smoke.mjs` 5 of 5, `architect-smoke.mjs` and `palace-invariance.mjs` pass, and
+`live-check.mjs` passes against the deployed site (with and without the browser). Not verified: anything on a real
+GPU, `drive-walk.mjs` (fails on time budgets under machine load, also on the old build), a quiet-machine pitch timing.
+
 The learner is the architect: a diagnostic walk first (with "I don't know"), the palace falls
 into ruin where the fact was unknown and is repaired by learning it; categories become rooms;
 relationships are drawn between places; a choice of architecture; palaces can be extended, up
@@ -15,16 +20,18 @@ to 30 places; past scores and trends. The build that was demo-ready before Part 
 |---|---|---|---|
 | Contracts: `PalaceSpec` in the layout id (append-only), `ItemLink`, `WalkRecord`, `survey` mode, `SceneView.integrity`, `FeatureDef`, `LocusFeature` | Lead | done | `src/core/types.ts`, `src/layouts/spec.ts`, `src/layouts/kits/types.ts` |
 | Bug: scroll bar in the middle of the title screen | Lead | done | The title column scrolled on its own; it now spans the window |
-| Bug: statue flickers at its base; ruin and repair mechanic; 32 loci | Engine | doing | `agent/engine-repair` |
-| Survey walk, integrity rules, Judge Mode starts in ruins (confirmed by Alex), walk history, Progress view | App | doing | `agent/app-survey` |
-| Palace generator and the Gothic library kit | Engine | doing | `agent/engine-generator` |
-| Twenty kit-neutral landmarks | Engine | doing | `agent/engine-props` |
-| Architect: categories to rooms, links, kit suggestion, 30 items, extension; two showcase fixtures | AI | doing | `agent/ai-rooms-links` |
+| Bug: statue flickers at its base; ruin and repair mechanic; 32 loci | Engine | done, live 4:57 PM | Cause: the niche opening and the sill top were coplanar. Flicker itself not seen in the sandbox: check on a real laptop |
+| Survey walk, integrity rules, Judge Mode starts in ruins (confirmed by Alex), walk history, Progress view; right answer dealt evenly across the options | App | done, live 4:57 PM | Smoke 15 of 15 on the merged build; pitch run 80 s under load, to be re-timed on a quiet machine |
+| Palace generator, Gothic library kit, ring rooms | Engine | done, live 4:57 PM | `scripts/palace-invariance.mjs`: nothing moves when a palace grows |
+| Kit-neutral landmarks | Engine | done, live 4:57 PM | 28 of them; gallery at `/?gallery` |
+| Architect: categories to rooms, links, facts or process, kit suggestion, 30 items, extension; two showcase decks | AI | done, live 4:57 PM; one fix running | Live: 30 facts in 16 s, a process in 13 s, extension in 9 s. Fix running: a process must not get one room per step |
 | Evidence for the diagnostic, rooms and links; facts about Mnemorium and memoryOS | Researcher | doing | `docs/research.md`, new Part 2 section |
-| Upload a PDF: its text is read in the browser and becomes the notes | App | doing | `agent/app-pdf`; asked for by Alex at 2:27 PM |
-| Compose: choose the architecture and rooms, edit links, extend a palace | App | todo | After the generator and the Architect land |
-| Links drawn between places; Zen garden and workshop kits (Alex, 3:00 PM: workshop instead of castle, it suits processes) | Engine | todo | After the generator lands |
-| Process mode: a process deck's walk asks how each step leads on and has the learner reorder the steps (confirmed by Alex) | App, AI | todo | `Deck.focus`; the citric acid cycle is the showcase |
+| Upload a PDF: its text is read in the browser and becomes the notes | App | done, live 4:57 PM | `scripts/pdf-smoke.mjs` 5 of 5; real lecture PDFs untested |
+| Compose: choose the architecture and rooms, edit links, facts or process, extend a palace | App | doing | `agent/app-compose` |
+| Links drawn between places | Engine | doing | `agent/engine-links` |
+| Workshop kit (Alex, 3:00 PM: instead of the castle; it suits processes) | Engine | done, merged | Ten stations, a floor channel through every hall, a mill-house ring room |
+| Zen garden kit | Engine | doing | `agent/kit-zen` |
+| Process mode: a process deck's walk asks how each step leads on and has the learner reorder the steps (confirmed by Alex); walks for newly added places only; every new deck starts with the survey | App | doing | `agent/app-process` |
 | QA review 4; pitch, README, Devpost, Doc, media for Part 2 | QA, Scribe | todo | |
 | Parked by Alex (Sat 3:00 PM), keep in mind: an optional "things you know well" field (basketball, cooking) that the Architect draws memory images from, with no named people, characters, teams or titles | AI, App | parked | Not to be built unless Alex asks; roadmap material for the pitch |
 

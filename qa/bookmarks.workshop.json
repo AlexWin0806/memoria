@@ -1,0 +1,23 @@
+[
+  {"name": "ws2-overview", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=overview"},
+  {"name": "ws2-entry", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=entry"},
+  {"name": "ws2-r1-1", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=0&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-r1-2", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=1&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-r1-3", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=2&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-r1-4", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=3&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-r1-5", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=4&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-door-1-2", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&rail=4&t=0.35"},
+  {"name": "ws2-r2-1", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=5&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-r2-2", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=6&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-r2-3", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=7&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-r2-4", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=8&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "ws2-r2-5", "query": "layout=gen%3Aworkshop%3Br1~5~hall~Glycolysis%3Br2~5~hall~Fermentation&shot=9&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "wsring-entry", "query": "layout=gen%3Aworkshop%3Br1~4~ring~Krebs%2520cycle%3Br2~3~hall~Electron%2520transport&shot=entry"},
+  {"name": "wsring-overview", "query": "layout=gen%3Aworkshop%3Br1~4~ring~Krebs%2520cycle%3Br2~3~hall~Electron%2520transport&shot=overview"},
+  {"name": "wsring-1", "query": "layout=gen%3Aworkshop%3Br1~4~ring~Krebs%2520cycle%3Br2~3~hall~Electron%2520transport&shot=0&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "wsring-2", "query": "layout=gen%3Aworkshop%3Br1~4~ring~Krebs%2520cycle%3Br2~3~hall~Electron%2520transport&shot=1&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "wsring-3", "query": "layout=gen%3Aworkshop%3Br1~4~ring~Krebs%2520cycle%3Br2~3~hall~Electron%2520transport&shot=2&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "wsring-4", "query": "layout=gen%3Aworkshop%3Br1~4~ring~Krebs%2520cycle%3Br2~3~hall~Electron%2520transport&shot=3&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "wsring-door", "query": "layout=gen%3Aworkshop%3Br1~4~ring~Krebs%2520cycle%3Br2~3~hall~Electron%2520transport&rail=3&t=0.4"},
+  {"name": "wsring-hall-1", "query": "layout=gen%3Aworkshop%3Br1~4~ring~Krebs%2520cycle%3Br2~3~hall~Electron%2520transport&shot=4&inset=380&tokens=all&deck=qa-places&debug=stores"}
+]

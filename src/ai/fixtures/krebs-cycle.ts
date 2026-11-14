@@ -5,9 +5,17 @@ import { KREBS } from './krebs';
 /**
  * The citric acid cycle as a cycle: a showcase of relationships represented in the space.
  * The same eight intermediates, in the same order and with the same short meanings, as the
- * KREBS deck (they are taken from it, so the two cannot drift apart), but in round rooms,
- * with a `becomes` link from each intermediate to the next and from the last back to the
- * first, and one `blocks` link for feedback regulation.
+ * KREBS deck (they are taken from it, so the two cannot drift apart), but as a process: a
+ * `becomes` link from each intermediate to the next and from the last back to the first, and
+ * one `blocks` link for feedback regulation.
+ *
+ * The room plan. It stands in the Workshop kit, whose halls are machines in a line with a
+ * channel running from station to station: the intermediates are the stations. A round room
+ * holds five places and closes on itself, so eight steps cannot stand in one, and spread
+ * over two round rooms they would read as two cycles. They stand instead in two halls of
+ * four, split where the two carbons have left: citrate to succinyl-CoA (six carbons down to
+ * four), then succinate to oxaloacetate (four carbons throughout). The loop is closed by
+ * the one link that runs back from oxaloacetate, in the second hall, to citrate in the first.
  *
  * Every link is a statement of biochemistry. Each is standard textbook material:
  *   citrate → isocitrate              an isomerisation (aconitase)
@@ -52,9 +60,15 @@ const ALTERNATES: readonly Imago[] = [
 ];
 
 /** What happens at each step, in four words or fewer. The eighth closes the loop. */
-const STEPS = ['rearranged', 'loses CO2', 'loses CO2, gains CoA', 'releases CoA', 'oxidised', 'adds water', 'oxidised', 'joins acetyl-CoA'];
+const STEPS = ['rearranged', 'loses CO2', 'loses CO2, gains CoA', 'releases CoA', 'oxidised', 'adds water', 'oxidised', 'joins acetyl-CoA (citrate synthase)'];
 
-const { spec, places } = planSpec('gothic', [{ name: 'Citric acid cycle', count: KREBS.items.length, shape: 'ring' }]);
+/** Two halls of four stations. The names only say which intermediates stand in each. */
+const HALLS = [
+  { name: 'Citrate to succinyl-CoA', count: 4 },
+  { name: 'Succinate to oxaloacetate', count: 4 },
+];
+const { spec, places } = planSpec('workshop', HALLS);
+const PLACES = places.flat();
 const itemId = (n: number): string => `krebs-cycle-${n + 1}`;
 
 const links: ItemLink[] = [
@@ -72,6 +86,6 @@ export const KREBS_CYCLE: Deck = {
   fixture: true,
   // The steps of a pathway: the walks also ask what each intermediate becomes.
   focus: 'process',
-  items: KREBS.items.map((item, n) => ({ id: itemId(n), term: item.term, meaning: item.meaning, locusId: places[0][n], imago: IMAGES[n], alternates: [ALTERNATES[n]] })),
+  items: KREBS.items.map((item, n) => ({ id: itemId(n), term: item.term, meaning: item.meaning, locusId: PLACES[n], imago: IMAGES[n], alternates: [ALTERNATES[n]] })),
   links,
 };
