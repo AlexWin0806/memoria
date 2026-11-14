@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { useSession } from '@/state/session';
 import { CompareResults } from './CompareResults';
 import { Distractor, Intro, ListStudy, PalaceEncode, Ready, RecallTest } from './screens';
-import { abandon, currentArm, openCompare, requestAbandon, runInProgress, useAb } from './store';
+import { abandon, currentArm, openCompare, requestAbandon, runInProgress, runWasCutShort, useAb } from './store';
 import './ab.css';
 
 /**
@@ -23,7 +23,8 @@ export function Compare() {
   const open = stage !== 'off';
 
   useEffect(() => {
-    if (new URLSearchParams(location.search).has('compare')) openCompare();
+    // `?compare` opens the test; so does a reload in the middle of a run, to say that the run is gone.
+    if (new URLSearchParams(location.search).has('compare') || runWasCutShort()) openCompare();
   }, []);
 
   useEffect(() => {

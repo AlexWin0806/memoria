@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatDuration, plural } from '@/flows/format';
-import { beginRun, clearAll, closeCompare, mean, toCsv, toIntro, useAb, type Order } from './store';
+import { LIST_NAME, beginRun, canSwapLists, clearAll, closeCompare, mean, palaceListOf, toCsv, toIntro, useAb, type Order, type PalaceList } from './store';
 
 const ORDER_TEXT: Record<Order, string> = { 'list-first': 'list first', 'palace-first': 'palace first' };
+/** Table cell: which list was walked in the palace. */
+const PALACE_TEXT: Record<PalaceList, string> = { carpals: 'carpal bones', krebs: 'citric acid cycle' };
+const otherList = (p: PalaceList): PalaceList => (p === 'carpals' ? 'krebs' : 'carpals');
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -27,6 +30,10 @@ export function CompareResults() {
   const n = rows.length;
   const listMean = mean(rows.map((r) => r.list.score));
   const palaceMean = mean(rows.map((r) => r.palace.score));
+  // Which list this participant walked, and how the group divides between the two.
+  const walked = mine ? palaceListOf(mine) : null;
+  const withCarpals = rows.filter((r) => palaceListOf(r) === 'carpals').length;
+  const swaps = canSwapLists() || withCarpals < n;
 
   // Focus starts on the heading, not on a button: a participant still pressing keys after
   // the last question must not start the next run before reading the result.
@@ -62,7 +69,10 @@ export function CompareResults() {
             </div>
           </div>
           <p className="body" data-testid="ab-order" data-order={mine.order}>
-            This participant did the {mine.order === 'list-first' ? 'plain list first, then the palace' : 'palace first, then the plain list'}.
+            This participant did the {mine.order === 'list-first' ? 'plain list first, then the palace' : 'palace first, then the plain list'}.{' '}
+            <span data-testid="ab-material" data-palace={palaceListOf(mine)}>
+              The plain list was {LIST_NAME[otherList(palaceListOf(mine))]}; the palace held {LIST_NAME[palaceListOf(mine)]}.
+            </span>
             {studyMs.list !== undefined && studyMs.palace !== undefined && (
               <span data-testid="ab-study" data-list-ms={studyMs.list} data-palace-ms={studyMs.palace}>
                 {' '}
@@ -76,9 +86,12 @@ export function CompareResults() {
 
       <div className="note" data-testid="ab-caveat">
         <p>
-          Read these numbers as an anecdote. The comparison is informal: each arm uses a different list (the citric acid cycle as a plain list,
-          the carpal bones in the palace), recall is tested in the same sitting, seconds after study, and n so far = {n}. It is not a study of
-          Memoria&rsquo;s efficacy.
+          Read these numbers as an anecdote. The comparison is informal: each arm uses a different list
+          {walked ? ` (for this participant, ${LIST_NAME[otherList(walked)]} as a plain list and ${LIST_NAME[walked]} in the palace)` : ''}.{' '}
+          {swaps
+            ? `Which list goes to the palace is swapped between participants, and only with equal numbers of each do the two lists even out: so far ${withCarpals} had the carpal bones in the palace and ${n - withCarpals} the citric acid cycle.`
+            : 'Everyone so far had the citric acid cycle as a plain list and the carpal bones in the palace, so a difference between the arms cannot be told apart from a difference between the lists.'}{' '}
+          Recall is tested in the same sitting, seconds after study, and n so far = {n}. It is not a study of Memoria&rsquo;s efficacy.
         </p>
       </div>
 
@@ -93,6 +106,7 @@ export function CompareResults() {
             <tr>
               <th scope="col">No.</th>
               <th scope="col">Order</th>
+              <th scope="col">In the palace</th>
               <th scope="col" className="ab-table__num">
                 List
               </th>
@@ -106,6 +120,7 @@ export function CompareResults() {
               <tr key={r.id} data-testid="ab-row" data-current={r.id === lastId ? 'true' : undefined}>
                 <td>{i + 1}</td>
                 <td>{ORDER_TEXT[r.order]}</td>
+                <td data-testid="ab-row-palace">{PALACE_TEXT[palaceListOf(r)]}</td>
                 <td className="ab-table__num">{r.list.score} of 8</td>
                 <td className="ab-table__num">{r.palace.score} of 8</td>
               </tr>
@@ -113,8 +128,8 @@ export function CompareResults() {
           </tbody>
           <tfoot>
             <tr data-testid="ab-means">
-              <th scope="row" colSpan={2}>
-                Mean, n = {n}
+              <th scope="row" colSpan={3}>
+                Mean overall, n = {n}
               </th>
               <td className="ab-table__num" data-testid="ab-mean-list">
                 {listMean.toFixed(1)} of 8

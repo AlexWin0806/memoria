@@ -1,16 +1,24 @@
 import { create } from 'zustand';
+import * as fixtures from '@/ai/fixtures';
 import { CONTROL_LIST, JUDGE_DECK_ID } from '@/ai/fixtures';
 import { shuffle } from '@/flows/answers';
-import { itemAt, stopsFor, useFlow } from '@/flows/flow';
+import { discardSavedWalk, itemAt, stopsFor, useFlow } from '@/flows/flow';
 import { JUDGE_TIMING } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { getDeck } from '@/state/decks';
 import { useSession } from '@/state/session';
+import { cleanAbRows, newTally, STORE_KEYS } from '@/state/storage';
 
 /**
  * The built-in comparison test ("Compare: list against palace"): one participant studies
- * eight terms as a plain list and eight others on a palace walk, in a random order, each
- * followed by a distractor and the same eight-option ordered recall test.
+ * eight terms as a plain list and eight others on a palace walk, each followed by a
+ * distractor and the same eight-option ordered recall test.
+ *
+ * Two things are balanced across participants, each drawn at random or fixed by the URL:
+ *   order       which arm comes first (`?compare=list-first` / `?compare=palace-first`)
+ *   palaceList  which of the two lists is walked in the palace (`&palace=carpals` / `&palace=krebs`);
+ *               the other one is the plain list. Without this, "palace against list" could
+ *               not be told apart from "carpal bones against citric acid cycle".
  *
  * It is a test, not study, so it stays out of the learner's data: nothing here writes to
  * the review store, the decks or the settings. The palace arm drives the session store
@@ -18,7 +26,9 @@ import { useSession } from '@/state/session';
  * answered item is revealed in the scene and that would be feedback.
  */
 
-export const AB_STORAGE_KEY = 'memoria.ab.v1';
+export const AB_STORAGE_KEY = STORE_KEYS.ab;
+/** sessionStorage: present while a run is under way, so that a reload can say the run was abandoned. */
+const RUN_KEY = 'memoria.ab.run.v1';
 
 /** Seconds an image is shown at each place: the pitch variant of Judge Mode. */
 export const ENCODE_SECONDS_PER_STOP = JUDGE_TIMING.pitch.encodeSecondsPerStop;
@@ -35,6 +45,11 @@ export const DISTRACTOR_SECONDS = 20;
 
 export type Arm = 'list' | 'palace';
 export type Order = 'list-first' | 'palace-first';
+/** Which list is walked in the palace; the other one is studied as a plain list. */
+export type PalaceList = 'carpals' | 'krebs';
+
+/** How each list is named in a sentence. */
+export const LIST_NAME: Record<PalaceList, string> = { carpals: 'the carpal bones', krebs: 'the citric acid cycle' };
 
 export interface ArmResult {
   /** Correct answers out of eight. */
@@ -49,8 +64,15 @@ export interface AbRow {
   /** Epoch ms when the run finished. */
   at: number;
   order: Order;
+  /** Which list the palace arm had. Rows stored before the lists were swapped lack it: read them with `palaceListOf`. */
+  palaceList?: PalaceList;
   list: ArmResult;
   palace: ArmResult;
+}
+
+/** The list a row's palace arm had. Older rows have no field: they all had the carpal bones. */
+export function palaceListOf(row: Pick<AbRow, 'palaceList'>): PalaceList {
+  return row.palaceList === 'krebs' ? 'krebs' : 'carpals';
 }
 
 export interface AbOption {
@@ -78,6 +100,8 @@ export type AbStage = 'off' | 'intro' | 'ready' | 'study' | 'distractor' | 'reca
 interface AbState {
   stage: AbStage;
   order: Order;
+  /** The list this participant walks in the palace. */
+  palaceList: PalaceList;
   /** 0 = the first arm of this run, 1 = the second. */
   part: 0 | 1;
   /** The eight options of the arm under test, in the shuffled order kept for all eight questions. */
@@ -99,28 +123,10 @@ interface AbState {
   lastId: string | null;
 }
 
-function isArmResult(v: unknown): v is ArmResult {
-  const r = v as ArmResult | null;
-  return typeof r === 'object' && r !== null && Number.isFinite(r.score) && Number.isFinite(r.ms);
-}
-
-function isRow(v: unknown): v is AbRow {
-  const r = v as AbRow | null;
-  return (
-    typeof r === 'object' &&
-    r !== null &&
-    typeof r.id === 'string' &&
-    Number.isFinite(r.at) &&
-    (r.order === 'list-first' || r.order === 'palace-first') &&
-    isArmResult(r.list) &&
-    isArmResult(r.palace)
-  );
-}
-
+/** Rows of the wrong shape are dropped when read; the repair pass in @/state/storage keeps their original. */
 function readRows(): AbRow[] {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(AB_STORAGE_KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter(isRow) : [];
+    return cleanAbRows(JSON.parse(localStorage.getItem(AB_STORAGE_KEY) ?? '[]'), newTally()) as unknown as AbRow[];
   } catch {
     return [];
   }
@@ -150,6 +156,7 @@ const RUN_START = {
 export const useAb = create<AbState>()(() => ({
   stage: 'off',
   order: 'list-first',
+  palaceList: 'carpals',
   ...RUN_START,
   abandoned: false,
   rows: [],
@@ -165,11 +172,55 @@ export function currentArm(s: Pick<AbState, 'order' | 'part'> = useAb.getState()
   return armAt(s.order, s.part);
 }
 
-/** `?compare=list-first` or `?compare=palace-first` fixes the order (for the smoke test). Plain `?compare` draws it. */
+// ───────────────────────── The two lists ─────────────────────────
+
+/** A list studied as plain text: the shape of CONTROL_LIST. */
+export interface PlainList {
+  id: string;
+  title: string;
+  items: { term: string; meaning: string }[];
+}
+
+const KREBS_DECK_ID = 'fixture-krebs';
+
+/**
+ * The carpal bones as a plain list. The fixtures export it together with the citric acid
+ * cycle deck; a build without them (looked up by name, so this file compiles either way)
+ * runs every participant with the carpal bones in the palace.
+ */
+function carpalsAsList(): PlainList | null {
+  const v = (fixtures as Record<string, unknown>).CARPALS_AS_LIST as Partial<PlainList> | undefined;
+  if (!v || typeof v.title !== 'string' || !Array.isArray(v.items) || v.items.length !== 8) return null;
+  return v.items.every((it) => typeof it?.term === 'string' && typeof it?.meaning === 'string') ? (v as PlainList) : null;
+}
+
+/** True when this build has the second picture set, so the lists can be swapped between the arms. */
+export function canSwapLists(): boolean {
+  const deck = getDeck(KREBS_DECK_ID);
+  return deck !== undefined && stopsFor(deck, getLayout(deck.layoutId)).length === 8 && carpalsAsList() !== null;
+}
+
+/** What each arm studies when `palaceList` is walked in the palace. */
+export function materialFor(palaceList: PalaceList): { palaceList: PalaceList; deckId: string; list: PlainList } {
+  const swapped = palaceList === 'krebs' && canSwapLists() ? carpalsAsList() : null;
+  return swapped ? { palaceList: 'krebs', deckId: KREBS_DECK_ID, list: swapped } : { palaceList: 'carpals', deckId: JUDGE_DECK_ID, list: CONTROL_LIST };
+}
+
+const urlParam = (name: string) => (typeof location === 'undefined' ? null : new URLSearchParams(location.search).get(name));
+
+/** `?compare=list-first` or `?compare=palace-first` fixes the order. Plain `?compare` draws it. */
 function drawOrder(): Order {
-  const forced = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('compare');
+  const forced = urlParam('compare');
   if (forced === 'list-first' || forced === 'palace-first') return forced;
   return Math.random() < 0.5 ? 'list-first' : 'palace-first';
+}
+
+/** `&palace=carpals` or `&palace=krebs` fixes which list is walked. Without it, it is drawn. */
+function drawPalaceList(): PalaceList {
+  if (!canSwapLists()) return 'carpals';
+  const forced = urlParam('palace');
+  if (forced === 'carpals' || forced === 'krebs') return forced;
+  return Math.random() < 0.5 ? 'carpals' : 'krebs';
 }
 
 /** The deck the learner had open before the test, put back when the test closes. */
@@ -177,8 +228,8 @@ let deckBefore: string | null = null;
 
 /**
  * Title-screen camera with no deck: the palace idles and shows no memory images. Without
- * clearing the deck the carpal images would hang in the overview during the list arm and
- * the sums, which would be extra study time for the palace arm.
+ * clearing the deck the palace arm's images would hang in the overview during the list arm
+ * and the sums, which would be extra study time for the palace arm.
  */
 function idleScene(): void {
   useSession.getState().toAttract();
@@ -186,17 +237,30 @@ function idleScene(): void {
 }
 
 function palaceRoute() {
-  const deck = getDeck(JUDGE_DECK_ID);
+  const deck = getDeck(materialFor(useAb.getState().palaceList).deckId);
   if (!deck) return null;
   const layout = getLayout(deck.layoutId);
   return { deck, layout, stops: stopsFor(deck, layout) };
 }
 
+/** True when the tab was reloaded (or closed and reopened) in the middle of a run. */
+export function runWasCutShort(): boolean {
+  try {
+    return sessionStorage.getItem(RUN_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function openCompare(): void {
   if (useAb.getState().stage !== 'off') return;
+  // A reload in the middle of a run: the run is gone, and so is the palace walk it had started.
+  const cut = runWasCutShort();
+  if (cut) discardSavedWalk();
   deckBefore = useSession.getState().deckId;
   idleScene();
-  useAb.setState({ stage: 'intro', ...RUN_START, abandoned: false, lastId: null, rows: readRows() });
+  useAb.setState({ stage: 'intro', ...RUN_START, abandoned: cut, lastId: null, rows: readRows() });
+  markRun(false);
 }
 
 export function closeCompare(): void {
@@ -205,10 +269,10 @@ export function closeCompare(): void {
   useAb.setState({ stage: 'off', ...RUN_START, abandoned: false, lastId: null });
 }
 
-/** A new participant: draw the order and show the first briefing. */
+/** A new participant: draw the order and which list is walked, and show the first briefing. */
 export function beginRun(): void {
   idleScene();
-  useAb.setState({ stage: 'ready', order: drawOrder(), ...RUN_START, abandoned: false, lastId: null });
+  useAb.setState({ stage: 'ready', order: drawOrder(), palaceList: drawPalaceList(), ...RUN_START, abandoned: false, lastId: null });
 }
 
 /** Show the stored results without running anyone. */
@@ -270,7 +334,7 @@ export function finishDistractor(): void {
     useSession.setState({ layoutId: route.deck.layoutId });
     useSession.getState().startWalk('recall', { deckId: route.deck.id, stops: route.stops, judge: false });
   } else {
-    options = CONTROL_LIST.items.map((it, i) => ({ id: `list-${i + 1}`, label: it.term }));
+    options = materialFor(s.palaceList).list.items.map((it, i) => ({ id: `list-${i + 1}`, label: it.term }));
     questions = options.map((o) => ({ answerId: o.id }));
   }
   useAb.setState({ stage: 'recall', options: shuffledOptions(options), questions, question: 0, correct: 0, answerMs: 0 });
@@ -302,7 +366,7 @@ export function answerQuestion(optionId: string, ms: number): void {
   }
   // Only a run with both arms finished is recorded.
   if (!done.list || !done.palace) return;
-  const row: AbRow = { id: newId(), at: Date.now(), order: s.order, list: done.list, palace: done.palace };
+  const row: AbRow = { id: newId(), at: Date.now(), order: s.order, palaceList: materialFor(s.palaceList).palaceList, list: done.list, palace: done.palace };
   const rows = [...readRows(), row];
   writeRows(rows);
   useAb.setState({ stage: 'results', done, rows, lastId: row.id });
@@ -316,6 +380,21 @@ export function clearAll(): void {
 /** True while a participant's run is under way and would be lost. */
 export function runInProgress(stage: AbStage = useAb.getState().stage): boolean {
   return stage === 'ready' || stage === 'study' || stage === 'distractor' || stage === 'recall';
+}
+
+function markRun(running: boolean): void {
+  try {
+    if (running) sessionStorage.setItem(RUN_KEY, '1');
+    else sessionStorage.removeItem(RUN_KEY);
+  } catch {
+    // No session storage: a reload then returns to the introduction without the notice.
+  }
+}
+
+if (typeof window !== 'undefined') {
+  useAb.subscribe((s, was) => {
+    if (runInProgress(s.stage) !== runInProgress(was.stage)) markRun(runInProgress(s.stage));
+  });
 }
 
 /** Escape and the Leave button. */
@@ -339,9 +418,9 @@ export function mean(values: number[]): number {
 }
 
 export function toCsv(rows: AbRow[]): string {
-  const head = 'participant,id,at,order,list_score,list_ms,palace_score,palace_ms';
+  const head = 'participant,id,at,order,palace_list,list_score,list_ms,palace_score,palace_ms';
   const lines = rows.map((r, i) =>
-    [i + 1, r.id, new Date(r.at).toISOString(), r.order, r.list.score, r.list.ms, r.palace.score, r.palace.ms].join(','),
+    [i + 1, r.id, new Date(r.at).toISOString(), r.order, palaceListOf(r), r.list.score, r.list.ms, r.palace.score, r.palace.ms].join(','),
   );
   return [head, ...lines].join('\n');
 }

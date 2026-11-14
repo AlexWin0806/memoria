@@ -42,12 +42,13 @@
   gap: 16px;
 }
 .ab-clock__text { margin: 0; color: var(--ui-muted); white-space: nowrap; }
+/* Large numerals: the text face with lining figures, as for the scores (see .score in overlay.css). */
 .ab-clock__n {
-  font-family: var(--type-display);
+  font-family: var(--type-text);
   font-size: 30px;
   line-height: 1;
   color: var(--ui-fg);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .ab-clock .bar { margin-top: 8px; }
 /* The fill follows a 100 ms clock; the overlay's 250 ms ease would lag behind it. */
@@ -74,8 +75,8 @@
 
 /* ───────── Sums ───────── */
 
-.term.ab-sum { display: block; margin: 18px 0 12px; font-variant-numeric: tabular-nums; }
-.field.ab-sum__field { width: 7em; font-size: 24px; font-variant-numeric: tabular-nums; }
+.term.ab-sum { display: block; margin: 18px 0 12px; font-family: var(--type-text); font-variant-numeric: lining-nums tabular-nums; }
+.field.ab-sum__field { width: 7em; font-size: 24px; font-variant-numeric: lining-nums tabular-nums; }
 
 /* ───────── Results ───────── */
 
@@ -95,7 +96,7 @@
 .ab-table {
   width: 100%;
   border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .ab-table th,
 .ab-table td {
