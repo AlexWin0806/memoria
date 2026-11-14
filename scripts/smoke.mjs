@@ -193,6 +193,11 @@ const cases = {
     await shot(page, 'results-strengthen');
     await page.getByTestId('strengthen-accept').click();
     await page.getByTestId('strengthen-draft').waitFor({ state: 'detached' });
+    // An edited fixture shadows the original: it must still be listed exactly once.
+    await page.getByTestId('results-home').click();
+    await page.getByTestId('title').waitFor();
+    const listed = await page.getByTestId('deck-row').count();
+    assert(listed === 1, `expected one deck row after editing the fixture, got ${listed}`);
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score}, ${n} Strengthen buttons`;
@@ -334,6 +339,8 @@ const cases = {
     await shot(page, 'narrow-title');
     await page.getByTestId('settings').locator('summary').click();
     await page.locator('#set-recall').selectOption('typed');
+    await page.locator('#set-motion').selectOption('on');
+    await page.locator('.ov[data-reduced-motion=true]').waitFor();
     await page.getByRole('button', { name: 'Recall The eight carpal bones' }).click();
     const question = page.getByTestId('recall-question');
     await question.waitFor();
