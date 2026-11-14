@@ -53,8 +53,8 @@ export interface RegenerateRequest {
 }
 
 /** Longer than the server's own deadline, so a slow answer still arrives before we give up. */
-const PLAN_TIMEOUT_MS = 25_000;
-const REGENERATE_TIMEOUT_MS = 15_000;
+const PLAN_TIMEOUT_MS = 55_000;
+const REGENERATE_TIMEOUT_MS = 24_000;
 const MAX_TEXT = 12_000;
 const STEP_KINDS: readonly ArchitectStep['kind'][] = ['plan', 'generate', 'check', 'revise', 'fallback'];
 

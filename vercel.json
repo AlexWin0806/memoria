@@ -4,6 +4,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/architect.ts": { "maxDuration": 30 }
+    "api/architect.ts": { "maxDuration": 60 }
   }
 }

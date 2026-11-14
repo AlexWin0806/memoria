@@ -63,8 +63,8 @@ export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; labe
 export const ARRIVED_FALLBACK_MS = 6000;
 
 /** How long the overlay waits for the Architect before offering to continue by hand. */
-export const PLAN_TIMEOUT_MS = 30_000;
-export const REGENERATE_TIMEOUT_MS = 12_000;
+export const PLAN_TIMEOUT_MS = 60_000;
+export const REGENERATE_TIMEOUT_MS = 26_000;
 /** On the Judge results screen "Strengthen this image" must answer at once, network or not. */
 export const JUDGE_REGENERATE_TIMEOUT_MS = 1500;
 

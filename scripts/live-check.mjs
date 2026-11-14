@@ -3,6 +3,7 @@
  * Checks a deployed copy of Memoria from the outside, the way a visitor would:
  *
  *   node scripts/live-check.mjs --url https://<your-deployment>
+ *   node scripts/live-check.mjs --url https://<your-deployment> --facts 12   # a full palace
  *   node scripts/live-check.mjs --url http://localhost:4173 --offline-ok   # dry run on `npm run preview`
  *
  *   1. The page is public (no login redirect) and serves the current bundle.
@@ -110,17 +111,25 @@ const errors = [];
 const apiCalls = [];
 page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
 page.on('response', (r) => {
-  if (r.url().includes('/api/architect')) apiCalls.push({ status: r.status(), ms: Math.round(r.request().timing().responseEnd) });
+  if (r.url().includes('/api/architect')) apiCalls.push({ status: r.status(), timing: r.headers()['server-timing'] ?? '' });
 });
 
-const LIST = [
+const FACTS = [
   'Mitochondrion - makes most of the cell\'s ATP',
   'Ribosome - builds proteins from amino acids',
   'Golgi apparatus - packages and ships proteins',
   'Lysosome - digests worn-out parts',
   'Nucleus - holds the DNA',
   'Chloroplast - turns light into sugar',
-].join('\n');
+  'Rough endoplasmic reticulum - folds proteins made on its ribosomes',
+  'Smooth endoplasmic reticulum - makes lipids',
+  'Cell membrane - controls what enters and leaves',
+  'Cytoskeleton - gives the cell its shape',
+  'Vacuole - stores water in plant cells',
+  'Centrosome - organises the spindle in division',
+];
+// --facts 6 (default) or up to 12: a full palace is the slow case worth measuring.
+const LIST = FACTS.slice(0, Math.max(3, Math.min(12, Number(flag('facts', '6'))))).join('\n');
 
 try {
   await page.goto(`${base}/?theme=${theme}`, { waitUntil: 'load' });
@@ -137,7 +146,7 @@ try {
   const started = Date.now();
   await page.getByTestId('compose-design').click();
   // The proposal list appears when the plan resolves (live or offline).
-  await page.getByTestId('proposal-row').first().waitFor({ timeout: 60000 });
+  await page.getByTestId('proposal-row').first().waitFor({ timeout: 90000 });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   const cards = await page.getByTestId('proposal-row').count();
   // The offline-draft notice is shown only when the plan did not come from the live Architect.
@@ -148,6 +157,7 @@ try {
   await page.screenshot({ path: path.join(outDir, 'live-proposals.png'), timeout: 120000 });
 
   const statuses = apiCalls.map((c) => c.status).join(', ') || 'none';
+  for (const c of apiCalls) if (c.timing) note(`server timing: ${c.timing}`);
   if (source === 'api') ok(`the live Architect answered in ${seconds} s with ${cards} images (API status ${statuses})`);
   else if (offlineOk) note(`--offline-ok: the plan came from ${source} in ${seconds} s with ${cards} images`);
   else bad(`the plan came from "${source}", not the live Architect, after ${seconds} s (API status ${statuses}). 503 means ANTHROPIC_API_KEY is not set on the deployment, or it was not redeployed after the key was added.`);
@@ -171,6 +181,7 @@ try {
     ).catch(() => {});
     const after = await page.getByTestId('prop-scene').first().evaluate((el) => el.value ?? el.textContent);
     const regenStatus = apiCalls.slice(calls).map((c) => c.status).join(', ') || 'none';
+    for (const c of apiCalls.slice(calls)) if (c.timing) note(`server timing: ${c.timing}`);
     if (after !== before) ok(`Regenerate gave a new image in ${((Date.now() - t0) / 1000).toFixed(1)} s (API status ${regenStatus}): ${String(after).trim()}`);
     else bad(`Regenerate did not change the image within 40 s (API status ${regenStatus})`);
   }

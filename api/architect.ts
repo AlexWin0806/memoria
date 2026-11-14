@@ -27,11 +27,17 @@ type Effort = (typeof EFFORTS)[number];
 
 const MAX_TEXT = 12_000;
 const MAX_BODY_BYTES = 64_000;
-/** Whole-request budget. The client gives up at 25 s, so answer or fail before that. */
-const PLAN_BUDGET_MS = 22_000;
-const REGENERATE_BUDGET_MS = 12_000;
+/**
+ * Whole-request budget. The client gives up at 55 s and the function is allowed 60 s, so
+ * answer or fail before that. Measured on the live model: a six-fact plan needs about 22 s
+ * for its two calls (draft, then self-check), so the first budget of 22 s cut the check off.
+ */
+const PLAN_BUDGET_MS = 48_000;
+/** Time kept back from the draft call so the self-check can run. */
+const CHECK_RESERVE_MS = 16_000;
+const REGENERATE_BUDGET_MS = 20_000;
 /** Do not start a model call with less than this left: it would only time out. */
-const MIN_CALL_MS = 4_000;
+const MIN_CALL_MS = 6_000;
 
 const RATE_LIMIT = 20;
 const RATE_WINDOW_MS = 10 * 60_000;
@@ -281,6 +287,9 @@ interface AskOptions<T> {
   schema: z.ZodType<T>;
   /** Epoch ms after which the answer is useless to the caller. */
   deadline: number;
+  /** Where to record how long this call took, in ms, under `label` (reported as Server-Timing). */
+  timings?: Record<string, number>;
+  label?: string;
 }
 
 /**
@@ -292,6 +301,10 @@ async function ask<T>(opts: AskOptions<T>): Promise<T> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const remaining = opts.deadline - Date.now();
     if (remaining < MIN_CALL_MS) break;
+    const startedAt = Date.now();
+    const record = () => {
+      if (opts.timings && opts.label) opts.timings[opts.label] = (opts.timings[opts.label] ?? 0) + (Date.now() - startedAt);
+    };
     try {
       const message = await opts.client.messages.create(
         {
@@ -320,8 +333,10 @@ async function ask<T>(opts: AskOptions<T>): Promise<T> {
       }
       const parsed = opts.schema.safeParse(json);
       if (!parsed.success) throw new BadModelOutput('schema mismatch');
+      record();
       return parsed.data;
     } catch (err) {
+      record();
       lastError = err;
       const transient =
         err instanceof BadModelOutput ||
@@ -395,7 +410,7 @@ function mechanicalFindings(items: PlannedItem[], nameOf: (id: string) => string
   return out;
 }
 
-async function plan(input: PlanInput, client: Anthropic, model: string, effort: Effort | null) {
+async function plan(input: PlanInput, client: Anthropic, model: string, effort: Effort | null, timings: Record<string, number>) {
   const deadline = Date.now() + PLAN_BUDGET_MS;
   const route = [...input.loci].sort((a, b) => a.index - b.index);
   const cap = Math.min(input.maxItems, route.length);
@@ -411,7 +426,9 @@ async function plan(input: PlanInput, client: Anthropic, model: string, effort: 
     effort,
     system: ARCHITECT_SYSTEM,
     schema: draftSchema(ids),
-    deadline: deadline - 5_000 > Date.now() + MIN_CALL_MS ? deadline - 5_000 : deadline,
+    timings,
+    label: 'draft',
+    deadline: deadline - CHECK_RESERVE_MS,
     user: `${PLAN_RULES}
 
 The route, in walking order:
@@ -491,6 +508,8 @@ ${input.text}
         effort,
         system: CRITIC_SYSTEM,
         schema: reviewSchema(ids),
+        timings,
+        label: 'check',
         deadline,
         user: `Deck: "${oneLine(draft.title, 80)}" (${kind === 'list' ? 'an ordered list' : 'cue and answer pairs'}), ${items.length} images in route order.
 
@@ -539,16 +558,28 @@ Give a verdict for all ${items.length} images, and a revision for each one that 
 
 // ───────────────────────── regenerate ─────────────────────────
 
-async function regenerate(input: RegenerateInput, client: Anthropic, model: string, effort: Effort | null) {
+/** Lower-case letters and digits only, for comparing two sentences loosely. */
+const plain = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * True when a "scene" is not an image at all: it restates the place (seen once on the live
+ * model: the scene came back as the place's own name and description) or repeats the image
+ * it was asked to replace.
+ */
+function notANewImage(scene: string, input: RegenerateInput): boolean {
+  const s = plain(scene);
+  const hint = plain(input.locus.hint);
+  const name = plain(input.locus.name);
+  if (hint.length >= 16 && s.includes(hint)) return true;
+  if (s.startsWith(`${name} ${hint}`.slice(0, 40)) && hint.length > 0) return true;
+  return s === plain(input.item.scene ?? '');
+}
+
+async function regenerate(input: RegenerateInput, client: Anthropic, model: string, effort: Effort | null, timings: Record<string, number>) {
   const others = (input.others ?? []).filter((o) => o.scene.trim()).slice(0, 14);
-  const out = await ask({
-    client,
-    model,
-    effort,
-    system: ARCHITECT_SYSTEM,
-    schema: RegenerateOut,
-    deadline: Date.now() + REGENERATE_BUDGET_MS,
-    user: `Write one new memory image for a single fact. Follow every rule.
+  const deadline = Date.now() + REGENERATE_BUDGET_MS;
+  const base = `Write one new memory image for a single fact. Follow every rule.
+\`scene\` is the image itself: one sentence in which something concrete does something at this place. It is not a description of the place.
 
 Locus: ${input.locus.name}: ${input.locus.hint}
 <material>
@@ -563,12 +594,31 @@ ${input.missed ? 'The learner failed to recall this fact with the current image.
       input.hint?.trim()
         ? `The learner asks, about the image only: <preference>${oneLine(input.hint, 200)}</preference>. Follow it where the rules allow.\n`
         : ''
-    }`,
-  });
-  const scene = oneLine(out.scene, 280);
-  if (!scene) throw new BadModelOutput('empty scene');
-  const glyphs = safeGlyphs(out.glyphs);
-  return { scene, glyphs: glyphs.length ? glyphs : ['❓'], action: out.action, reason: oneLine(out.reason, 200) };
+    }`;
+  let retryNote = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const out = await ask({
+      client,
+      model,
+      effort,
+      system: ARCHITECT_SYSTEM,
+      schema: RegenerateOut,
+      timings,
+      label: 'regenerate',
+      deadline,
+      user: base + retryNote,
+    });
+    const scene = oneLine(out.scene, 280);
+    if (!scene) throw new BadModelOutput('empty scene');
+    if (notANewImage(scene, input)) {
+      // Ask once more, saying what was wrong; a second miss is a failure the client can fall back from.
+      retryNote = '\n\nYour last answer was not a new image: it restated the place or repeated the old image. Write a different scene in which a concrete thing acts on the feature of this place.';
+      continue;
+    }
+    const glyphs = safeGlyphs(out.glyphs);
+    return { scene, glyphs: glyphs.length ? glyphs : ['❓'], action: out.action, reason: oneLine(out.reason, 200) };
+  }
+  throw new BadModelOutput('no new image');
 }
 
 // ───────────────────────── Handler ─────────────────────────
@@ -606,8 +656,21 @@ export default async function handler(req: ArchitectReq, res: ArchitectRes): Pro
     const effort: Effort | null = wanted === 'none' ? null : (EFFORTS.find((e) => e === wanted) ?? 'low');
     const client = new Anthropic({ apiKey });
 
-    if (input.op === 'plan') send(res, 200, { ok: true, plan: await plan(input, client, model, effort) });
-    else send(res, 200, { ok: true, imago: await regenerate(input, client, model, effort) });
+    // How long each model call took, for anyone measuring the deployed function.
+    const timings: Record<string, number> = {};
+    const started = Date.now();
+    const payload =
+      input.op === 'plan'
+        ? { ok: true, plan: await plan(input, client, model, effort, timings) }
+        : { ok: true, imago: await regenerate(input, client, model, effort, timings) };
+    timings.total = Date.now() - started;
+    res.setHeader(
+      'server-timing',
+      Object.entries(timings)
+        .map(([name, ms]) => `${name};dur=${Math.round(ms)}`)
+        .join(', '),
+    );
+    send(res, 200, payload);
   } catch (err) {
     const http = toHttpError(err);
     // Status and error class only: never the learner's text, the key, or the upstream body.
