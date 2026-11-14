@@ -18,7 +18,7 @@ function Surface({ slot, accent, doubleSided }: SurfaceProps) {
     <meshStandardMaterial
       color={color}
       roughness={slot === 'metal' ? 0.45 : 0.92}
-      metalness={slot === 'metal' ? 0.6 : 0}
+      metalness={slot === 'metal' ? 0.15 : 0}
       side={side}
     />
   );

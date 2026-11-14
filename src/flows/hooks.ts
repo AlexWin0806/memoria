@@ -7,7 +7,7 @@ import { isWalking, useFlow } from './flow';
  * Safety net: the engine sets `arrived` when the camera settles. If it has not done so
  * within `ms` (engine missing, tab throttled, WebGL lost), the walk carries on anyway.
  */
-export function useArrivedFallback(ms = 2500): void {
+export function useArrivedFallback(ms = 6000): void {
   const mode = useSession((s) => s.mode);
   const step = useSession((s) => s.step);
   const stops = useSession((s) => s.stops);

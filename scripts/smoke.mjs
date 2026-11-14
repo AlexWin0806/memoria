@@ -86,15 +86,19 @@ function assert(cond, message) {
   if (!cond) throw new Error(message);
 }
 
+// The smoke test checks app logic, not looks. Headless Chromium renders in software, where the
+// ink style manages only a few frames per second, so run on the cheap greybox theme.
+const FAST = 'theme=greybox';
+
 async function open(viewport = { width: 1440, height: 900 }) {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
   const page = await context.newPage();
-  page.setDefaultTimeout(30000);
+  page.setDefaultTimeout(60000);
   const errors = [];
   const requests = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('request', (r) => requests.push(r.url()));
-  await page.goto(`${base}/`, { waitUntil: 'load' });
+  await page.goto(`${base}/?${FAST}`, { waitUntil: 'load' });
   await page.getByTestId('title').waitFor();
   return { context, page, errors, requests };
 }
@@ -364,11 +368,11 @@ const cases = {
 
   async g() {
     const { context, page, errors } = await open();
-    await page.goto(`${base}/?judge`, { waitUntil: 'load' });
+    await page.goto(`${base}/?judge&${FAST}`, { waitUntil: 'load' });
     await page.getByTestId('familiarize').waitFor();
     assert((await text(page.locator('[data-testid=familiarize] .label').first())) === 'Route preview', '?judge did not start Judge Mode');
     for (const param of ['shot=overview', 'rail']) {
-      await page.goto(`${base}/?${param}`, { waitUntil: 'load' });
+      await page.goto(`${base}/?${param}&${FAST}`, { waitUntil: 'load' });
       await page.waitForFunction('window.__MEMORIA_READY__ === true');
       assert((await page.locator('.ov').count()) === 0, `overlay visible with ?${param}`);
     }
