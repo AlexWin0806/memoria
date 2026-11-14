@@ -1,0 +1,80 @@
+{
+  "id": "cyanotype",
+  "name": "Cyanotype Blueprint",
+  "style": "blueprint",
+  "palette": {
+    "paper": "#0f3057",
+    "ink": "#e6f0fa",
+    "inkSoft": "#8fb3d6",
+    "surfaces": {
+      "floor": "#eadcbb",
+      "wall": "#f2e8cf",
+      "ceiling": "#e7dcc0",
+      "trim": "#c9ae7f",
+      "stone": "#dfd2b4",
+      "wood": "#b8875a",
+      "metal": "#bfa67a",
+      "water": "#bfe6de",
+      "foliage": "#a4c492",
+      "cloth": "#e4cfab",
+      "glow": "#fff0c9"
+    },
+    "accents": {
+      "red": "#e0604a",
+      "amber": "#f2b84b",
+      "green": "#7fc08a",
+      "teal": "#5fc7c0",
+      "blue": "#8fb0ff",
+      "plum": "#c08fd8"
+    },
+    "sky": ["#16406e", "#0f3057"],
+    "fog": "#0f3057"
+  },
+  "light": {
+    "ambient": 1,
+    "keyColor": "#fff6e0",
+    "keyIntensity": 1,
+    "keyDirection": [0.45, -0.8, -0.35],
+    "fillColor": "#b79a7c",
+    "fillIntensity": 1,
+    "locusGlow": 1
+  },
+  "fog": { "near": 30, "far": 120 },
+  "post": {
+    "supersample": 2,
+    "lineWidth": 1.5,
+    "lineOpacity": 0.95,
+    "lineOpacityDeveloped": 0.85,
+    "creaseLo": 0.45,
+    "creaseHi": 0.75,
+    "planeContrast": 1.15,
+    "accentLift": 0.1,
+    "hatchSpacing": 7,
+    "hatchWidth": 1,
+    "hatchOpacity": 0.3,
+    "hatchOpacityDeveloped": 0.22,
+    "gridWidth": 1,
+    "gridOpacity": 0.32,
+    "gridOpacityDeveloped": 0.14,
+    "shadeDepth": 0.55,
+    "devThreshold": 0.2,
+    "devGamma": 1.5,
+    "devSoftness": 0.08,
+    "devNoise": 0.24,
+    "devNoiseScale": 1.1,
+    "devEdge": 0.14,
+    "grain": 0.05,
+    "vignette": 0.22
+  },
+  "type": { "display": "Space Grotesk", "text": "IBM Plex Sans" },
+  "ui": {
+    "bg": "#0f3057",
+    "panel": "#f2e8cf",
+    "fg": "#1c2b45",
+    "muted": "#5b6b84",
+    "accent": "#e0604a",
+    "success": "#3f8a56",
+    "danger": "#b8402a",
+    "radius": 2
+  }
+}
