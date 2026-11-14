@@ -95,6 +95,13 @@ npx vite --port 5199 --strictPort &
 node scripts/shots.mjs --url http://localhost:5199 --bookmarks qa/bookmarks.ink.json --only overview
 ```
 
+Pitfalls seen in practice (the build machine is shared and software-rendered):
+
+- Do not edit style source while a shot is rendering against the dev server: the hot reload of a style module can fail and leave the page blank until the screenshot times out. Edit, then shoot.
+- A run without `--url` starts its own `vite preview` and appears to leave it running afterwards. When it ends, list previews from your own worktree (`pgrep -af "<your worktree dir>.*vite preview"`) and stop that PID. Never stop servers or renders by pattern, and never ones from another worktree: other agents render on the same machine.
+- A background dev server is stopped at its time limit (30 minutes by default). Give it a longer limit, or shoot the final set from `dist/`.
+- Several renders at once starve each other. Run one at a time and expect about a minute per 1440x900 frame.
+
 Then open the PNGs (Read tool), critique against `docs/art-bible.md`, fix, repeat: at least three rounds. A bookmark is `{ "name", "query", "width"?, "height"?, "waitMs"? }`; pass a smaller `width`/`height` while iterating and render the final set at 1440x900. Add a `qa/bookmarks.<style>.json` for a new style.
 
 URL switches (`src/scene/qa.ts`): `theme=<id>`, `shot=overview|entry|<locus index>`, `rail=<from>&t=<0..1>` (camera frozen part-way to the next locus), `tokens=all`, `dev=<v>` or `dev=<v0>,<v1>,...` per locus, `perf`, `debug`. `?proto=1&theme=<id>` is the small art test room; `?lab` opens the Theme Lab.
@@ -107,7 +114,7 @@ Minimum set to look at for a theme:
 4. Motion: `rail=4&t=0.3` and `rail=4&t=0.32` (neighbouring frames; texture must move with the surfaces, nothing may flicker), plus a wider pair such as `t=0.3` / `t=0.4`.
 5. The overlay on top (`qa/bookmarks.ui.json`) for contrast and fonts.
 
-**Theme Lab** (`/?lab`, add `&theme=<id>`): a Leva panel, top-left, collapsed. Tune palette, light, fog, every `post` number and `ui` colours live; "Copy JSON" or "Download <id>.json", then save the file into `src/themes/`. Use it to find values, then confirm with headless shots.
+**Theme Lab** (`/?lab`, add `&theme=<id>`): a Leva panel, top-left, collapsed. Tune palette, light, fog, every `post` number and `ui` colours live; "Copy JSON" or "Download JSON" (saved as `<id>.json`), then put the file into `src/themes/`; "Reset" returns to the saved theme. Use it to find values, then confirm with headless shots.
 
 ## 7. Anti-generic checklist
 
