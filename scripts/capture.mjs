@@ -28,9 +28,11 @@
  * Scenarios drive the real interface by test id, the way a judge would, with pauses in
  * virtual time:
  *   pitch          the whole `?judge=pitch` run: title, button, eight places, spot check of
- *                  four (three right, the third wrong), results and 8 s of the results tour
+ *                  three (the second answered wrongly, so both outcomes are shown), results and
+ *                  8 s of the results tour
  *   recall         the same run, recording only one spot-check place: the end of the glide in,
- *                  the question, the right answer, the reveal and flourish, the glide out
+ *                  the question, the right answer, the reveal and flourish, the glide out (after
+ *                  the last place: the first seconds of the results instead)
  *   encode         the same run, recording only one encode place: glide in, image, panel
  *   motion         the same run, recording only the moments where the camera or the scene can
  *                  misbehave: the button and the first place, two legs with a wide turn of the
@@ -56,8 +58,9 @@
  *                         Keep it outside the repo. Frames are f000000.jpg … by frame number.
  *   --from, --to <s>      record this window of scenario time instead of the scenario's own
  *   --place <n>           recall: which spot-check place (1 to 3, default 2); encode: which place (2 to 7, default 3)
- *   --wrong <n>           which spot-check answer is given wrongly (default 3; 0 = none)
- *   --seed <n>            seed for Math.random (default 7): picks the four spot-check places
+ *   --wrong <n>           which spot-check answer (1 to 3) is given wrongly; 0 = none. Default 2,
+ *                         except in `recall`, whose clip shows a right answer: default 0
+ *   --seed <n>            seed for Math.random (default 7): picks the three spot-check places
  *   --quality <n>         JPEG quality (default 90)
  *   --mp4 <file>          encode the recorded frames with ffmpeg (H.264, yuv420p, no audio)
  *   --gif <file>          encode them as a GIF with its own palette
@@ -127,7 +130,9 @@ const from = flag('from') === undefined ? null : Number(flag('from'));
 const to = flag('to') === undefined ? null : Number(flag('to'));
 const seed = num('seed', 7);
 const quality = num('quality', 90);
-const wrongAt = num('wrong', 3);
+/** The pitch variant's spot check: this many of the eight places (spotCheckStops in src/flows/timing.ts). */
+const SPOT = 3;
+const wrongAt = num('wrong', scenarioName === 'recall' ? 0 : 2);
 const fastForward = !args.includes('--no-ff');
 /** Footage shows a pointer; stills do not. */
 const drawPointer = ['pitch', 'recall', 'encode', 'motion'].includes(scenarioName) && !args.includes('--no-pointer');
@@ -499,8 +504,8 @@ async function pitchRun(rec, hooks = {}) {
   await rec.wait(hooks.interstitialWait ?? 3); // its eighteen words
   await rec.click('recall-start');
 
-  for (let i = 1; i <= 4; i++) {
-    await rec.until((s) => (s.ids['walk-label'] ?? '').startsWith(`Spot check ${i} of 4`), { what: `spot check ${i}` });
+  for (let i = 1; i <= SPOT; i++) {
+    await rec.until((s) => (s.ids['walk-label'] ?? '').startsWith(`Spot check ${i} of ${SPOT}`), { what: `spot check ${i}` });
     if ((await call('spotGlide', i)) === 'stop') return;
     await rec.until((s) => 'choice' in s.ids, { what: `the question at spot check ${i}` });
     const { place, options } = await question(rec.page);
@@ -514,7 +519,7 @@ async function pitchRun(rec, hooks = {}) {
     rec.mark(`answer ${i}: ${right ? 'right' : 'wrong'}`);
     if ((await call('spotAnswered', i, right)) === 'stop') return;
     // The walk moves on by itself. If it ever does not, press the button a judge would.
-    const next = (s) => (i < 4 ? (s.ids['walk-label'] ?? '').startsWith(`Spot check ${i + 1} of 4`) : 'results' in s.ids);
+    const next = (s) => (i < SPOT ? (s.ids['walk-label'] ?? '').startsWith(`Spot check ${i + 1} of ${SPOT}`) : 'results' in s.ids);
     if (!(await rec.until(next, { timeout: 5, soft: true }))) await rec.click('recall-next');
   }
   await rec.until((s) => 'results' in s.ids, { what: 'the results' });
@@ -542,8 +547,13 @@ const SCENARIOS = {
     query: 'judge=pitch',
     async run(rec) {
       const k = num('place', 2);
+      if (!(k >= 1 && k <= SPOT)) throw new Error(`--place must be 1 to ${SPOT} for the recall scenario`);
       let glide = 0;
       let asked = 0;
+      const finish = () => {
+        rec.off();
+        rec.clip(Math.max(glide + 1, asked - Math.round(2 * fps)), rec.frame);
+      };
       await pitchRun(rec, {
         interstitial: () => (k === 1 ? rec.arm() : undefined),
         async spotGlide(i) {
@@ -555,8 +565,7 @@ const SCENARIOS = {
           }
           if (i === k + 1) {
             await rec.wait(2.6); // the start of the glide to the next place
-            rec.off();
-            rec.clip(Math.max(glide + 1, asked - Math.round(2 * fps)), rec.frame);
+            finish();
             return 'stop';
           }
         },
@@ -566,6 +575,12 @@ const SCENARIOS = {
             asked = rec.frame;
             await rec.wait(0.8); // long enough to read the question in a loop that has no sound
           }
+        },
+        // The last spot-check place has no glide out: the results follow it.
+        async results() {
+          if (k !== SPOT) return;
+          await rec.wait(2.6);
+          finish();
         },
       });
     },
@@ -641,7 +656,7 @@ const SCENARIOS = {
         },
         spotGlide(i) {
           legBegins();
-          if (second && i === 4) rec.arm();
+          if (second && i === SPOT) rec.arm();
         },
         async spotQuestion(i) {
           legEnds(`to spot check ${i}`);
@@ -651,7 +666,7 @@ const SCENARIOS = {
           }
         },
         spotAnswered(i) {
-          if (second && i === 4) rec.on();
+          if (second && i === SPOT) rec.on();
         },
         async results() {
           if (!second) return;

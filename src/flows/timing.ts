@@ -20,8 +20,9 @@ export interface JudgeTiming {
 }
 
 /*
- * In both variants the screen between the two walks waits for its button, and a timed
- * encode stop can be paused (P): nothing a judge has to read is taken away by a timer.
+ * In both variants the screen between the two walks waits for its button, and every timed
+ * stop (an image on the encode walk, the feedback after a recall answer) can be paused (P):
+ * nothing a judge has to read is taken away by a timer.
  */
 export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
   /** The title button and `?judge`. */
@@ -38,7 +39,7 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
     encodeSecondsPerStop: 4,
     feedbackSeconds: 2,
     missFeedbackSeconds: 3.5,
-    spotCheckStops: 4,
+    spotCheckStops: 3,
   },
 };
 
@@ -46,14 +47,16 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
  * What the title button promises, per variant: the measured length of a passive run (nothing
  * skipped or paused, two seconds of thought per answer, and time to read the screen between
  * the walks before pressing its button: eight seconds for the default run's 33 words, four
- * for the pitch run's 18), rounded up so that the promise is kept. Measured on the greybox theme with
- *   node scripts/smoke.mjs --only a --serial     default: 120 s
- *   node scripts/smoke.mjs --only p --serial     pitch:    83 s (about 81 to 89 s: the four spot-check places are random)
- * Re-measure and update both the number and the wording after changing anything above.
+ * for the pitch run's 18). Measured on the greybox theme, each case alone, with
+ *   node scripts/smoke.mjs --only a --serial     default: 123 s
+ *   node scripts/smoke.mjs --only p --serial     pitch:    77 s (a few seconds either way: the three spot-check places are random)
+ * The pitch label is rounded up, so that the promise is kept with room to spare; the default
+ * label is the run's length to the nearest half minute. Re-measure and update both the number
+ * and the wording after changing anything above.
  */
 export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; label: string }> = {
-  default: { measuredSeconds: 120, label: 'Try it in 2 minutes' },
-  pitch: { measuredSeconds: 83, label: 'Try it in 90 seconds' },
+  default: { measuredSeconds: 123, label: 'Try it in 2 minutes' },
+  pitch: { measuredSeconds: 77, label: 'Try it in 90 seconds' },
 };
 
 /** If the engine has not reported `arrived` after this long, the walk carries on anyway. */

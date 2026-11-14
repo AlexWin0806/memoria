@@ -1,4 +1,5 @@
-import type { Deck, Imago, MemoryItem, RecallResult, ReviewCard } from '@/core/types';
+import type { Deck, Imago, MemoryItem, PalaceLayoutMeta, RecallResult, ReviewCard } from '@/core/types';
+import { DOMUS_META } from '@/layouts/domus/meta';
 
 /**
  * Everything Memoria keeps in the browser is read through this file, so that a value left
@@ -10,7 +11,8 @@ import type { Deck, Imago, MemoryItem, RecallResult, ReviewCard } from '@/core/t
  * original is first copied to QUARANTINE_KEY, so nothing is silently destroyed, and the
  * title screen says so in one line.
  *
- * This module imports types only, so it can be the first thing every store loads.
+ * This module imports types and plain data only (no store, no scene code), so it can be the
+ * first thing every store loads.
  */
 
 export const QUARANTINE_KEY = 'memoria.quarantine.v1';
@@ -102,10 +104,35 @@ export function cleanItem(v: unknown, t: Tally): MemoryItem | null {
   return out as unknown as MemoryItem;
 }
 
-/** A deck needs an id, a title and at least one well-formed item; the rest is given a default. */
+/**
+ * The places of each palace, by layout id. Only the plain place lists: the layouts' own registry
+ * (@/layouts) brings the scene code with it, and that loads stores. Add a layout here when one
+ * is added there; an unknown id falls back to the default palace, as `getLayout` does.
+ */
+const PLACES: Record<string, PalaceLayoutMeta> = { [DOMUS_META.id]: DOMUS_META };
+
+/**
+ * One fact per place, on places the palace has: an item on a place that does not exist, and a
+ * second item on a place that is taken, are never walked or tested, so they are not kept (and
+ * the count on the title agrees with the walk). Returns the same array when nothing is dropped.
+ */
+function onePerPlace(items: MemoryItem[], layoutId: unknown, t: Tally): MemoryItem[] {
+  const places = new Set(((str(layoutId) && PLACES[layoutId]) || DOMUS_META).loci.map((l) => l.id));
+  const taken = new Set<string>();
+  const kept = items.filter((it) => {
+    if (!places.has(it.locusId) || taken.has(it.locusId)) return false;
+    taken.add(it.locusId);
+    return true;
+  });
+  if (kept.length === items.length) return items;
+  t.dropped = true;
+  return kept;
+}
+
+/** A deck needs an id, a title and at least one well-formed item on a place of its palace; the rest is given a default. */
 function cleanDeck(v: unknown, t: Tally): Deck | null {
   if (!isObj(v) || !str(v.id) || !str(v.title) || !Array.isArray(v.items)) return null;
-  const items = cleanList(v.items, cleanItem, t);
+  const items = onePerPlace(cleanList(v.items, cleanItem, t), v.layoutId, t);
   if (items.length === 0) return null;
   if (items === v.items && oneOf(v.kind, ['list', 'pairs'] as const) && str(v.layoutId) && num(v.createdAt)) return v as unknown as Deck;
   t.changed = true;
@@ -274,14 +301,18 @@ const isArmResult = (v: unknown): boolean => isObj(v) && num(v.score) && num(v.m
 /**
  * One finished participant of the comparison test (AbRow in src/ab/store.ts). `palaceList`
  * says which list the palace arm had; rows written before the lists were swapped lack it.
+ * `listStudyS` and `palaceStudyS` are the two study times in seconds; older rows lack them too.
  */
 function cleanAbRow(v: unknown, t: Tally): Rec | null {
   if (!isObj(v) || !str(v.id) || !num(v.at) || !oneOf(v.order, ['list-first', 'palace-first'] as const)) return null;
   if (!isArmResult(v.list) || !isArmResult(v.palace)) return null;
-  if (v.palaceList === undefined || oneOf(v.palaceList, ['carpals', 'krebs'] as const)) return v;
+  const bad = [
+    ...(v.palaceList === undefined || oneOf(v.palaceList, ['carpals', 'krebs'] as const) ? [] : ['palaceList']),
+    ...['listStudyS', 'palaceStudyS'].filter((k) => v[k] !== undefined && !(num(v[k]) && v[k] >= 0)),
+  ];
+  if (bad.length === 0) return v;
   t.dropped = true;
-  const { palaceList: _bad, ...rest } = v;
-  return rest;
+  return Object.fromEntries(Object.entries(v).filter(([k]) => !bad.includes(k)));
 }
 
 /** The comparison test's rows: a plain array. */

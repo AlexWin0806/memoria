@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { JUDGE_DECK_ID } from '@/ai/fixtures';
 import type { Deck, Locus, MemoryItem } from '@/core/types';
 import { getLayout, type PalaceLayout } from '@/layouts';
-import { getDeck, useDecks } from '@/state/decks';
+import { getDeck, openSandbox } from '@/state/decks';
 import { dueItemIds, useReview } from '@/state/review';
 import { isLastStop, useSession, type WalkResult } from '@/state/session';
 import { useSettings } from '@/state/settings';
@@ -122,13 +122,12 @@ function begin(mode: WalkMode, deck: Deck, stops: number[], judge: boolean) {
 /**
  * Judge Mode: fixture deck, fast route preview, timed encode, multiple-choice recall.
  * The pitch variant drops the preview and checks only some of the places afterwards.
- * Every run starts from the pristine fixture, so edits and review progress left by an
- * earlier run are cleared first. Nothing here touches the network.
+ * Every run is a sandbox: it walks a fresh copy of the pristine fixture, and it neither reads
+ * nor changes the learner's own copy of that deck or their review cards (a demo run is not
+ * study). Nothing here touches the network.
  */
 export function startJudge(variant: JudgeVariant = judgeVariantFromUrl()): void {
-  if (useDecks.getState().decks[JUDGE_DECK_ID]) useDecks.getState().remove(JUDGE_DECK_ID);
-  useReview.getState().resetDeck(JUDGE_DECK_ID);
-  const deck = getDeck(JUDGE_DECK_ID);
+  const deck = openSandbox(JUDGE_DECK_ID);
   if (!deck) return;
   useFlow.setState({ judgeVariant: variant });
   const preview = JUDGE_TIMING[variant].previewSecondsPerStop > 0;
@@ -209,10 +208,13 @@ function startSpotCheck(deckId: string, count: number): void {
   if (stops.length) begin('recall', deck, stops, true);
 }
 
-/** Write the walk's answers to the review store. Safe to call again: a recorded answer is not counted twice. */
+/**
+ * Write the walk's answers to the review store. Safe to call again: a recorded answer is not
+ * counted twice. A Judge run writes nothing: its answers live in the session only.
+ */
 function recordWalk(): void {
   const s = useSession.getState();
-  if (s.deckId) useReview.getState().record(s.deckId, s.results, { walkId: useFlow.getState().walkId });
+  if (s.deckId && !s.judge) useReview.getState().record(s.deckId, s.results, { walkId: useFlow.getState().walkId });
 }
 
 /** A recall answer: revealed in the scene and scheduled at once, so a reload cannot lose it. */
@@ -263,7 +265,8 @@ export function requestLeave(): void {
 /** Return to the walk that a reload cut short, at the same stop. */
 export function resumeWalk(): void {
   const w = useFlow.getState().savedWalk;
-  const deck = w ? getDeck(w.deckId) : undefined;
+  // A Judge run that a reload cut short goes on in a fresh sandbox, like the run it was.
+  const deck = w ? ((w.judge ? openSandbox(w.deckId) : undefined) ?? getDeck(w.deckId)) : undefined;
   if (!w || !deck) {
     discardSavedWalk();
     return;
@@ -312,6 +315,19 @@ const onWalkEntry = () => (history.state as Record<string, unknown> | null)?.[HI
 let wasWalking = false;
 let lastSaved = '';
 let ignoreNextPop = false;
+
+/**
+ * The comparison test borrows the walk for its palace arm and owns a history entry of its own
+ * under the walk's. It registers here and is handed every popstate first: `walkPop` is true
+ * when the event is only a walk's entry being given back. When it answers true the event is
+ * dealt with, and the walk does not ask "Leave this walk?" as well. (One listener, so that
+ * nothing depends on the order in which two would run.)
+ */
+type PopDelegate = (walkPop: boolean) => boolean;
+let popDelegate: PopDelegate | null = null;
+export function setPopDelegate(delegate: PopDelegate | null): void {
+  popDelegate = delegate;
+}
 
 function followWalk(): void {
   const s = useSession.getState();
@@ -362,10 +378,9 @@ if (typeof window !== 'undefined') {
   useSession.subscribe(followWalk);
   useFlow.subscribe(followWalk);
   window.addEventListener('popstate', () => {
-    if (ignoreNextPop) {
-      ignoreNextPop = false;
-      return;
-    }
+    const walkPop = ignoreNextPop;
+    ignoreNextPop = false;
+    if (popDelegate?.(walkPop) || walkPop) return;
     if (!isWalking(useSession.getState().mode)) return;
     try {
       history.pushState({ [HISTORY_MARK]: true }, '');

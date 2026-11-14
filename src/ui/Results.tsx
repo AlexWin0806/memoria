@@ -138,6 +138,12 @@ export function Results() {
       <p className="body" data-testid="results-time">
         Recalled from memory in {formatDuration(recallMs)}.
       </p>
+      {judge && (
+        // A Judge run is a sandbox: no review card is written, and the learner's own are left alone.
+        <p className="body" data-testid="results-demo">
+          This demo run was not added to your reviews.
+        </p>
+      )}
       <div className="actions results__actions" data-testid="results-actions">
         {judge && (
           <button type="button" className="btn btn--primary" onClick={() => useSession.getState().toCompose()} data-testid="results-build">
@@ -158,7 +164,8 @@ export function Results() {
       </div>
       <ol className="places">
         {rows.map(({ locus, item, result }) => {
-          const card = cards[item.id];
+          // The learner's cards are their own study; a demo run neither wrote nor may quote them.
+          const card = judge ? undefined : cards[item.id];
           const d = drafts[item.id];
           const ok = Boolean(result?.correct);
           return (
@@ -270,9 +277,9 @@ export function Results() {
             so they are the core of the loop.
           </p>
           <p>
-            This score is same-session recall. Success is judged on delayed recall, so each item comes back for review at
-            expanding intervals (Leitner boxes: a miss returns in 10 minutes; a right answer waits 1 day, then 3, 7 and 21
-            days). We have not run an efficacy study of Memoria.
+            This score is same-session recall. Success is judged on delayed recall, so in a palace of your own each item
+            comes back for review at expanding intervals (Leitner boxes: a miss returns in 10 minutes; a right answer waits
+            1 day, then 3, 7 and 21 days). We have not run an efficacy study of Memoria.
           </p>
           <p data-testid="judge-next">Next, try it on something of your own: build a palace from your own notes.</p>
         </div>

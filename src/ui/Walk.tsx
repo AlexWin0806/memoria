@@ -10,9 +10,8 @@ import {
   repeatFamiliarize,
   useFlow,
 } from '@/flows/flow';
-import { numberWord } from '@/flows/format';
-import { usePausableCountdown } from '@/ab/timer';
-import { useCountdown, useWalkKeys } from '@/flows/hooks';
+import { numberWord, termLength } from '@/flows/format';
+import { useCountdown, useTimedStop, useWalkKeys } from '@/flows/hooks';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { isLastStop, useSession } from '@/state/session';
@@ -232,21 +231,15 @@ export function Encode() {
   const spot = judge && timing.spotCheckStops !== null && timing.spotCheckStops < stops.length ? timing.spotCheckStops : null;
 
   // A timed stop can be paused (the button or P). The pause belongs to the stop it was set at.
-  const [heldAt, setHeldAt] = useState<number | null>(null);
+  // The clock stops for the pause and while the "leave?" question is open, and goes on from where it was.
   const canHold = judge && walking && arrived;
-  const held = canHold && heldAt === step;
+  const { progress, held, toggle } = useTimedStop('encode', step, timing.encodeSecondsPerStop, canHold, advanceEncode);
   const pauseRef = useRef<HTMLButtonElement>(null);
   const toggleHold = () => {
-    setHeldAt(held ? null : step);
+    toggle();
     // Focus on the control, so that Space (which otherwise moves on) is the key that resumes.
     pauseRef.current?.focus({ preventScroll: true });
   };
-
-  // The clock stops for the pause and while the "leave?" question is open, and goes on from where it was.
-  const paused = useFlow((s) => s.confirmLeave);
-  const total = timing.encodeSecondsPerStop * 1000;
-  const left = usePausableCountdown(timing.encodeSecondsPerStop, canHold && !held && !paused, step, advanceEncode);
-  const progress = 1 - left / total;
   const nextRef = useFocusWhenReady<HTMLButtonElement>(walking && arrived, step);
 
   useWalkKeys({
@@ -297,7 +290,7 @@ export function Encode() {
       <div aria-live="polite">
         {arrived ? (
           <>
-            <h2 className="term" data-testid="encode-term">
+            <h2 className="term" data-length={termLength(item.term)} data-testid="encode-term">
               {item.term}
             </h2>
             {item.meaning && (

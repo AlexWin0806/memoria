@@ -1,6 +1,7 @@
 import type { Deck, MemoryItem, Mode, RecallResult, ReviewCard } from '@/core/types';
 import type { PalaceLayout } from '@/layouts';
 import { developmentForBox } from '@/srs/leitner';
+import { useSession } from './session';
 
 /** What the engine should show right now. Derived purely from app state. */
 export interface SceneView {
@@ -25,6 +26,12 @@ interface Input {
   cards: Record<string, ReviewCard>;
   /** `session.imagesHidden`: the screen between the two walks is up, so no image is shown. Default false. */
   imagesHidden?: boolean;
+  /**
+   * `session.judge`: a Judge run is a sandbox, so the learner's review cards colour nothing in
+   * it. The engine does not pass this yet; when absent it is read from the session store (the
+   * flag only ever changes together with `mode`, which the engine does pass).
+   */
+  judge?: boolean;
 }
 
 /**
@@ -34,9 +41,11 @@ interface Input {
  *   encode                         a locus fills in to 0.65 once its image has been placed
  *   recall                         a correct answer completes the locus (1); a miss drops it to 0.3
  *   results / review               from the Leitner box of each item
+ * A Judge run writes no review cards and reads none: its colours follow its own answers only.
  */
 export function deriveSceneView(i: Input): SceneView {
   const { mode, layout, deck, stops, step, arrived, results, cards, imagesHidden = false } = i;
+  const judge = i.judge ?? useSession.getState().judge;
   const n = layout.loci.length;
   const byLocus = new Map<string, MemoryItem>();
   deck?.items.forEach((it) => byLocus.set(it.locusId, it));
@@ -56,7 +65,7 @@ export function deriveSceneView(i: Input): SceneView {
       if (mode === 'attract' || mode === 'compose') development[locus.index] = 1;
       return;
     }
-    const card = cards[item.id];
+    const card = judge ? undefined : cards[item.id];
     const boxDev = developmentForBox(card?.box ?? 0);
     let visible = false;
     let dev = boxDev;

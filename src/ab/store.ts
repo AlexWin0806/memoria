@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import * as fixtures from '@/ai/fixtures';
 import { CONTROL_LIST, JUDGE_DECK_ID } from '@/ai/fixtures';
 import { shuffle } from '@/flows/answers';
-import { discardSavedWalk, itemAt, stopsFor, useFlow } from '@/flows/flow';
+import { discardSavedWalk, isWalking, itemAt, setPopDelegate, stopsFor, useFlow } from '@/flows/flow';
 import { JUDGE_TIMING } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { getDeck } from '@/state/decks';
@@ -68,7 +68,17 @@ export interface AbRow {
   palaceList?: PalaceList;
   list: ArmResult;
   palace: ArmResult;
+  /**
+   * How long each arm was actually studied, in seconds to one decimal: the list arm's clock,
+   * and the palace arm's encode walk (which follows the camera, so it varies with the machine).
+   * Rows stored before these were kept lack them.
+   */
+  listStudyS?: number;
+  palaceStudyS?: number;
 }
+
+/** Ms as seconds to one decimal. */
+const tenths = (ms: number) => Math.round(ms / 100) / 10;
 
 /** The list a row's palace arm had. Older rows have no field: they all had the carpal bones. */
 export function palaceListOf(row: Pick<AbRow, 'palaceList'>): PalaceList {
@@ -366,7 +376,16 @@ export function answerQuestion(optionId: string, ms: number): void {
   }
   // Only a run with both arms finished is recorded.
   if (!done.list || !done.palace) return;
-  const row: AbRow = { id: newId(), at: Date.now(), order: s.order, palaceList: materialFor(s.palaceList).palaceList, list: done.list, palace: done.palace };
+  const row: AbRow = {
+    id: newId(),
+    at: Date.now(),
+    order: s.order,
+    palaceList: materialFor(s.palaceList).palaceList,
+    list: done.list,
+    palace: done.palace,
+    ...(s.studyMs.list !== undefined ? { listStudyS: tenths(s.studyMs.list) } : {}),
+    ...(s.studyMs.palace !== undefined ? { palaceStudyS: tenths(s.studyMs.palace) } : {}),
+  };
   const rows = [...readRows(), row];
   writeRows(rows);
   useAb.setState({ stage: 'results', done, rows, lastId: row.id });
@@ -391,9 +410,66 @@ function markRun(running: boolean): void {
   }
 }
 
+/*
+ * A run owns one history entry, as a walk does (see the end of src/flows/flow.ts), so that the
+ * browser's Back button asks "Abandon this run?" instead of leaving the site. The palace arm's
+ * walks put their own entry on top of it and give it back when they end.
+ */
+const HISTORY_MARK = 'memoriaCompare';
+const onRunEntry = () => (history.state as Record<string, unknown> | null)?.[HISTORY_MARK] === true;
+/** When our own `history.back()` was called: the popstate that follows it is not the participant's. */
+let ownPopAt = 0;
+const OWN_POP_MS = 3000;
+
+function pushRunEntry(): void {
+  try {
+    if (!onRunEntry()) history.pushState({ [HISTORY_MARK]: true }, '');
+  } catch {
+    // History unavailable (a sandboxed frame): Back then behaves as it did.
+  }
+}
+
+function giveRunEntryBack(): void {
+  try {
+    // Never from under a walk of the learner's own: its listener puts the walk's entry back
+    // on top, and the two would chase each other.
+    if (!onRunEntry() || isWalking(useSession.getState().mode)) return;
+    ownPopAt = Date.now();
+    history.back();
+  } catch {
+    ownPopAt = 0;
+  }
+}
+
 if (typeof window !== 'undefined') {
   useAb.subscribe((s, was) => {
-    if (runInProgress(s.stage) !== runInProgress(was.stage)) markRun(runInProgress(s.stage));
+    const running = runInProgress(s.stage);
+    if (running === runInProgress(was.stage)) return;
+    markRun(running);
+    if (running) pushRunEntry();
+    // If the palace arm's walk entry is still on top, it is given back first; ours follows in the delegate below.
+    else giveRunEntryBack();
+  });
+  // Every popstate comes here first (see setPopDelegate). True = dealt with: the walk asks nothing.
+  setPopDelegate((walkPop) => {
+    const running = runInProgress();
+    const ownPop = Date.now() - ownPopAt < OWN_POP_MS;
+    ownPopAt = 0;
+    if (ownPop || walkPop) {
+      // An entry being given back (ours, or the palace walk's), not the Back button.
+      if (running) pushRunEntry();
+      else giveRunEntryBack();
+      return ownPop;
+    }
+    if (!running) {
+      // Forward onto the entry of a run that is over: step back off it. A walk of the learner's own answers for itself.
+      giveRunEntryBack();
+      return false;
+    }
+    // The Back button during a run, in either arm: the test asks its question, and stays on its entry.
+    pushRunEntry();
+    useAb.setState({ confirmAbandon: true });
+    return true;
   });
 }
 
@@ -418,9 +494,13 @@ export function mean(values: number[]): number {
 }
 
 export function toCsv(rows: AbRow[]): string {
-  const head = 'participant,id,at,order,palace_list,list_score,list_ms,palace_score,palace_ms';
+  const head = 'participant,id,at,order,palace_list,list_score,list_ms,palace_score,palace_ms,list_study_s,palace_study_s';
+  // Study times are seconds to one decimal; a row stored before they were kept exports them blank.
+  const study = (v: number | undefined) => (v === undefined ? '' : v.toFixed(1));
   const lines = rows.map((r, i) =>
-    [i + 1, r.id, new Date(r.at).toISOString(), r.order, palaceListOf(r), r.list.score, r.list.ms, r.palace.score, r.palace.ms].join(','),
+    [i + 1, r.id, new Date(r.at).toISOString(), r.order, palaceListOf(r), r.list.score, r.list.ms, r.palace.score, r.palace.ms, study(r.listStudyS), study(r.palaceStudyS)].join(
+      ',',
+    ),
   );
   return [head, ...lines].join('\n');
 }

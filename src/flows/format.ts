@@ -22,6 +22,15 @@ export function formatDuration(ms: number): string {
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
 }
 
+/**
+ * How a term is set when it is long: smaller, so that it wraps inside the panel without filling
+ * it (overlay.css, `.term[data-length]`). Short terms keep the display size.
+ */
+export function termLength(term: string): 'long' | 'very-long' | undefined {
+  const n = [...term].length;
+  return n > 90 ? 'very-long' : n > 30 ? 'long' : undefined;
+}
+
 const WORDS = ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 
 /** "four", "eight"; digits above twelve. */

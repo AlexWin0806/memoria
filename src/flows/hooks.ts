@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { usePausableCountdown } from '@/ab/timer';
 import { useSession } from '@/state/session';
 import { prefersReducedMotion } from '@/state/settings';
 import { isWalking, useFlow } from './flow';
@@ -114,6 +115,49 @@ export function useCountdown(active: boolean, seconds: number, key: string | num
   // A value belongs to the count it was measured in: the render that starts a new count
   // reads 0, not the finished count's 1 (which made a bar jump ahead and fall back).
   return progress.key === key ? progress.value : 0;
+}
+
+/** The stop a pause was set at, as the stop clocks read it: see useTimedStop. */
+const stopBlocked = (heldAt: { current: number | null }, stop: string | number) => heldAt.current === stop || useFlow.getState().confirmLeave;
+
+/**
+ * The clock of a timed stop in Judge Mode: an image on the encode walk, or the feedback after
+ * a recall answer. `seconds` after the stop is `ready` the walk moves on with `advance`,
+ * unless the stop is paused (the P key or the Pause button) or the "leave?" question is open;
+ * the clock then goes on from where it was.
+ *
+ * A pause does not wait for React. `toggle` sets a ref inside the key press or the click
+ * itself; the clock reads that ref at every tick, before it spends time or fires; and the
+ * advance is checked once more at the moment it fires: only for the stop it was counting,
+ * only while that stop is still on screen, never while it is paused. So an advance that was
+ * already due when Pause was pressed cannot follow the press, however late the next render is.
+ */
+export function useTimedStop(
+  mode: 'encode' | 'recall',
+  step: number,
+  seconds: number,
+  ready: boolean,
+  advance: () => void,
+): { progress: number; held: boolean; toggle: () => boolean } {
+  // The pause belongs to the stop it was set at. The state is what the screen shows; the ref is the pause itself.
+  const [heldAt, setHeldAt] = useState<number | null>(null);
+  const holdRef = useRef<number | null>(null);
+  const leaving = useFlow((s) => s.confirmLeave);
+  const held = ready && heldAt === step;
+  const fire = (stop: string | number) => {
+    const s = useSession.getState();
+    if (stopBlocked(holdRef, stop) || s.mode !== mode || s.step !== stop) return false;
+    advance();
+  };
+  const left = usePausableCountdown(seconds, ready && !held && !leaving, step, fire, (stop) => stopBlocked(holdRef, stop));
+  /** Pause or resume this stop. Returns true when it is now paused. */
+  const toggle = () => {
+    const next = holdRef.current === step ? null : step;
+    holdRef.current = next;
+    setHeldAt(next);
+    return next !== null;
+  };
+  return { progress: 1 - left / (seconds * 1000), held, toggle };
 }
 
 /** Resolved reduced-motion preference, following the OS setting live when set to "system". */

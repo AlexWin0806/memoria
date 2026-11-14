@@ -9,24 +9,29 @@
  *   node scripts/smoke.mjs --url http://localhost:5173
  *
  * Cases:
- *   a  Judge Mode, passive (nothing pressed but the answers), every answer right -> "8 of 8"
+ *   a  Judge Mode, passive (nothing pressed but the answers), every answer right -> "8 of 8";
+ *      a returning learner's review card and edited copy of the carpal deck are left untouched
  *   b  Judge Mode, first two answers wrong       -> "6 of 8", two Strengthen buttons;
- *      Strengthen with the Architect unreachable, and with it never answering
+ *      Strengthen with the Architect unreachable, and with it never answering; no review card is
+ *      written, and the image kept goes to the learner's own copy, not into the next Judge run;
+ *      the feedback after an answer can be paused (P) and resumed (Space) like an encode stop
  *   c  Compose a 5-line list, place it, walk encode and recall with the keyboard only
  *   d  (continues c) reload: the new deck is still listed; new versus due; reviews; the Leave dialog
  *   e  Judge Mode with the browser offline       -> "7 of 8", no requests at all, Strengthen at once
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
  *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay;
- *      a timed encode stop can be paused (P) and resumed (Space)
- *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of four -> "4 of 4"
+ *      a timed encode stop can be paused (P) and resumed (Space), whichever stop the key lands on
+ *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of three -> "3 of 3";
+ *      the learner's saved state survives it too
  *   r  Compose: the draft survives a reload at both steps; dropped lines, the three-fact minimum,
  *      emoji-only glyphs, the read-to-the-end gate, validation that names the card, Discard draft
  *   t  Typed recall on a pairs deck: the place is the cue, articles and brackets are forgiven,
  *      "I was right" overrules a miss; results say "self-marked", and right and missed are scheduled apart
  *   w  A recall walk survives a reload ("Resume your walk"), its answers are already recorded,
  *      and the browser's Back button opens the Leave dialog
- *   s  Saved data of the wrong shape (four cases, the first the value from QA review 2) is set
- *      aside: the title loads with one quiet line, the original is kept, Judge Mode still starts
+ *   s  Saved data of the wrong shape (five cases, the first the value from QA review 2; the last
+ *      a deck with two items on one place and one on a missing place) is set aside: the title
+ *      loads with one quiet line, the original is kept, Judge Mode still starts
  *   x  A render error shows the error page, not a blank one: Reload, and the guarded Reset
  *   l  Theme Lab (?lab): its buttons take a real click on the title and during a walk; Copy JSON
  *      holds a change made in the Lab, Reset clears it; keys pressed in the Lab do not reach the walk
@@ -84,6 +89,9 @@ const routeOrder = [...layoutSrc.matchAll(/\{ id: '(domus-\d+)', index: (\d+),/g
   .map((m) => placeName[m[1]]);
 const fixtureCount = readFileSync('src/ai/fixtures/index.ts', 'utf8').match(/FIXTURE_DECKS: Deck\[\] = \[([^\]]+)\]/)[1].split(',').length;
 const JUDGE_DECK_TITLE = 'The eight carpal bones';
+/** The pitch variant's spot check: this many of the eight places (spotCheckStops in src/flows/timing.ts). */
+const SPOT = 3;
+const SPOT_WORDS = 'three of the eight';
 /** A person reads four options and picks one in about this long. */
 const THINK_MS = 2000;
 /** The pitch run waits on its "spot check" screen until its button is pressed: time to read its 18 words. */
@@ -204,13 +212,61 @@ const clickIfStillAt = (page, testid, label) =>
   );
 
 /**
+ * A paused timed stop (`screen` is 'encode' or 'recall') stays paused: it does not move on, its
+ * clock stands still, it says how to resume, and Space resumes it without moving on. `pausedAt`
+ * is the walk label of the stop the pause was set at; `seconds` is how long that stop lasts.
+ * Returns once the resumed stop has run out by itself.
+ */
+async function checkPausedStop(page, screen, pausedAt, seconds) {
+  const label = () => text(page.locator(`[data-testid=${screen}] [data-testid=walk-label]`));
+  const clock = () => page.locator(`[data-testid=${screen}] [role=progressbar]`).getAttribute('aria-valuenow');
+  const stoppedAt = await clock();
+  await shot(page, `${screen}-paused`);
+  // Longer than the stop itself would have lasted.
+  await page.waitForTimeout(5500);
+  assert((await label()) === pausedAt, `a paused ${screen} stop moved on by itself (paused at "${pausedAt}", now at "${await label()}")`);
+  assert((await clock()) === stoppedAt, `the clock ran during the pause (${stoppedAt} -> ${await clock()})`);
+  assert((await text(page.getByTestId(`${screen}-hint`))) === 'Paused. Space or P resumes.', `a paused ${screen} stop does not say how to resume`);
+  // The page itself notes when the pause ended and when the stop changed, so that a slow
+  // harness cannot mistake the stop running out for Space moving on (or the other way round).
+  await page.evaluate(
+    ([scr, at]) => {
+      const seen = (window.__resume = { resumed: 0, moved: 0, focus: '' });
+      const observer = new MutationObserver(() => {
+        const pressed = document.querySelector(`[data-testid=${scr}-pause]`)?.getAttribute('aria-pressed');
+        const now = document.querySelector(`[data-testid=${scr}] [data-testid=walk-label]`)?.textContent ?? '';
+        if (!seen.resumed && pressed !== 'true') {
+          seen.resumed = performance.now();
+          seen.focus = document.activeElement?.getAttribute('data-testid') ?? '';
+        }
+        if (!seen.moved && now !== at) {
+          seen.moved = performance.now();
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+    },
+    [screen, pausedAt],
+  );
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.__resume.moved > 0, null, { timeout: 30000 });
+  const { resumed, moved, focus } = await page.evaluate(() => window.__resume);
+  const left = (1 - Number(stoppedAt) / 100) * seconds * 1000;
+  assert(resumed > 0, 'Space did not resume the paused stop');
+  assert(left < 1000 || moved - resumed > left / 2, `Space moved on instead of resuming (the stop changed ${Math.round(moved - resumed)} ms after the pause ended, with ${Math.round(left)} ms left)`);
+  // After a resumed feedback stop Space is "next" again: the focus is back on that button.
+  if (screen === 'recall') assert(focus === 'recall-next', `after resuming, the focus is on "${focus}", not on the Next button`);
+}
+
+/**
  * Judge Mode from the title to the results screen.
- *   passive  press nothing but the answers, as a judge who just watches would
- *   think    ms of thought before each answer
- *   pitch    the ?judge=pitch variant: no preview, spot check of four places
+ *   passive     press nothing but the answers, as a judge who just watches would
+ *   think       ms of thought before each answer
+ *   pitch       the ?judge=pitch variant: no preview, spot check of three places
+ *   pauseCheck  pause the feedback after an answer with P and check that it holds (once)
  * Returns the score text, how long the run took, and the places recalled.
  */
-async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 0, pitch = false } = {}) {
+async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 0, pitch = false, pauseCheck = false } = {}) {
   const LONG = { timeout: 240000 };
   const quietShot = (name) => (shots ? shot(page, `${shots}-${name}`).catch(() => {}) : undefined);
   await page.evaluate(installWalkLog);
@@ -246,7 +302,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   assert(preview === !pitch, pitch ? 'the pitch variant should have no route preview' : 'the route preview was not shown');
   assert(extra.length === 0, `a Judge run showed more to read than it should: ${extra}`);
   if (pitch) {
-    assert(spotNote.includes('four of the eight'), `the spot check is not announced: "${spotNote}"`);
+    assert(spotNote.includes(SPOT_WORDS), `the spot check is not announced: "${spotNote}"`);
     const said = `${await text(page.locator('[data-testid=interstitial] h1'))} ${spotNote}`.split(/\s+/).filter(Boolean).length;
     assert(said <= 20, `the spot-check screen says its piece in ${said} words (20 at most)`);
   }
@@ -265,10 +321,11 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   await page.getByTestId('recall-start').click();
   mark(pitch ? 'spot check started' : 'recall walk started');
 
-  const stops = pitch ? 4 : 8;
-  const label = (i) => (pitch ? `Spot check ${i} of 4` : `Place ${i} of 8`);
+  const stops = pitch ? SPOT : 8;
+  const label = (i) => (pitch ? `Spot check ${i} of ${SPOT}` : `Place ${i} of 8`);
   const visited = [];
   const expected = [];
+  let pauseChecked = false;
   for (let i = 1; i <= stops; i++) {
     await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("${label(i)}")`).waitFor();
     const question = page.getByTestId('recall-question');
@@ -287,6 +344,16 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     await page.getByTestId('choice').nth(pick).click();
     expected.push({ state: i <= wrong ? 'wrong' : 'right', answer });
     if (i === 3 || i === 1) await quietShot(`recall-feedback-${i}`);
+    if (pauseCheck && !pauseChecked) {
+      // The feedback is a timed stop too. If the key lands after it has moved on (a busy machine), P does nothing there: try the next one.
+      await page.keyboard.press('p');
+      const paused = await page.locator('[data-testid=recall-pause][aria-pressed=true]').waitFor({ timeout: 1500 }).then(() => true, () => false);
+      const at = paused ? await text(page.locator('[data-testid=recall] [data-testid=walk-label]')) : '';
+      if (at.includes(label(i))) {
+        await checkPausedStop(page, 'recall', at, i <= wrong ? 3.5 : 2);
+        pauseChecked = true;
+      }
+    }
     // The walk moves on by itself after a moment; when clicking through, never click a later stop's button.
     if (!passive) await clickIfStillAt(page, 'recall-next', label(i));
   }
@@ -294,6 +361,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   await page.getByTestId('results').waitFor();
   const ms = Date.now() - started;
   mark('results');
+  if (pauseCheck) assert(pauseChecked, 'P never paused the feedback after an answer');
   const reveals = await page.evaluate(() => window.__walkLog.reveal);
   assert(reveals.length === stops, `expected feedback at ${stops} stops, saw ${reveals.length}`);
   reveals.forEach((r, i) => {
@@ -302,6 +370,10 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     assert(r.text.includes(expected[i].answer), `recall stop ${i + 1}: the correct term is not shown`);
   });
   await quietShot('results');
+  // A Judge run is a sandbox: the results say so, and no row quotes a review schedule.
+  assert((await text(page.getByTestId('results-demo'))) === 'This demo run was not added to your reviews.', 'the Judge results do not say that the run was not added to the reviews');
+  const scheduled = (await page.getByTestId('result-meta').allTextContents()).filter((m) => /next review|again (in|now)/.test(m));
+  assert(scheduled.length === 0, `a Judge result row quotes a review schedule: ${scheduled}`);
   const { barBack, hidden } = await page.evaluate(() => window.__walkLog);
   assert(barBack.length === 0, `the time bar ran backwards at the start of: ${barBack}`);
   // With the stores exposed: the images are hidden for exactly as long as the screen between the walks is up.
@@ -313,6 +385,50 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     .map(([name, at]) => `${name} at ${at} s`)
     .join(', ');
   return { score: await text(page.getByTestId('results-score')), ms, visited, timeline };
+}
+
+/**
+ * A returning learner, as in QA review 3 (issue 3): a review card for the first carpal bone in
+ * box 4, due in six days, and an edited copy of the carpal deck saved under the built-in id.
+ * Returns what was stored, to compare with `learnerState` after a Judge run.
+ */
+const LEARNER_DECK_TITLE = 'My own carpal bones';
+const LEARNER_ROW = '3 places · next review in 6 days · 2 new';
+async function seedLearner(page) {
+  const seeded = await page.evaluate((title) => {
+    const day = 24 * 3600 * 1000;
+    const item = (n) => ({
+      id: `carpal-${n}`,
+      term: `My wording ${n}`,
+      locusId: `domus-0${n}`,
+      imago: { scene: `A scene the learner wrote for place ${n}.`, glyphs: ['⭐'], action: 'bob', source: 'learner' },
+    });
+    const deck = { id: 'fixture-carpals', title, kind: 'list', layoutId: 'domus', createdAt: 5, items: [item(1), item(2), item(3)] };
+    const card = { itemId: 'carpal-1', deckId: 'fixture-carpals', box: 4, dueAt: Date.now() + 6 * day, lastReviewedAt: Date.now() - day, reps: 4, lapses: 0 };
+    localStorage.setItem('memoria.decks.v1', JSON.stringify({ state: { decks: { 'fixture-carpals': deck } }, version: 0 }));
+    localStorage.setItem('memoria.review.v1', JSON.stringify({ state: { cards: { 'carpal-1': card }, walk: null }, version: 0 }));
+    return { deck: JSON.stringify(deck), card: JSON.stringify(card), cards: 1 };
+  }, LEARNER_DECK_TITLE);
+  await page.reload({ waitUntil: 'load' });
+  await page.getByTestId('title').waitFor();
+  const row = (await deckRows(page)).meta[LEARNER_DECK_TITLE];
+  assert(row === LEARNER_ROW, `the learner's saved deck and card are not on the title: ${row}`);
+  assert((await page.getByTestId('storage-notice').count()) === 0, 'the seeded learner data was set aside');
+  return seeded;
+}
+
+/** The learner's stored copy of the carpal deck, their card for the first bone, and how many cards there are. */
+const learnerState = (page) =>
+  page.evaluate(() => {
+    const decks = JSON.parse(localStorage.getItem('memoria.decks.v1') ?? '{}').state?.decks ?? {};
+    const cards = JSON.parse(localStorage.getItem('memoria.review.v1') ?? '{}').state?.cards ?? {};
+    return { deck: JSON.stringify(decks['fixture-carpals'] ?? null), card: JSON.stringify(cards['carpal-1'] ?? null), cards: Object.keys(cards).length };
+  });
+
+function assertLearnerKept(seeded, now, when) {
+  assert(now.deck === seeded.deck, `${when}: the learner's saved copy of the carpal deck changed: ${now.deck}`);
+  assert(now.card === seeded.card, `${when}: the learner's review card for carpal-1 changed: ${now.card}`);
+  assert(now.cards === seeded.cards, `${when}: the run wrote review cards (${now.cards} stored, ${seeded.cards} before)`);
 }
 
 /** Deck rows on the title screen, as { title: meta }. */
@@ -349,10 +465,13 @@ const cases = {
     assert(fresh.count === fixtureCount, `expected ${fixtureCount} deck rows, got ${fresh.count}`);
     assert(Object.values(fresh.meta).every((m) => m.endsWith('not started')), `a new learner's decks should read "not started": ${Object.values(fresh.meta)}`);
     assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'the Reviews entry should show no count for a new learner');
+    // From here on a returning learner: the run must show the built-in deck and leave their saved state alone.
+    const seeded = await seedLearner(page);
     const promised = await text(page.getByTestId('title-judge'));
     requests.length = 0;
     const { score, ms, timeline } = await judgeRun(page, { shots: 'judge', passive: true, think: THINK_MS });
     assert(score === '8 of 8', `expected 8 of 8, got "${score}"`);
+    assertLearnerKept(seeded, await learnerState(page), 'after a Judge run');
     assert((await page.getByTestId('strengthen').count()) === 0, 'no Strengthen buttons expected');
     const note = await text(page.getByTestId('judge-note'));
     assert(note.includes('We have not run an efficacy study of Memoria.'), 'caveat missing');
@@ -362,6 +481,7 @@ const cases = {
     await shot(page, 'judge-results-note');
     await page.getByTestId('results-build').click();
     await page.getByTestId('compose-text').waitFor();
+    assertLearnerKept(seeded, await learnerState(page), 'after leaving the Judge results');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score}; passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
@@ -372,21 +492,26 @@ const cases = {
     // ?judge=pitch waits on the title screen; the title button starts the pitch variant.
     await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
     await page.getByTestId('title').waitFor();
+    const seeded = await seedLearner(page);
     const promised = await text(page.getByTestId('title-judge'));
     requests.length = 0;
     const { score, ms, visited, timeline } = await judgeRun(page, { passive: true, think: THINK_MS, pitch: true, shots: 'pitch' });
-    assert(score === '4 of 4', `expected 4 of 4, got "${score}"`);
+    assert(score === `${SPOT} of ${SPOT}`, `expected ${SPOT} of ${SPOT}, got "${score}"`);
     const order = visited.map((v) => routeOrder.indexOf(v));
-    assert(new Set(visited).size === 4 && order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])), `spot check not four places in route order: ${visited}`);
-    assert((await text(page.getByTestId('results-spot'))).includes('four of the eight'), 'results do not say it was a spot check');
-    assert((await page.getByTestId('result-row').count()) === 4, 'expected four result rows');
+    assert(new Set(visited).size === SPOT && order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])), `spot check not ${SPOT} places in route order: ${visited}`);
+    const spotLine = await text(page.getByTestId('results-spot'));
+    assert(spotLine.includes(SPOT_WORDS) && spotLine.includes('The other five were not tested.'), `results do not say it was a spot check of three: ${spotLine}`);
+    assert((await text(page.getByTestId('results-again'))) === 'Recall all eight', 'the results do not offer to recall all eight');
+    assert((await page.getByTestId('result-row').count()) === SPOT, `expected ${SPOT} result rows`);
     assert((await text(page.getByTestId('judge-note'))).includes('We have not run an efficacy study of Memoria.'), 'caveat missing');
     assert(requests.length === 0, `Judge Mode made requests: ${requests.join(', ')}`);
-    // Only the four places that were recalled are scheduled; the other four stay new.
+    // A demo run is not study: nothing was scheduled, and the learner's deck and card are as they were.
+    assertLearnerKept(seeded, await learnerState(page), 'after a pitch run');
     await page.getByTestId('results-home').click();
     await page.getByTestId('title').waitFor();
     const { meta } = await deckRows(page);
-    assert(meta[JUDGE_DECK_TITLE] === '8 places · next review tomorrow · 4 new', `deck row after a spot check: ${meta[JUDGE_DECK_TITLE]}`);
+    assert(meta[LEARNER_DECK_TITLE] === LEARNER_ROW, `the learner's deck row after a pitch run: ${meta[LEARNER_DECK_TITLE]}`);
+    assertLearnerKept(seeded, await learnerState(page), 'back on the title after a pitch run');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score} (${visited.join(', ')}); passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
@@ -398,7 +523,7 @@ const cases = {
     await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
     await page.getByTestId('title').waitFor();
     await page.waitForFunction(() => window.__memoria?.session);
-    const { score } = await judgeRun(page, { wrong: 2 });
+    const { score } = await judgeRun(page, { wrong: 2, pauseCheck: true });
     assert(score === '6 of 8', `expected 6 of 8, got "${score}"`);
     const n = await page.getByTestId('strengthen').count();
     assert(n === 2, `expected two Strengthen buttons, got ${n}`);
@@ -450,10 +575,24 @@ const cases = {
     await page.getByTestId('title').waitFor();
     const { count, meta } = await deckRows(page);
     assert(count === fixtureCount, `expected ${fixtureCount} deck rows after editing a fixture, got ${count}`);
-    // Studied a moment ago: nothing is due yet, and the other fixtures are still new.
-    assert(/^8 places · next review in (8|9|10) minutes$/.test(meta[JUDGE_DECK_TITLE]), `studied deck reads "${meta[JUDGE_DECK_TITLE]}"`);
-    assert(Object.values(meta).filter((m) => m.endsWith('not started')).length === fixtureCount - 1, 'the other fixtures should read "not started"');
+    // A demo run is not study: no review card was written, so every deck still reads "not started".
+    assert(meta[JUDGE_DECK_TITLE] === '8 places · not started', `the carpal deck after a Judge run reads "${meta[JUDGE_DECK_TITLE]}"`);
+    assert(Object.values(meta).filter((m) => m.endsWith('not started')).length === fixtureCount, 'every deck should read "not started"');
     assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'nothing is due, so the Reviews entry should show no count');
+    assert((await learnerState(page)).cards === 0, 'a Judge run wrote review cards');
+
+    // The image kept on the results is in the learner's own copy of the deck; the next Judge run is pristine again.
+    const kept = (await learnerState(page)).deck;
+    assert(kept.includes(NEW_SCENE), 'the strengthened image was not saved to the learner\'s own copy of the deck');
+    await page.getByTestId('title-judge').click();
+    await page.getByTestId('preview-skip').click();
+    await page.getByTestId('encode-scene').waitFor();
+    const again = await page.evaluate(() => [...document.querySelectorAll('[data-testid=encode] [data-testid=walk-label], [data-testid=encode-scene]')].map((el) => el.textContent));
+    assert(again.length === 2 && again[0].startsWith('Place 1 of 8') && !again[1].includes('rowing boat'), `a later Judge run does not start from the built-in images: ${again}`);
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    assert((await learnerState(page)).deck === kept, 'a later Judge run changed the learner\'s own copy of the deck');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score}, ${n} Strengthen buttons; unreachable Architect -> "${by}" editor in ${quick} ms; silent Architect -> "${silentBy}" editor in ${hung} ms`;
@@ -955,6 +1094,17 @@ const cases = {
         1,
         { 'memoria.walk.v1': '{"mode":"recall","deckId":"deck-ok","stops":"all","results":[]}' },
       ],
+      // QA review 3, issue 7: well formed, but two items share a place and one sits on a place the palace does not have.
+      [
+        'two items on one place, and one on a place that does not exist',
+        {
+          'memoria.decks.v1': JSON.stringify({
+            state: { decks: { 'deck-ok': { ...good, items: [good.items[0], { ...good.items[0], id: 'k2', term: 'Second on the same place' }, { ...good.items[0], id: 'k3', term: 'Nowhere', locusId: 'domus-99' }] } } },
+            version: 0,
+          }),
+        },
+        1,
+      ],
     ];
     for (const [name, local, kept, session = {}] of shapes) {
       await page.evaluate(
@@ -978,6 +1128,16 @@ const cases = {
         assert(aside.some((e) => e.key === k && e.raw === v), `${name}: the original of ${k} was not kept`);
       }
       if (name === shapes[0][0]) await shot(page, 'title-set-aside');
+      if (name.startsWith('two items on one place')) {
+        // The count on the title ("1 place", above) is what the walk has: the first item on the place, and no other.
+        const keptItems = await page.evaluate(() => JSON.parse(localStorage.getItem('memoria.decks.v1')).state.decks['deck-ok'].items.map((it) => it.id));
+        assert(JSON.stringify(keptItems) === '["k1"]', `${name}: the repaired deck holds ${keptItems}`);
+        await page.getByRole('button', { name: 'Recall A kept palace' }).click();
+        await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 1")').waitFor();
+        await page.keyboard.press('Escape');
+        await page.getByTestId('leave-yes').click();
+        await page.getByTestId('title').waitFor();
+      }
       // Judge Mode still starts; then back to the title, so that the walk is not saved over the next case.
       await page.getByTestId('title-judge').click();
       await page.getByTestId('familiarize').waitFor();
@@ -1115,27 +1275,23 @@ const cases = {
     }
 
     // A timed encode stop can be paused: P stops the clock where it is, Space starts it again.
+    // On a busy machine the key can land a stop later than the image that was waited for, or
+    // during a glide (where P does nothing). So the stop under test is the one the pause was
+    // set at, whichever that is: the test used to assume the first, and failed under load.
     await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
     await page.getByTestId('title-judge').click();
-    const firstStop = page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 1 of 8")');
-    await page.getByTestId('encode-term').waitFor();
-    await page.keyboard.press('p');
-    await page.locator('[data-testid=encode-pause][aria-pressed=true]').waitFor();
-    const clock = () => page.locator('[data-testid=encode] [role=progressbar]').getAttribute('aria-valuenow');
-    const stoppedAt = await clock();
-    await shot(page, 'encode-paused');
-    // Longer than the stop itself would have lasted.
-    await page.waitForTimeout(5500);
-    assert((await firstStop.count()) === 1, 'a paused stop moved on by itself');
-    assert((await clock()) === stoppedAt, `the clock ran during the pause (${stoppedAt} -> ${await clock()})`);
-    assert((await text(page.getByTestId('encode-hint'))) === 'Paused. Space or P resumes.', 'a paused stop does not say how to resume');
-    await page.keyboard.press('Space');
-    await page.locator('[data-testid=encode-pause][aria-pressed=false]').waitFor();
-    assert((await firstStop.count()) === 1, 'Space moved on instead of resuming');
-    await page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 2 of 8")').waitFor({ timeout: 30000 });
+    let pausedAt = '';
+    for (let attempt = 0; attempt < 4 && !pausedAt; attempt++) {
+      await page.getByTestId('encode-term').waitFor();
+      await page.keyboard.press('p');
+      const paused = await page.locator('[data-testid=encode-pause][aria-pressed=true]').waitFor({ timeout: 4000 }).then(() => true, () => false);
+      if (paused) pausedAt = await text(page.locator('[data-testid=encode] [data-testid=walk-label]'));
+    }
+    assert(pausedAt, 'P did not pause a timed encode stop');
+    await checkPausedStop(page, 'encode', pausedAt, 4);
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return '?judge starts Judge Mode; ?shot and ?rail hide the overlay; P pauses a timed stop and Space resumes it';
+    return `?judge starts Judge Mode; ?shot and ?rail hide the overlay; P pauses a timed stop (${pausedAt.split('·')[0].trim()}) and Space resumes it`;
   },
 };
 
