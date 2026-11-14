@@ -5,7 +5,7 @@ import { answerOf, dealSlot, normalize, shuffle, typedMatches } from './answers'
  * What a process deck adds to its walks. A deck is a process when its items are the steps of
  * something that runs in order or in a cycle (`focus: 'process'`) and it says how they are
  * connected (`links`). Its study walk says how each step connects; its recall walk asks, after
- * the place itself, what the step becomes, blocks or needs; and the steps are put in order
+ * the place itself, what the step becomes, holds back or needs; and the steps are put in order
  * once at the end. A facts deck with links (matched pairs) is walked as any other deck.
  *
  * Pure functions only: the flow controllers and the screens both use them.
@@ -29,12 +29,23 @@ const termOf = (deck: Deck, itemId: string): string => {
 /** "Comes from Citrate: rearranged." A link without a label is said without one. */
 const said = (text: string, label: string | undefined): string => (label?.trim() ? `${text}: ${label.trim()}.` : `${text}.`);
 
+/*
+ * How a `blocks` link is worded for the learner. Such a link usually stands for regulation:
+ * `from` acts on whatever makes `to` (succinyl-CoA inhibits citrate synthase, the enzyme that
+ * makes citrate), not on `to` itself. So no sentence is built from the kind alone: "X blocks
+ * Y" would often be false. The label is the statement ("inhibits citrate synthase"), and the
+ * general form that stays true around it is "X holds back Y". Never "blocks", "stops" or
+ * "destroys" in anything the learner reads.
+ */
+const HOLDS_BACK = 'holds back';
+const HELD_BACK_BY = 'Held back by';
+
 /**
  * How a step connects, in plain words, for the study walk. `walk` is the items of this walk
  * in the order they are walked. A step that turns into another is not named before the learner
  * reaches it (each term is first met at its own place); a step already passed, or one that is
- * not on this walk at all (an older place), is. What a step blocks or needs is said in full at
- * both ends, because the other end may be anywhere in the palace.
+ * not on this walk at all (an older place), is. What a step holds back or needs is said in
+ * full at both ends, because the other end may be anywhere in the palace.
  */
 export function studyLines(deck: Deck, item: MemoryItem, walk: string[]): string[] {
   if (!isProcessDeck(deck)) return [];
@@ -56,9 +67,9 @@ export function studyLines(deck: Deck, item: MemoryItem, walk: string[]): string
     else lines.push(where === 'next' ? 'It becomes the step at the next place.' : 'It becomes a step further along the route.');
   }
   for (const l of out.filter((x) => x.kind === 'needs')) lines.push(said(`It needs ${termOf(deck, l.to)}`, l.label));
-  for (const l of out.filter((x) => x.kind === 'blocks')) lines.push(said(`It blocks ${termOf(deck, l.to)}`, l.label));
+  for (const l of out.filter((x) => x.kind === 'blocks')) lines.push(said(`It ${HOLDS_BACK} ${termOf(deck, l.to)}`, l.label));
   for (const l of into.filter((x) => x.kind === 'needs')) lines.push(said(`${termOf(deck, l.from)} needs it`, l.label));
-  for (const l of into.filter((x) => x.kind === 'blocks')) lines.push(said(`Blocked by ${termOf(deck, l.from)}`, l.label));
+  for (const l of into.filter((x) => x.kind === 'blocks')) lines.push(said(`${HELD_BACK_BY} ${termOf(deck, l.from)}`, l.label));
   for (const l of links.filter((x) => x.kind === 'mirrors' && (x.from === item.id || x.to === item.id))) {
     lines.push(said(`Paired with ${termOf(deck, l.from === item.id ? l.to : l.from)}`, l.label));
   }
@@ -78,16 +89,17 @@ export function arrivalLines(deck: Deck, item: MemoryItem, behind: (itemId: stri
   return [
     ...into.filter((l) => l.kind === 'becomes').map((l) => said(`Comes from ${termOf(deck, l.from)}`, l.label)),
     ...into.filter((l) => l.kind === 'needs').map((l) => said(`${termOf(deck, l.from)} needs it`, l.label)),
-    ...into.filter((l) => l.kind === 'blocks').map((l) => said(`Blocked by ${termOf(deck, l.from)}`, l.label)),
+    ...into.filter((l) => l.kind === 'blocks').map((l) => said(`${HELD_BACK_BY} ${termOf(deck, l.from)}`, l.label)),
   ];
 }
 
 /** The kinds of link the recall walk asks about, in the order they are asked. Never `mirrors`. */
 const ASKED: readonly Exclude<LinkKind, 'mirrors'>[] = ['becomes', 'blocks', 'needs'];
-const VERB: Record<Exclude<LinkKind, 'mirrors'>, [ask: string, tell: string]> = {
-  becomes: ['become', 'becomes'],
-  blocks: ['block', 'blocks'],
-  needs: ['need', 'needs'],
+/** The question about each kind, and the verb of the sentence that answers it (for `blocks`: see HOLDS_BACK). */
+const WORDING: Record<Exclude<LinkKind, 'mirrors'>, { ask: (term: string) => string; tell: string }> = {
+  becomes: { ask: (term) => `What does ${term} become?`, tell: 'becomes' },
+  blocks: { ask: (term) => `Which step does ${term} hold back?`, tell: HOLDS_BACK },
+  needs: { ask: (term) => `What does ${term} need?`, tell: 'needs' },
 };
 /** Most questions about links at one place. */
 export const LINK_QUESTIONS_PER_STOP = 2;
@@ -97,7 +109,7 @@ export interface LinkQuestion {
   id: string;
   from: string;
   kind: Exclude<LinkKind, 'mirrors'>;
-  /** "What does Citrate become?" */
+  /** "What does Citrate become?", "Which step does Succinyl-CoA hold back?", "What does Stream need?" */
   prompt: string;
   /**
    * Every right answer: the term at the other end of each such link, with what the link says
@@ -108,9 +120,9 @@ export interface LinkQuestion {
 }
 
 /**
- * The questions about the links that leave an item: what it becomes first, then what it blocks,
- * then what it needs, two at most. An item with several links of one kind (a branch) gets one
- * question for that kind, and any of their ends is a right answer.
+ * The questions about the links that leave an item: what it becomes first, then what it holds
+ * back (`blocks`), then what it needs, two at most. An item with several links of one kind (a
+ * branch) gets one question for that kind, and any of their ends is a right answer.
  */
 export function linkQuestions(deck: Deck | undefined, item: MemoryItem | undefined): LinkQuestion[] {
   if (!isProcessDeck(deck) || !item) return [];
@@ -122,7 +134,7 @@ export function linkQuestions(deck: Deck | undefined, item: MemoryItem | undefin
       .filter((l) => l.kind === kind && !seen.has(l.to) && seen.add(l.to))
       .map((l) => {
         const term = termOf(deck, l.to);
-        const start = `${answerOf(item)} ${VERB[kind][1]}`;
+        const start = `${answerOf(item)} ${WORDING[kind].tell}`;
         return {
           itemId: l.to,
           term,
@@ -131,7 +143,7 @@ export function linkQuestions(deck: Deck | undefined, item: MemoryItem | undefin
           held: said(`${start} a step further along the route`, l.label),
         };
       });
-    if (answers.length) questions.push({ id: `${item.id}:${kind}`, from: item.id, kind, prompt: `What does ${answerOf(item)} ${VERB[kind][0]}?`, answers });
+    if (answers.length) questions.push({ id: `${item.id}:${kind}`, from: item.id, kind, prompt: WORDING[kind].ask(answerOf(item)), answers });
   }
   return questions.slice(0, LINK_QUESTIONS_PER_STOP);
 }

@@ -141,8 +141,10 @@ export function deriveSceneView(i: Input): SceneView {
       else whole = mode === 'encode' && here ? INTEGRITY.repair : INTEGRITY.ruins;
     } else if (ruins) {
       const saved = savedIntegrity(card);
-      // On the survey of a section, the places it does not ask about stay as they are.
-      if (mode === 'survey' && !summary) whole = !walked.has(item.id) ? (surveyed ? saved : INTEGRITY.whole) : r && !r.correct ? INTEGRITY.ruins : INTEGRITY.whole;
+      // The survey of a section leaves the places it does not ask about as they are: as saved in a
+      // surveyed deck, whole in a deck that never was. (A survey of the whole deck stops at every place.)
+      if (mode === 'survey' && !walked.has(item.id)) whole = surveyed ? saved : INTEGRITY.whole;
+      else if (mode === 'survey' && !summary) whole = r && !r.correct ? INTEGRITY.ruins : INTEGRITY.whole;
       else if (mode === 'encode') whole = here ? Math.max(saved, INTEGRITY.repair) : saved;
       else if ((mode === 'recall' || mode === 'results') && r) whole = r.correct ? INTEGRITY.whole : INTEGRITY.damaged;
       else whole = saved;

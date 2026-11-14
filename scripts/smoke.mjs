@@ -1890,10 +1890,11 @@ const cases = {
     await page.getByRole('button', { name: `Walk ${P.title}` }).focus();
     await key('Enter');
     const connects = [
-      ['Comes from a step further along the route: rains.', 'It becomes the step at the next place.', 'Blocked by Sea: salt.', 'Paired with River: fresh water.'],
+      // A `blocks` link is never worded from its kind ("X blocks Y" is often false: it acts on what makes Y): "holds back", and the label says how.
+      ['Comes from a step further along the route: rains.', 'It becomes the step at the next place.', 'Held back by Sea: salt.', 'Paired with River: fresh water.'],
       ['Comes from Spring: gathers.', 'It becomes the step at the next place.', 'It needs Cloud: rain.', 'Sea needs it: flow.'],
       ['Comes from Stream: widens.', 'It becomes the step at the next place.', 'Paired with Spring: fresh water.'],
-      ['Comes from River: empties.', 'It becomes the step at the next place.', 'It needs Stream: flow.', 'It blocks Spring: salt.'],
+      ['Comes from River: empties.', 'It becomes the step at the next place.', 'It needs Stream: flow.', 'It holds back Spring: salt.'],
       ['Comes from Sea: evaporates.', 'It becomes Spring: rains.', 'Stream needs it: rain.'],
     ];
     for (const i of five) {
@@ -1931,7 +1932,7 @@ const cases = {
       // A miss about a step already answered is told in full.
       [
         ['What does Sea become?', 'Cloud', 'Sea becomes Cloud: evaporates.', 'right'],
-        ['What does Sea block?', 'Spring', 'Sea blocks Spring: salt.', 'wrong'],
+        ['Which step does Sea hold back?', 'Spring', 'Sea holds back Spring: salt.', 'wrong'],
       ],
       // The last step closes the loop.
       [['What does Cloud become?', 'Spring', 'Cloud becomes Spring: rains.', 'right']],
@@ -2003,6 +2004,7 @@ const cases = {
       }
     }
     assert(asked.length === 7 && !asked.includes('What does Sea need?') && !asked.some((p) => /pair|mirror/i.test(p)), `the questions about links: ${asked}`);
+    assert(!asked.some((p) => /block|stop|destroy/i.test(p)), `a question words a link as blocking, stopping or destroying: ${asked}`);
 
     // ── The steps are put in order: a cycle, so any start is right. The walk is already recorded.
     await page.getByTestId('order').waitFor();
@@ -2177,11 +2179,11 @@ const cases = {
     await key('Enter');
     await page.getByTestId('link-next').click();
     // A typed miss about a step already answered is told in full, and the learner can overrule the grader.
-    await page.locator('[data-testid=link-question]:text-is("What does Sea block?")').waitFor();
+    await page.locator('[data-testid=link-question]:text-is("Which step does Sea hold back?")').waitFor();
     await linkField.fill('the source');
     await key('Enter');
     await page.getByTestId('link-verdict').waitFor();
-    assert((await linkVerdict()) === 'Not this time.' && (await text(page.getByTestId('link-fact'))) === 'Sea blocks Spring: salt.', 'a typed miss about a step already answered is not told in full');
+    assert((await linkVerdict()) === 'Not this time.' && (await text(page.getByTestId('link-fact'))) === 'Sea holds back Spring: salt.', 'a typed miss about a step already answered is not told in full');
     await page.getByTestId('link-overrule').click();
     await page.waitForFunction(() => document.querySelector('[data-testid=link-verdict]')?.textContent === 'Marked right by you.');
     await key('Escape');
@@ -2202,7 +2204,7 @@ const cases = {
     await page.getByTestId('encode-term').waitFor();
     const krebs = await page.getByTestId('encode-links').locator('li').allTextContents();
     assert(
-      JSON.stringify(krebs) === JSON.stringify(['Comes from a step further along the route: joins acetyl-CoA.', 'It becomes the step at the next place.', 'Blocked by Succinyl-CoA: inhibits citrate synthase.']),
+      JSON.stringify(krebs) === JSON.stringify(['Comes from a step further along the route: joins acetyl-CoA.', 'It becomes the step at the next place.', 'Held back by Succinyl-CoA: inhibits citrate synthase.']),
       `the citric acid cycle's first step connects as ${JSON.stringify(krebs)}`,
     );
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
