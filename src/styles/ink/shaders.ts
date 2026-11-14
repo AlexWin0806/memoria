@@ -191,11 +191,11 @@ export const SURFACE_FRAG = /* glsl */ `
     float keep = mix(1.0, 1.0 - smoothstep(0.1, 0.9, lod - l0), mod(i0, 2.0));
     float lineAt = i0 * s0;
     float along = (hp.x - hp.y) * 0.70711;
-    float stroke = smoothstep(0.3, 0.46, vnoise(vec2(along * 1.3 + lineAt * 17.0, lineAt * 53.0)));
+    float stroke = smoothstep(0.32, 0.48, vnoise(vec2(along * 1.9 + lineAt * 17.0, lineAt * 53.0)));
     float wpx = uHatchWidth * uScale * (0.7 + 0.6 * nMid);
     float hl = 1.0 - smoothstep(wpx * 0.5 - 0.6, wpx * 0.5 + 0.6, abs(c - lineAt) / fw);
-    float patchy = smoothstep(0.3, 0.55, nLow);
-    float hatch = hl * keep * stroke * inShade * full.x * mix(0.35, 1.0, patchy) * uHatchStrength;
+    float patchy = smoothstep(0.36, 0.6, nLow);
+    float hatch = hl * keep * stroke * inShade * full.x * mix(0.12, 1.0, patchy) * uHatchStrength;
     outc = mix(outc, uInk, hatch);
 
     gl_FragColor = vec4(outc, 0.0);

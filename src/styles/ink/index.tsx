@@ -31,6 +31,13 @@ import { PAGE_FRAG, PAGE_VERT, SURFACE_FRAG, SURFACE_VERT } from './shaders';
  * buffer of normal + material id + depth), and one full-screen "page" pass turns the
  * discontinuities into ink line and lays the vellum over the result. No lights, no
  * shadow map. `post.quality` trades line quality for cost (see QUALITY below).
+ *
+ * Cost per frame at quality 2 (not yet measured on a real GPU):
+ *   wash pass      scene into RGBA8 at full size; per fragment two 3D and one 2D value
+ *                  noise and one loop over the loci
+ *   geometry pass  scene into RGBA16F at full size, 4x multisampled; trivial shader
+ *   page pass      one full-screen triangle pair; 11 texture fetches (9 of the geometry
+ *                  buffer), two 3D and seven 2D value noises
  */
 
 /** Every tunable number. Defaults are overridden by `theme.post`. */

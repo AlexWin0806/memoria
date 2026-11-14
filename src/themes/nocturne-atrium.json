@@ -27,14 +27,21 @@
       "blue": "#5f8fe0",
       "plum": "#a070c0"
     },
-    "sky": ["#27406b", "#0f1a2e"],
+    "sky": [
+      "#27406b",
+      "#0f1a2e"
+    ],
     "fog": "#1b2c4c"
   },
   "light": {
     "ambient": 0.55,
     "keyColor": "#a9c4ff",
     "keyIntensity": 3.2,
-    "keyDirection": [0.14, -1, 0.1],
+    "keyDirection": [
+      0.14,
+      -1,
+      0.1
+    ],
     "fillColor": "#5876ad",
     "fillIntensity": 1.0,
     "locusGlow": 1
@@ -78,8 +85,8 @@
     "waterReflect": 1.1
   },
   "type": {
-    "display": "'Cormorant Garamond', Georgia, serif",
-    "text": "'Alegreya Sans', 'Gill Sans', sans-serif"
+    "display": "IM Fell English",
+    "text": "EB Garamond Variable"
   },
   "ui": {
     "bg": "#0f1a2e",

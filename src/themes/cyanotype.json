@@ -27,19 +27,29 @@
       "blue": "#8fb0ff",
       "plum": "#c08fd8"
     },
-    "sky": ["#16406e", "#0f3057"],
+    "sky": [
+      "#16406e",
+      "#0f3057"
+    ],
     "fog": "#0f3057"
   },
   "light": {
     "ambient": 1,
     "keyColor": "#fff6e0",
     "keyIntensity": 1,
-    "keyDirection": [0.45, -0.8, -0.35],
+    "keyDirection": [
+      0.45,
+      -0.8,
+      -0.35
+    ],
     "fillColor": "#b79a7c",
     "fillIntensity": 1,
     "locusGlow": 1
   },
-  "fog": { "near": 30, "far": 120 },
+  "fog": {
+    "near": 30,
+    "far": 120
+  },
   "post": {
     "supersample": 2,
     "lineWidth": 1.5,
@@ -66,7 +76,10 @@
     "grain": 0.05,
     "vignette": 0.22
   },
-  "type": { "display": "Space Grotesk", "text": "IBM Plex Sans" },
+  "type": {
+    "display": "IM Fell English",
+    "text": "EB Garamond Variable"
+  },
   "ui": {
     "bg": "#0f3057",
     "panel": "#f2e8cf",
