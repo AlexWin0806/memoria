@@ -100,6 +100,7 @@ rendered. `npm run shots` waits for it.
 
 ## Art direction
 
+**Chosen direction: Ink & Vellum** (style `ink`, theme `ink-vellum`; variant `ink-sanguine`).
 Full detail in `docs/art-bible.md`. The rules that bind all code:
 
 - Uncluttered; 3 to 5 loci per room; loci and memory images are the heroes.

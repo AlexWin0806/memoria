@@ -20,7 +20,21 @@ export const developmentUniforms = {
   uDevCount: { value: 0 },
   /** World-space radius of influence of one locus, in metres. */
   uDevRadius: { value: 4.2 },
+  /**
+   * Minimum development everywhere. Rises as the whole route nears mastery, so a fully
+   * learned palace is complete wall to wall instead of a set of patches around loci.
+   */
+  uDevFloor: { value: 0 },
 };
+
+/** Floor value for a set of locus values: 0 until most are learned, 1 when all are. */
+export function developmentFloor(values: ArrayLike<number>, count: number): number {
+  if (count === 0) return 1;
+  let sum = 0;
+  for (let i = 0; i < count; i++) sum += values[i];
+  const t = Math.min(1, Math.max(0, (sum / count - 0.55) / 0.45));
+  return t * t * (3 - 2 * t);
+}
 
 /**
  * GLSL: `float developmentAt(vec3 worldPos)` returns 0..1. With no loci set it returns 1,
@@ -32,15 +46,18 @@ export const DEVELOPMENT_GLSL = /* glsl */ `
   uniform float uDevValues[${MAX_LOCI}];
   uniform int uDevCount;
   uniform float uDevRadius;
+  uniform float uDevFloor;
   float developmentAt(vec3 wp) {
     if (uDevCount == 0) return 1.0;
-    float d = 0.0;
+    // Soft union: neighbouring learned loci reinforce each other, so the gap between
+    // two learned places fills in instead of leaving a seam.
+    float rest = 1.0;
     for (int i = 0; i < ${MAX_LOCI}; i++) {
       if (i >= uDevCount) break;
       float k = 1.0 - smoothstep(uDevRadius * 0.4, uDevRadius, distance(wp, uDevPoints[i]));
-      d = max(d, k * uDevValues[i]);
+      rest *= 1.0 - k * uDevValues[i];
     }
-    return d;
+    return max(1.0 - rest, uDevFloor);
   }
 `;
 
@@ -54,6 +71,7 @@ export function DevelopmentField({ points, values, radius = 4.2 }: { points: Vec
     }
     developmentUniforms.uDevCount.value = n;
     developmentUniforms.uDevRadius.value = radius;
+    developmentUniforms.uDevFloor.value = developmentFloor(developmentUniforms.uDevValues.value, n);
   }, [points, values, radius]);
   return null;
 }

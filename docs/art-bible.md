@@ -95,4 +95,23 @@ memory progress.
 
 ## Decision
 
-Pending. Lead's recommendation and the team's pick are recorded here once made.
+**Direction A, Ink & Vellum.** Picked by Alex on Sat Nov 14, 3:20 AM ET from the three
+prototypes (`docs/media/art-directions.png`). The Lead recommended the same.
+
+- Primary theme: `ink-vellum` (style `ink`).
+- Palette variant (same style, different JSON): `ink-sanguine`, red chalk on cream, to prove
+  the theme system.
+- Cyanotype Blueprint stays in the repo as an experimental third theme; Nocturne Atrium
+  stays as a prototype only. Neither blocks the MVP.
+
+Known work on the chosen direction, in priority order:
+
+1. Wash coverage: a fully learned room must be washed wall to wall (shared field now has a
+   soft union and a floor that rises with overall mastery).
+2. Stability in motion: hatching and line wobble are screen-anchored and must not crawl
+   while the camera glides.
+3. Memory images should look inked onto the page, not pasted over it.
+4. Line anti-aliasing on long shallow diagonals; thin far detail.
+5. Paper: more visible grain, fibre and aged corners.
+6. Overlay UI in the same hand: IM Fell English for display, EB Garamond for text,
+   rubricated initials, hairline rules. Fonts are self-hosted.

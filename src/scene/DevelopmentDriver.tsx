@@ -1,7 +1,7 @@
 import { useFrame } from '@react-three/fiber';
 import { useLayoutEffect, useMemo } from 'react';
 import type { PalaceLayout } from '@/layouts';
-import { MAX_LOCI, developmentUniforms } from '@/styles/development';
+import { MAX_LOCI, developmentFloor, developmentUniforms } from '@/styles/development';
 
 const EASE_SECONDS = 0.9;
 
@@ -51,6 +51,7 @@ export function DevelopmentDriver({ layout, targets, snap }: { layout: PalaceLay
       tween.age[i] = Math.min(EASE_SECONDS, tween.age[i] + delta);
       values[i] = tween.from[i] + (tween.to[i] - tween.from[i]) * easeInOutCubic(tween.age[i] / EASE_SECONDS);
     }
+    developmentUniforms.uDevFloor.value = developmentFloor(values, n);
   });
 
   return null;

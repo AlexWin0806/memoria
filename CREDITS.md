@@ -9,4 +9,7 @@ Geometry and shaders are procedural and original unless listed.
 | React, React Three Fiber, drei, postprocessing | Scene graph and effects | https://github.com/pmndrs | MIT |
 | Zustand, Leva, maath | State, tuning panel, easing | https://github.com/pmndrs | MIT |
 
-Fonts and any CC0 assets are added below as they are introduced.
+| IM Fell English, IM Fell English SC | Display type | Igino Marini, via `@fontsource/im-fell-english*` | SIL Open Font License 1.1 |
+| EB Garamond | Text type | Georg Duffner and Octavio Pardo, via `@fontsource-variable/eb-garamond` | SIL Open Font License 1.1 |
+
+Any CC0 assets are added below as they are introduced.

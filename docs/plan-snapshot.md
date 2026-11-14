@@ -68,7 +68,7 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 
 ## Art-direction decision
 
-Pending. Three prototypes of the same test room: Ink & Vellum, Nocturne Atrium, Cyanotype Blueprint. Detail in `docs/art-bible.md`.
+**Ink & Vellum** (Direction A), picked by Alex on Sat 3:20 AM from three prototypes of the same test room (Ink & Vellum, Nocturne Atrium, Cyanotype Blueprint). Palette variant: Sanguine (red chalk). Cyanotype stays as an experimental third theme. Detail in `docs/art-bible.md`.
 
 ## Decisions log
 
@@ -83,9 +83,12 @@ Pending. Three prototypes of the same test room: Ink & Vellum, Nocturne Atrium, 
 | D-07 | Sat 2:40 AM | Deploy on Vercel by importing the GitHub repo | Alex |
 | D-08 | Sat 2:50 AM | Judge Mode list: the eight carpal bones (exactly eight, fixed order, real coursework, names mean what the images show). Rejected "most abundant elements in Earth's crust" because the order differs between sources. | Lead |
 | D-09 | Sat 2:50 AM | Palace has 12 loci in 3 rooms; Judge Mode uses the first 8 | Lead |
+| D-10 | Sat 3:20 AM | Art direction: Ink & Vellum. Variant: Sanguine. Cyanotype kept as experimental | Alex |
+| D-11 | Sat 3:25 AM | Architect default model: the current fast Claude model, for latency; overridable by environment variable | AI engineer, Lead |
 
 ## Change log
 
 | When (ET) | Change | By |
 |---|---|---|
 | Sat 2:50 AM | Initial plan written | Lead |
+| Sat 3:25 AM | Art direction decided (D-10); F-11 now targets Ink & Vellum plus Sanguine | Lead |
