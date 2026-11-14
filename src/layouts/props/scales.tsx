@@ -18,7 +18,7 @@ const PANS: Placement[] = SIDES.map(([x, , pan]): Placement => ({ p: [x, pan, 0]
 const CHAINS: Placement[] = SIDES.flatMap(([x, y, pan]) =>
   [0.25, 1.25, 2.25].map((k) => {
     const a = (k * TAU) / 3;
-    return limb([x, y - 0.01, 0], [x + PAN_R * Math.cos(a), pan + 0.075, PAN_R * Math.sin(a)], 0.008);
+    return limb([x, y - 0.01, 0], [x + PAN_R * Math.cos(a), pan + 0.075, PAN_R * Math.sin(a)], 0.011);
   }),
 );
 const PAN_GEOMETRY = () => lathe([[0, 0], [0.12, 0.005], [0.22, 0.04], [0.255, 0.085], [0.235, 0.085], [0.2, 0.055], [0.11, 0.03], [0, 0.025]], 24);
