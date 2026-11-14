@@ -23,7 +23,7 @@ The palace starts as a line drawing. A place takes a light first glaze when an i
 
 Live demo: (link added once deployed)
 
-Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent footage of the whole pitch run, about 85 seconds. It was rendered offline, frame by frame on a virtual clock, by `scripts/capture.mjs`. It is not a screen recording from a laptop.
+Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent footage of the whole pitch run, 82 seconds. It was rendered offline, frame by frame on a virtual clock, by `scripts/capture.mjs`. It is not a screen recording from a laptop.
 
 Press "Try it in 2 minutes" on the title screen. That is Judge Mode: it loads the eight carpal bones of the wrist, walks you past one image per bone, then hides the images and asks what you left at each place. A run in which nothing is skipped measures about two minutes (120 seconds with two seconds of thought per answer); it takes longer if you think longer. Timed stops can be paused with the Pause button or the P key. It runs with the network off.
 
