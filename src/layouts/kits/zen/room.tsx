@@ -215,7 +215,7 @@ function buildCourt({ index, plan, plots, open }: KitRoomProps): Parts {
       const [x, z] = isle.at;
       const s = Math.sign(x);
       parts.foliage.push(mound([x, 0, z], [0.62 * isle.size, 0.13 * isle.size, 0.95 * isle.size]));
-      parts.stone.push(rock([x + s * 0.05, 0.26 * isle.size, z - 0.2 * isle.size], [0.3 * isle.size, 0.34 * isle.size, 0.27 * isle.size], k * 1.3));
+      parts.stone.push(rock([x + s * 0.05, 0.2 * isle.size, z - 0.2 * isle.size], [0.27 * isle.size, 0.27 * isle.size, 0.4 * isle.size], 0.5 + k * 1.3));
       if (!k) parts.stone.push(rock([x - s * 0.08, 0.14, z + 0.48], [0.2, 0.15, 0.18], 2.1));
       if (v.islands === 'ringed') {
         // Ripples raked round the island, as far as the wall.
