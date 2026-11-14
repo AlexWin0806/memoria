@@ -10,8 +10,8 @@
  * It loads `/?debug` (which exposes the stores, layout and camera on window.__memoria),
  * starts an encode walk over loci 0..7 with the Judge deck, steps through it, and asserts
  * each time that `arrived` becomes true within 6 s and that the camera stands at that
- * locus's viewpoint. Then it checks a step back, a far jump (cut + lead-in), reduced
- * motion and the results pose.
+ * locus's viewpoint. Then it checks a step back, a far jump (cut + lead-in), steps taken
+ * mid-flight, reduced motion, the results pose, the familiarization name plates and the view inset.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -120,13 +120,40 @@ try {
   await session((s, a) => s.startWalk('recall', { stops: a }), stops);
   await arrive('recall restart (far jump 6 -> 0: cut, glide in)', poses.loci[0]);
 
+  // Impatient learner: a second step, then a change of mind, while the camera is still gliding.
+  await session((s) => s.next());
+  await page.waitForTimeout(600);
+  await session((s) => s.next());
+  await arrive('next() twice mid-flight (0 -> 2 without stopping)', poses.loci[2]);
+  await session((s) => s.next());
+  await page.waitForTimeout(500);
+  await session((s) => s.prev());
+  await arrive('next() then prev() mid-flight (turns back to locus 2)', poses.loci[2]);
+
   await page.evaluate(() => window.__memoria.settings.getState().setReducedMotion(true));
   await session((s) => s.next());
-  await arrive('reduced motion next() (cut to locus 1)', poses.loci[1]);
+  await arrive('reduced motion next() (cut to locus 3)', poses.loci[3]);
   await page.evaluate(() => window.__memoria.settings.getState().setReducedMotion(null));
 
   await session((s) => s.toResults());
   await arrive('results (overview)');
+
+  // Familiarization: the locus name plate appears in-world once the camera has arrived.
+  await session((s, a) => s.startWalk('familiarize', { deckId: null, stops: a }), stops);
+  await arrive('familiarize stop 1 (name plate)', poses.loci[0]);
+  await session((s) => s.next());
+  await arrive('familiarize stop 2 (name plate)', poses.loci[1]);
+
+  // View inset: the picture re-centres in the area the overlay leaves free.
+  await session((s) => s.setInsetRight(400));
+  await page.waitForTimeout(1500);
+  const view = await page.evaluate(() => {
+    const v = window.__memoria.camera.view;
+    return v && v.enabled ? v.offsetX : 0;
+  });
+  check(Math.abs(view - 200) < 2, 'view inset 400 px -> principal point shifted 200 px', `offsetX ${view.toFixed(1)}`);
+  if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'inset-400.png') });
+  await session((s) => s.setInsetRight(0));
 } catch (e) {
   failed++;
   console.error(`FAIL ${e.message.split('\n')[0]}`);

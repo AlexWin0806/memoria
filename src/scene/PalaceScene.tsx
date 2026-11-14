@@ -64,7 +64,7 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
       {tokens.map(({ locusIndex, item, visible }) => {
         const locus = layout.loci[locusIndex];
         return visible && locus ? (
-          <ImagoToken key={`${item.id}@${locus.id}`} imago={item.imago} position={locus.anchor} accent={locus.accent} still={still} appear={!qa.frozen} />
+          <ImagoToken key={`${item.id}@${locus.id}`} imago={item.imago} position={locus.anchor} accent={locus.accent} still={still} appear={!qa.frozen} fadeNear />
         ) : null;
       })}
       {view.labels && current && arrived && !qa.frozen && (

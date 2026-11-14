@@ -5,8 +5,8 @@ import type { Locus, Theme } from '@/core/types';
 import { useTheme } from '@/styles';
 
 const TEX_HEIGHT = 256;
-/** Height of the plate in metres: about 100 px tall from a locus viewpoint at 1440×900. */
-const WORLD_HEIGHT = 0.42;
+/** Height of the plate in metres: about 120 px tall from a locus viewpoint at 1440×900. */
+const WORLD_HEIGHT = 0.48;
 const FADE_SECONDS = 0.35;
 
 interface Plate {
@@ -20,7 +20,7 @@ function makePlate(name: string, eyebrow: string, theme: Theme, pigment: string)
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
   const nameFont = `600 104px ${theme.type.display}, serif`;
-  const eyebrowFont = `600 44px ${theme.type.display}, serif`;
+  const eyebrowFont = `600 50px ${theme.type.display}, serif`;
   ctx.font = nameFont;
   const pad = 56;
   canvas.width = Math.ceil(Math.max(ctx.measureText(name).width, 260) + pad * 2);
@@ -44,10 +44,10 @@ function makePlate(name: string, eyebrow: string, theme: Theme, pigment: string)
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = theme.palette.inkSoft;
     ctx.font = eyebrowFont;
-    ctx.fillText(eyebrow, w / 2, 70);
+    ctx.fillText(eyebrow, w / 2, 74);
     ctx.fillStyle = theme.palette.ink;
     ctx.font = nameFont;
-    ctx.fillText(name, w / 2, 178);
+    ctx.fillText(name, w / 2, 180);
     ctx.fillStyle = pigment;
     ctx.fillRect(pad, 204, w - pad * 2, 12);
     texture.needsUpdate = true;

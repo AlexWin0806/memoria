@@ -67,11 +67,16 @@ export interface ImagoTokenProps {
   still?: boolean;
   /** Pop in when mounted (scale and fade, about 450 ms). With `still`, a plain fade. */
   appear?: boolean;
+  /** Fade out as the camera comes close, so a glide never pushes the lens through an image. */
+  fadeNear?: boolean;
 }
 
 const APPEAR_SECONDS = 0.45;
-const DISC_OPACITY = 0.94;
+const DISC_OPACITY = 1;
 const HALO_OPACITY = 0.9;
+/** Camera distances (metres) between which a `fadeNear` token goes from hidden to solid. */
+const NEAR_HIDDEN = 0.9;
+const NEAR_SOLID = 1.9;
 
 /** Overshoots a little past 1 and settles: the "stamp" of an image landing on its locus. */
 function easeOutBack(x: number): number {
@@ -86,7 +91,7 @@ function easeOutBack(x: number): number {
  * as a "stamped" image in any style. A paper halo keeps the disc legible
  * against whatever is behind it.
  */
-export function ImagoToken({ imago, position, accent, presence = 1, still, appear }: ImagoTokenProps) {
+export function ImagoToken({ imago, position, accent, presence = 1, still, appear, fadeNear }: ImagoTokenProps) {
   const theme = useTheme();
   const group = useRef<Group>(null);
   const face = useRef<Group>(null);
@@ -114,8 +119,16 @@ export function ImagoToken({ imago, position, accent, presence = 1, still, appea
       grow = still ? 1 : easeOutBack(p);
       opacity = Math.min(1, p * 1.8);
     }
+    if (fadeNear) {
+      const k = Math.min(1, Math.max(0, (camera.position.distanceTo(g.position) - NEAR_HIDDEN) / (NEAR_SOLID - NEAR_HIDDEN)));
+      opacity *= k * k * (3 - 2 * k);
+    }
     fade.value = opacity;
-    if (disc.current) disc.current.opacity = DISC_OPACITY * opacity;
+    if (disc.current) {
+      disc.current.opacity = DISC_OPACITY * opacity;
+      // Only a solid disc may hide what is behind it; a fading one must not punch a hole.
+      disc.current.depthWrite = opacity > 0.6;
+    }
     if (ring.current) ring.current.opacity = opacity;
     if (halo.current) halo.current.opacity = HALO_OPACITY * opacity;
 
@@ -138,7 +151,8 @@ export function ImagoToken({ imago, position, accent, presence = 1, still, appea
           </mesh>
           <mesh position={[0, 0, -0.02]} renderOrder={8}>
             <circleGeometry args={[0.62, 48]} />
-            <meshBasicMaterial ref={disc} color={pigment} toneMapped={false} transparent opacity={DISC_OPACITY} depthWrite={false} />
+            {/* The disc writes depth so that a token further away never prints over a nearer one. */}
+            <meshBasicMaterial ref={disc} color={pigment} toneMapped={false} transparent opacity={DISC_OPACITY} />
           </mesh>
           <mesh position={[0, 0, -0.01]} renderOrder={9}>
             <ringGeometry args={[0.62, 0.66, 64]} />
