@@ -608,7 +608,7 @@ function BlastFurnace({ accent }: Props) {
   return (
     <group position={[-0.24, 0, -0.1]}>
       <mesh geometry={stack} castShadow receiveShadow>
-        <Surface slot="stone" />
+        <Surface slot="stone" accent={accent} />
       </mesh>
       {/* the breast at the foot of the stack, its arch, and the fire seen through the taphole */}
       <mesh position={[0, 0.55, 0.66]} castShadow>
@@ -631,7 +631,7 @@ function BlastFurnace({ accent }: Props) {
       {/* the bellows on their bench, the lid board, the nozzle, and the beam that works them */}
       <group position={BELLOWS_AT} rotation={[0, BELLOWS_TURN, 0]}>
         <mesh geometry={bellows} castShadow>
-          <Surface slot="cloth" accent={accent} />
+          <Surface slot="cloth" />
         </mesh>
         <mesh geometry={lid} castShadow>
           <Surface slot="wood" />
