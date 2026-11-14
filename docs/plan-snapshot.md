@@ -1,8 +1,8 @@
 # Plan / Outline (snapshot of the Google Doc "Plan/Outline" tab)
 
-Snapshot taken: Sat Nov 14, 2:45 PM ET (Scribe sync that recorded Part 2; no human edits found in this tab since the 1:00 PM snapshot).
+Snapshot taken: Sat Nov 14, 5:45 PM ET (Scribe sync after the first wave of Part 2 went live; no human edits found in this tab since the 2:45 PM snapshot).
 The Google Doc tab is the source of truth; this file exists so changes can be diffed.
-Other tabs at this sync, not mirrored here: the team added three tabs, "Part 2" (Alex's direction, being edited during the sync), "Part 3" and "Part 4" (longer proposals). The To-Do List tab gained a "Part 2 (added Sat 2:45 PM)" section with five items.
+Other tabs at this sync, not mirrored here: the team's three tabs are now named "feature/bugs" (it was "Part 2" at 2:45 PM; five feature ideas were added to it after that sync, last edit Sat 3:04 PM, listed below under "Also in the Part 2 tab"), "Part 3" and "Part 4" (both unchanged since 2:45 PM). The Project Summary tab was brought up to date for Part 2 (status, research sentences, six new stills). The To-Do List tab gained two items at the top of its "Part 2 (added Sat 2:45 PM)" section: a real-laptop check of the survey and Judge Mode, and a trial of real course PDFs.
 
 ## Defaults and decisions in force
 
@@ -31,25 +31,31 @@ Status Sat 4:30 AM: about eight hours ahead of this plan; the remaining risks ar
 
 Alex set this direction at about 2:00 PM ET on Sat Nov 14 and confirmed the open decisions at 2:27 PM. His own text is in the Part 2 tab. His reason: other memory-palace apps exist (he names Mnemorium and memoryOS), so Memoria has to differ. The learner becomes the architect: a first walk with no preparation finds what the learner does not know, those places fall into ruin, and learning each fact repairs its place. The core idea, as Alex put it, is to give the learner more options.
 
-Every item in this section is being built now and is not on the deployed site unless its row says so. The Features table further down describes the build from before Part 2 and has not been changed.
+Status Sat 5:45 PM: the first wave of Part 2 has been on the deployed site since 4:57 PM ET (commit `6e8e54e`). Each row of the scope table says whether the item is live, merged (on the working branch, going out with the next tested batch this evening) or building. Not verified by anyone: anything on a real GPU (frame rate, the collapse and rebuild in motion, the statue fix in motion), any result with real people, real lecture PDFs, screen readers, and a quiet-machine timing of the pitch run. The Features table further down describes the build from before Part 2 and has not been changed.
 
 ### Part 2 scope
 
-Scope as set by the Lead from Alex's direction. Status is "building" unless the row says otherwise.
+Scope as set by the Lead from Alex's direction. Status at Sat 5:45 PM is one of: live (on the deployed site), merged (on the working branch, not yet deployed), building, fixed, parked, roadmap, not planned.
 
 | Item | Status | Scope |
 |---|---|---|
-| Survey (the diagnostic) | building | The first use of a deck is a walk of the route with one question per place and an "I don't know" button. Nothing is revealed. Each place answered wrong or "I don't know" collapses into ruin as you watch. A faint outline of the whole object stays, so the place is still a landmark. |
-| Repair | building | Three states per place: in ruins (unknown), under repair with scaffolding (studied), restored (recalled correctly). A later miss damages it again. Colour still follows review progress. |
-| Judge Mode | building. Decided by Alex (option a) | The palace starts in ruins and each place rebuilds as the judge studies it. No added time. Pitch timing to be re-measured. |
-| Generated palaces | building: Gothic library first, then Zen garden and castle. Styles decided by Alex (option a) | One room per category, up to 5 places a room, up to 6 rooms, 30 places. The category name is inscribed over each doorway. The handcrafted Roman house stays for the demo and for existing decks. |
-| Extending a palace | building | Append-only. New facts fill free spots in their category's room. Overflow opens a new room at the end ("Past II"). Nothing already placed ever moves. |
-| Relationships | building | The Architect extracts links between facts (becomes, needs, blocks, mirrors) only where the notes support them. The engine draws them between places. A cycle gets a round room. |
-| Score history | building | Every survey, recall and review walk is saved. A Progress view shows the trend, with the survey as the baseline, and the weakest places. |
-| PDF upload | building | The text is read in the browser (PDF.js, loaded only when used). Headings become rooms. Long PDFs let the learner choose pages. New dependency `pdfjs-dist`, logged in `CREDITS.md`. |
-| Showcase decks | building | One Spanish verb in three tense rooms. The citric acid cycle as a ring with links. |
+| Survey (the diagnostic) | live since Sat 4:57 PM | The first use of a deck is a walk of the route with one question per place and an "I don't know" button. Nothing is revealed. Each place answered wrong or "I don't know" collapses into ruin as you watch. A faint outline of the whole object stays, so the place is still a landmark. The study walk follows in the same session and shows the survey answer beside the right one. |
+| Repair | live since Sat 4:57 PM | Three states per place: in ruins (unknown), under repair with scaffolding (studied), restored (recalled correctly). A later miss damages it again. Colour still follows review progress. As built: a later miss "needs another repair"; a legend explains the states; no points, badges or streaks. |
+| Judge Mode | live since Sat 4:57 PM. Decided by Alex (option a) | The palace starts in ruins and each place rebuilds as the judge studies it. No added time. Pitch timing to be re-measured. Re-measured: 80 s for the pitch variant on a heavily loaded test machine (74 to 79 s before Part 2). A quiet-machine timing is still owed. |
+| Generated palaces | Gothic library: live since Sat 4:57 PM. Zen garden and Workshop: merged, not yet live. The Workshop replaces the castle (Alex, Sat 3:00 PM: it suits processes). Styles decided by Alex (option a) | One room per category, up to 5 places a room, up to 6 rooms, 30 places. The category name is inscribed over each doorway. The handcrafted Roman house stays for the demo and for existing decks. As built: 28 landmarks belong to no style and each style adds its own, so 30 places are 30 different objects. A script checks that nothing moves when a palace grows (63 palaces, 54 extensions). |
+| Extending a palace | building: the Architect and the generator are live (two facts added in 9 s in a single run, nothing that stood touched); the "Add to this palace" screen is being built | Append-only. New facts fill free spots in their category's room. Overflow opens a new room at the end ("Past II"). Nothing already placed ever moves. |
+| Relationships | building: the Architect extracts the links (live); drawing them on the floor is being built | The Architect extracts links between facts (becomes, needs, blocks, mirrors) only where the notes support them. The engine draws them between places. A cycle gets a round room. |
+| Score history | live since Sat 4:57 PM | Every survey, recall and review walk is saved. A Progress view shows the trend, with the survey as the baseline, and the weakest places. |
+| PDF upload | live since Sat 4:57 PM; tested on synthetic PDFs only | The text is read in the browser (PDF.js, loaded only when used). Headings become rooms. Long PDFs let the learner choose pages. New dependency `pdfjs-dist`, logged in `CREDITS.md`. As built: headings are marked in the notes; for a long PDF the learner chooses the pages that fit the Architect's 12,000-character limit; scans, locked and damaged files are refused in words. |
+| Showcase decks | live since Sat 4:57 PM; fact-checked, nothing wrong; the gloss corrections are merged, not yet live | One Spanish verb in three tense rooms. The citric acid cycle as a ring with links. As built: "Comer: one verb, three tenses" and "The citric acid cycle, as a cycle". The cycle deck moves to the Workshop with the next batch. |
 | Bug: scroll bar in the middle of the screen | fixed and live | The title column now spans the window, so the bar is at the edge. |
-| Bug: the statue flickers at its base | being fixed | |
+| Bug: the statue flickers at its base | fixed and live; confirmed in stills, not in motion | Cause: the niche opening and the sill top were coplanar. To be checked in motion on a real laptop. |
+| Compose screen | building | Choose the style of the palace, see its rooms and links, choose facts or process, and extend a palace ("Add to this palace"). |
+| Process mode | building. Confirmed by Alex | After each place of a process deck the learner is asked what the step becomes, then puts the steps in order. Scored apart from the places. |
+| Bug: the right answer was often the fourth option | fixed and live | The right answer is now dealt evenly across the options. |
+| "Things you know well" | parked by Alex (Sat 3:00 PM) | An optional field (basketball, cooking) that the Architect draws memory images from, with no named people, characters, teams or titles. Not to be built unless Alex asks. Roadmap material for the pitch. |
+| Other learning environments | roadmap | From the Part 3 tab: a systems garden where changing one variable shows its consequences, a decision labyrinth, a comparison gallery, a timeline, a simulation, a proof workshop. Also roadmap: your own home as the palace, and reading scanned PDFs. |
+| Worlds from existing franchises | not planned | Copyrighted characters and settings are out (the team's own rule). |
 
 ### Part 2 milestones (Eastern Time)
 
@@ -57,8 +63,8 @@ These are added to the Milestones table above; nothing there is replaced. Submis
 
 | When | Milestone |
 |---|---|
-| Sat 5:00 PM | First pieces merged: repair mechanic, survey, generator, Architect |
-| Sat 8:00 PM | Compose with styles, rooms, links and extension. Zen garden and castle |
+| Sat 5:00 PM | First pieces merged: repair mechanic, survey, generator, Architect (done: live at 4:57 PM) |
+| Sat 8:00 PM | Compose with styles, rooms, links and extension. Zen garden and castle (Sat 5:45 PM: the Zen garden is merged; the Workshop replaces the castle and is merged; Compose is being built) |
 | Sat 10:00 PM | QA review 4 |
 | Sat 11:00 PM | Go or no-go on Part 2 for the demo |
 | Sun 12:00 to 3:00 AM | Pitch, README, Devpost and media updated |
@@ -70,16 +76,24 @@ The build that was demo-ready before Part 2 is commit `34d496c`. If Part 2 is no
 
 ### Research and claims
 
-A research check is running on what we may claim about pretesting, diagnostics, spatial organization and the two competitors. Nothing about Part 2 goes into the README, the Devpost text, the pitch or the UI copy until it is in `docs/research.md`. Those documents are updated when the features are merged, not before.
+A research check is running on what we may claim about pretesting, diagnostics, spatial organization and the two competitors. Nothing about Part 2 goes into the README, the Devpost text, the pitch or the UI copy until it is in `docs/research.md`. Those documents are updated when the features are merged, not before. Sat 5:45 PM: the check is in (`docs/research.md`, sections 8 and 9). Section 8.4 lists the sentences we may say and 8.5 the ones we must not. The pitch (draft 5), the README and the Devpost draft have been rewritten from them and wait for the Lead to merge them.
 
 ### Also in the Part 2 tab, not in the scope above
 
-Recorded here so they are not lost. Passed to the Lead at 2:45 PM for a decision.
+Recorded here so they are not lost. Passed to the Lead at 2:45 PM for a decision. (The team has since renamed that tab "feature/bugs".)
 
-- A third bug report: vary which option holds the correct answer. In the Mohs hardness deck it was often the fourth.
+- A third bug report: vary which option holds the correct answer. In the Mohs hardness deck it was often the fourth. (Fixed and live: the right answer is now dealt evenly across the options.)
 - "Make sure that each term has a good associated visual."
-- Different kinds of environment for memorizing terms and for learning processes. The Part 3 and Part 4 tabs hold longer proposals on this: an environment chosen by the kind of knowledge, and worlds the learner already knows.
+- Different kinds of environment for memorizing terms and for learning processes. The Part 3 and Part 4 tabs hold longer proposals on this: an environment chosen by the kind of knowledge, and worlds the learner already knows. (Sat 5:45 PM: the Workshop style and process mode cover the process case; the other environments are roadmap.)
 - Marked "do not worry about these right now": more camera modes, and combining sets.
+
+Added to that tab by a teammate after the 2:45 PM sync (last edit Sat 3:04 PM). Not in the scope above. Passed to the Lead at 5:45 PM for a decision.
+
+- Edit saved palaces: rename a saved palace and edit an item's term, definition or mnemonic in place, keeping item IDs, locations, links and the review progress of untouched items.
+- Choose recall direction: for term and definition pairs, Term to Definition or Definition to Term, in typed and multiple-choice modes; recall by place stays the default and for ordered lists.
+- Exam Mode: a quiz with the palace, the images and the route order hidden; afterwards each missed item links back to its place for review.
+- Practice commonly confused items: when a learner repeatedly gives one item's answer for another, a short side-by-side drill on the difference.
+- Build a palace from a returned exam: paste missed questions with the instructor's corrections; they become a short palace walk with the feedback attached to each item.
 
 ## Features
 
@@ -163,6 +177,9 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | D-28 | Sat 2:24 PM | Fallback: commit `34d496c` is the build that was demo-ready before Part 2. Go or no-go on Part 2 for the demo at Sat 11:00 PM (Alex) | Lead |
 | D-29 | Sat 2:29 PM | PDF upload (asked for by Alex at 2:27 PM) reads the text in the browser with PDF.js: new dependency `pdfjs-dist` 6.5.438, loaded only when used, logged in `CREDITS.md` | Alex, Lead |
 | D-30 | Sat 2:35 PM | No Part 2 claim goes into the README, Devpost text, pitch or UI copy until it is in `docs/research.md`; those documents change when the features are merged | Lead |
+| D-31 | Sat 3:00 PM | The third palace style is a Workshop, not a castle: it suits processes (machines as stations, a channel running from station to station) | Alex |
+| D-32 | Sat 3:00 PM | Parked: an optional "things you know well" field that the Architect draws memory images from, with no named people, characters, teams or titles. Not to be built unless Alex asks | Alex |
+| D-33 | Sat afternoon | Process mode: the walk of a process deck asks what each step becomes and has the learner put the steps in order, scored apart from the places | Alex (confirmed), Lead |
 
 ## Change log
 
@@ -176,3 +193,4 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | Sat 7:55 AM | Round four merged (QA 2 fixes, motion fixes found in the first footage, counterbalanced comparison test); all suites pass. Sat 9:40 AM: QA review 3 (safe to demo with precautions; C8 U7 Ch6 A8) and round five merged (Judge runs are a sandbox, spot check of three, pause on every timed stop, archway image moved, images fade out); all suites pass again | Lead |
 | Sat 12:55 PM | Site deployed and public; live Architect verified and two defects from its first live runs fixed; ChatOverflow connected | Lead |
 | Sat 2:45 PM | Part 2 recorded: new Part 2 section (scope, milestones, fallback, research and claims), decisions D-24 to D-30, a note above the Features table. Nothing earlier was changed or removed. Human additions found: the Part 2, Part 3 and Part 4 tabs | Scribe, for the Lead |
+| Sat 5:45 PM | First wave of Part 2 live since 4:57 PM (commit `6e8e54e`). Part 2 scope table marked live, merged or building, with six rows added; status line; decisions D-31 to D-33; two items added to the To-Do tab. Nothing earlier was removed. Human change found: the Part 2 tab was renamed "feature/bugs" and five feature ideas were added to it (listed under "Also in the Part 2 tab") | Scribe, for the Lead |
