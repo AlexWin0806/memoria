@@ -32,7 +32,15 @@ export function Compose() {
   const [error, setError] = useState('');
   const heading = useRef<HTMLHeadingElement>(null);
 
-  useEffect(() => () => useFlow.setState({ unsavedDraft: false }), []);
+  // A plan that resolves after the learner has left must not mark a draft as unsaved.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      useFlow.setState({ unsavedDraft: false });
+    };
+  }, []);
   useEffect(() => {
     if (stage === 'proposal') heading.current?.focus();
   }, [stage]);
@@ -46,6 +54,7 @@ export function Compose() {
     setStage('planning');
     try {
       const p = await planPalace({ text, maxItems: layout.loci.length, rooms: layout.rooms, loci: layout.loci });
+      if (!alive.current) return;
       const order = new Map(layout.loci.map((l) => [l.id, l.index]));
       const sorted = [...p.items].sort((a, b) => (order.get(a.locusId) ?? 0) - (order.get(b.locusId) ?? 0));
       if (!sorted.length) {
@@ -61,6 +70,7 @@ export function Compose() {
       useFlow.setState({ unsavedDraft: true });
       setStage('proposal');
     } catch {
+      if (!alive.current) return;
       setError('The Architect could not make a plan from this text. Check it and try again.');
       setStage('input');
     }
@@ -136,8 +146,8 @@ export function Compose() {
         </p>
         {sameRoute.length > 0 && (
           <p className="notice">
-            This route already holds {sameRoute.map((d) => `"${d.title}"`).join(', ')}. A second list on a route you are still
-            learning can interfere with the first, so keep similar lists apart.
+            This route already holds {sameRoute.map((d) => `"${d.title}"`).join(', ')}. Reusing a route for a second list
+            is thought to make the lists interfere (the evidence is mixed), so keep similar lists apart.
           </p>
         )}
         {error && (

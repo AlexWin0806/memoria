@@ -14,6 +14,7 @@
  *   d  (continues c) reload: the new deck is still listed; reviews, settings, Escape
  *   e  Judge Mode with the browser offline       -> "8 of 8", no requests at all
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
+ *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay
  *
  * Screenshots of each screen go to qa/shots/ui/.
  */
@@ -173,6 +174,8 @@ const cases = {
     assert((await page.getByTestId('strengthen').count()) === 0, 'no Strengthen buttons expected');
     assert((await text(page.getByTestId('judge-note'))).includes('We have not run an efficacy study of Memoria'), 'caveat missing');
     assert(requests.length === 0, `Judge Mode made requests: ${requests.join(', ')}`);
+    await page.getByTestId('results-again').scrollIntoViewIfNeeded();
+    await shot(page, 'judge-results-note');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return score;
@@ -288,7 +291,16 @@ const cases = {
     await page.getByTestId('title-review').click();
     await page.getByTestId('review').waitFor();
     await shot(page, 'review');
+    // A review walks only the places that are due: the new deck has none, the fixture has all eight.
+    assert((await page.getByTestId('review-now').count()) === 1, 'expected exactly one deck with reviews due');
+    await page.getByTestId('review-now').click();
+    await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 8")').waitFor();
     await key('Escape');
+    await page.getByTestId('leave-confirm').waitFor();
+    await key('Escape');
+    await page.getByTestId('leave-confirm').waitFor({ state: 'detached' });
+    await page.getByTestId('leave').click();
+    await page.getByTestId('leave-yes').click();
     await page.getByTestId('title').waitFor();
 
     // Escape during a walk asks first.
@@ -341,6 +353,21 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return 'typed answer with a typo accepted, wrong answer rejected';
+  },
+
+  async g() {
+    const { context, page, errors } = await open();
+    await page.goto(`${base}/?judge`, { waitUntil: 'load' });
+    await page.getByTestId('familiarize').waitFor();
+    assert((await text(page.locator('[data-testid=familiarize] .label').first())) === 'Route preview', '?judge did not start Judge Mode');
+    for (const param of ['shot=overview', 'rail']) {
+      await page.goto(`${base}/?${param}`, { waitUntil: 'load' });
+      await page.waitForFunction('window.__MEMORIA_READY__ === true');
+      assert((await page.locator('.ov').count()) === 0, `overlay visible with ?${param}`);
+    }
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return '?judge starts Judge Mode; ?shot and ?rail hide the overlay';
   },
 };
 

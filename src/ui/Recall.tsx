@@ -83,7 +83,7 @@ export function Recall() {
           </h2>
           {askMeaning && (
             <p className="body">
-              It stood for <strong data-testid="recall-cue">{item.term}</strong>. What does that mean?
+              The term at this place is <strong data-testid="recall-cue">{item.term}</strong>. What does it mean?
             </p>
           )}
           {input === 'choice' ? (

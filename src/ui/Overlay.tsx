@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { leave, requestLeave, startJudge, useFlow } from '@/flows/flow';
 import { useArrivedFallback, useReducedMotion } from '@/flows/hooks';
 import { useSession } from '@/state/session';
@@ -32,7 +32,8 @@ function OverlayRoot() {
   const confirmLeave = useFlow((s) => s.confirmLeave);
   useArrivedFallback();
 
-  useEffect(() => {
+  // Before first paint, so the overlay never flashes unstyled.
+  useLayoutEffect(() => {
     applyThemeVars(getTheme(query().get('theme') ?? themeId));
   }, [themeId]);
 
@@ -96,8 +97,9 @@ function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
     <aside ref={ref} className={wide ? 'panel panel--wide' : 'panel'} aria-label="Memoria">
       <header className="panel__head">
         <span className="label">Memoria</span>
-        <button type="button" className="link" onClick={requestLeave} data-testid="leave">
-          Leave <span className="key">Esc</span>
+        <button type="button" className="leave" onClick={requestLeave} data-testid="leave">
+          <span className="leave__word">Leave</span>
+          <span className="key">Esc</span>
         </button>
       </header>
       <div className="panel__body">{children}</div>

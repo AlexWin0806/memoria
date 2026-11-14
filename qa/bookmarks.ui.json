@@ -1,0 +1,8 @@
+[
+  { "name": "ui-title", "query": "" },
+  { "name": "ui-title-narrow", "query": "", "width": 390, "height": 780 },
+  { "name": "ui-judge-preview", "query": "judge", "waitMs": 800 },
+  { "name": "ui-judge-encode", "query": "judge", "waitMs": 14500 },
+  { "name": "ui-judge-encode-narrow", "query": "judge", "waitMs": 14500, "width": 390, "height": 780 },
+  { "name": "ui-hidden-for-shot", "query": "shot=overview" }
+]
