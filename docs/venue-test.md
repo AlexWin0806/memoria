@@ -75,7 +75,7 @@ walked, so check its "In the palace" column after volunteer 2.
 - Each person has a different list in each arm. Swapping the lists between people evens that
   out only if the numbers are equal; say so if they are not. Same-session recall only.
 - The two lists are not equally hard, and their meanings are not equally long.
-- About 18 of the palace arm's 50 seconds are camera travel, so it has less reading time.
+- About 18 of the palace arm's 51 seconds are camera travel, so it has less reading time.
 - Eight-option multiple choice allows guessing (1 in 8) and elimination, in both arms.
 - Small n; order and material balanced by hand, not randomised.
 - If a fixture deck was edited on this device ("Strengthen this image"), the palace arm uses

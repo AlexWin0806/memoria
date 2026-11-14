@@ -62,7 +62,17 @@ const routeOrder = [...layoutSrc.matchAll(/\{ id: '(domus-\d+)', index: (\d+),/g
   .sort((a, b) => Number(a[2]) - Number(b[2]))
   .map((m) => placeName[m[1]])
   .filter((name) => termAt[name]);
-const controlTerms = [...controlSrc.matchAll(/\{ term: '([^']+)', meaning:/g)].map((m) => m[1]);
+let controlTerms = [...controlSrc.matchAll(/\{ term: '([^']+)', meaning:/g)].map((m) => m[1]);
+// The plain lists are now derived from their decks, so the control list's terms are the
+// citric acid cycle deck's terms in route order.
+if (controlTerms.length !== 8 && existsSync('src/ai/fixtures/krebs.ts')) {
+  const krebsSrc = readFileSync('src/ai/fixtures/krebs.ts', 'utf8');
+  const krebsAt = Object.fromEntries([...krebsSrc.matchAll(/term: '([^']+)'[^\n]*?locusId: '([^']+)'/g)].map((m) => [placeName[m[2]], m[1]]));
+  controlTerms = Object.keys(placeName)
+    .map((id) => placeName[id])
+    .filter((name) => krebsAt[name])
+    .map((name) => krebsAt[name]);
+}
 const LIST_STUDY_SECONDS = Number(storeSrc.match(/LIST_STUDY_SECONDS = (\d+)/)[1]);
 const STOP_SECONDS = Number(readFileSync('src/flows/timing.ts', 'utf8').match(/pitch: \{[^}]*?encodeSecondsPerStop: ([\d.]+)/s)[1]);
 if (routeOrder.length !== 8 || controlTerms.length !== 8) {
