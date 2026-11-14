@@ -57,8 +57,8 @@ walked, so check its "In the palace" column after volunteer 2.
 
 ## What each volunteer does
 
-- **List arm:** one list of eight as a numbered list with short meanings, for 50 seconds.
-- **Palace arm:** the other list of eight as a timed walk, also 50 seconds including camera
+- **List arm:** one list of eight as a numbered list with short meanings, for 51 seconds.
+- **Palace arm:** the other list of eight as a timed walk, also about 51 seconds including camera
   travel. Each place shows the term, its meaning and the image; it cannot be paused.
 - After each: 20 seconds of typed sums (not scored), then eight ordered multiple-choice questions.
 

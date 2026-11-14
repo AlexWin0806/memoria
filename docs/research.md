@@ -69,7 +69,7 @@ The method of loci is a 2,000-year-old technique with real but modest-quality mo
 - The evidence base is mostly short laboratory studies with university students memorizing word lists. Both meta-analyses report a high risk of bias, and classroom evidence is thin (one small medical-school study on one topic).
 - Loci suit ordered, discrete facts. They do not teach understanding, and the best-known review of study techniques rates the keyword mnemonic and imagery for text as low utility while rating practice testing and spacing as high utility.
 - A browser is the desktop condition. The one head-to-head study we found reported head-mounted VR better than desktop, and other work suggests navigation itself may not be the active ingredient, so the 3D walk is there for structure and engagement, not as a proven memory boost.
-- AI-supplied images are not known to work as well as images the learner invents. The research on supplied versus self-made mnemonics is mixed, which is why editing is mandatory.
+- AI-supplied images are not known to work as well as images the learner invents. The research on supplied versus self-made mnemonics is mixed, which is why the learner sees every image before it is placed and can rewrite any of them.
 - The large gains in training studies followed about six weeks of daily practice in young adult men. Benefits are smaller after brief instruction, vary with age, and have not reliably transferred to untrained material.
 
 ## 6. Leads that did not check out
