@@ -33,8 +33,8 @@ export const CARPALS: Deck = {
     },
     {
       id: 'carpal-4', term: 'Pisiform', meaning: 'Pea-shaped.', locusId: 'domus-04',
-      imago: { scene: 'Green peas pour out of the archway like hail.', glyphs: ['🟢', '☔'], action: 'hop', reason: 'Pisiform means pea-shaped (Latin pisum, a pea).', source: 'fixture' },
-      alternates: [{ scene: 'A princess tosses on a mattress in the arch: a pea is underneath.', glyphs: ['👸', '🛏️', '🟢'], action: 'pulse', reason: 'Pisiform means pea-shaped (Latin pisum): the pea under the mattress.', source: 'fixture' }],
+      imago: { scene: 'A princess on a stack of mattresses in the archway still feels the pea.', glyphs: ['👸', '🛏️'], action: 'pulse', reason: 'Pisiform means pea-shaped (Latin pisum, a pea): the pea under the mattresses.', source: 'fixture' },
+      alternates: [{ scene: 'Green peas hail through the archway and rattle on your umbrella.', glyphs: ['☔', '🟢'], action: 'hop', reason: 'Pisiform means pea-shaped (Latin pisum, a pea).', source: 'fixture' }],
     },
     {
       id: 'carpal-5', term: 'Trapezium', meaning: 'A little table; same word as trapeze.', locusId: 'domus-05',
