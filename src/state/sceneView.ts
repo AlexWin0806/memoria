@@ -23,6 +23,8 @@ interface Input {
   arrived: boolean;
   results: RecallResult[];
   cards: Record<string, ReviewCard>;
+  /** `session.imagesHidden`: the screen between the two walks is up, so no image is shown. Default false. */
+  imagesHidden?: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ interface Input {
  *   results / review               from the Leitner box of each item
  */
 export function deriveSceneView(i: Input): SceneView {
-  const { mode, layout, deck, stops, step, arrived, results, cards } = i;
+  const { mode, layout, deck, stops, step, arrived, results, cards, imagesHidden = false } = i;
   const n = layout.loci.length;
   const byLocus = new Map<string, MemoryItem>();
   deck?.items.forEach((it) => byLocus.set(it.locusId, it));
@@ -85,7 +87,8 @@ export function deriveSceneView(i: Input): SceneView {
         visible = true;
         dev = Math.max(boxDev, 0.65);
     }
-    tokens.push({ locusIndex: locus.index, item, visible });
+    // "The images are now hidden" overrides every rule above; the development is left as it was.
+    tokens.push({ locusIndex: locus.index, item, visible: visible && !imagesHidden });
     development[locus.index] = dev;
   });
 

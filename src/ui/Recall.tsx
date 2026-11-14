@@ -49,9 +49,12 @@ export function Recall() {
     if (answered) nextRef.current?.focus();
   }, [answered, step]);
 
-  // Judge Mode keeps moving: the feedback is shown briefly, then the walk goes on by itself.
+  // Judge Mode keeps moving: the feedback is shown, then the walk goes on by itself. A miss is
+  // held longer, because that is the moment to look at the image again.
   const paused = useFlow((s) => s.confirmLeave);
-  const moveOn = useCountdown(judge && answered && !paused, judgeTiming().feedbackSeconds, step, advanceRecall);
+  const timing = judgeTiming();
+  const feedbackSeconds = result && !result.correct ? timing.missFeedbackSeconds : timing.feedbackSeconds;
+  const moveOn = useCountdown(judge && answered && !paused, feedbackSeconds, step, advanceRecall);
   const spot = judge && deck !== undefined && stops.length < deck.items.length;
 
   let choices: string[] = [];

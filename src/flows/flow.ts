@@ -180,8 +180,14 @@ export function beginEncodeAfterFamiliarize(): void {
 
 export function advanceEncode(): void {
   const s = useSession.getState();
-  if (isLastStop(s)) useFlow.setState({ phase: 'interstitial' });
-  else s.next();
+  if (!isLastStop(s)) {
+    s.next();
+    return;
+  }
+  // "The images are now hidden" has to be true in the scene too, for as long as that screen is up:
+  // starting the recall walk or leaving (startWalk, toAttract) shows them again.
+  s.setImagesHidden(true);
+  useFlow.setState({ phase: 'interstitial' });
 }
 
 export function beginRecallAfterEncode(): void {
@@ -280,6 +286,8 @@ export function resumeWalk(): void {
     arrived: false,
     results: w.results,
     judge: w.judge,
+    // Resumed on the screen between the two walks: the images stay hidden there.
+    imagesHidden: w.mode === 'encode' && w.phase === 'interstitial',
   });
 }
 

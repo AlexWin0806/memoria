@@ -16,7 +16,8 @@
  *   d  (continues c) reload: the new deck is still listed; new versus due; reviews; the Leave dialog
  *   e  Judge Mode with the browser offline       -> "7 of 8", no requests at all, Strengthen at once
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
- *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay
+ *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay;
+ *      a timed encode stop can be paused (P) and resumed (Space)
  *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of four -> "4 of 4"
  *   r  Compose: the draft survives a reload at both steps; dropped lines, the three-fact minimum,
  *      emoji-only glyphs, the read-to-the-end gate, validation that names the card, Discard draft
@@ -87,6 +88,8 @@ const JUDGE_DECK_TITLE = 'The eight carpal bones';
 const THINK_MS = 2000;
 /** The pitch run waits on its "spot check" screen until its button is pressed: time to read its 18 words. */
 const READ_MS = 4000;
+/** The default run's "recall walk" screen waits too: time to read its 33 words at the same pace. */
+const READ_DEFAULT_MS = 8000;
 const spanishSrc = readFileSync('src/ai/fixtures/spanish-kitchen.ts', 'utf8');
 /** Spanish kitchen deck: the term at each named place. */
 const spanishAt = Object.fromEntries(
@@ -150,16 +153,31 @@ const choiceTexts = (page, testid) => page.locator(`[data-testid=${testid}] span
  */
 function installWalkLog() {
   if (window.__walkLog) {
-    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '', extra: [] });
+    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [] });
     return;
   }
-  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '', extra: [] };
+  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [] };
   const note = (list, entry) => {
     if (!list.some((e) => e.label === entry.label)) list.push(entry);
   };
+  let lastStop = '';
+  let lastScreen = '';
   const look = () => {
     const log = window.__walkLog;
     if (document.querySelector('[data-testid=familiarize]')) log.preview = true;
+    // The "time at this place" bar only ever fills forwards: the moment a new stop begins it is
+    // already empty. (Easing back to empty, it would still be nearly full at this point.)
+    const stop = document.querySelector('[data-testid=encode] [data-testid=walk-label]')?.textContent ?? '';
+    if (stop && stop !== lastStop) {
+      const fill = document.querySelector('[data-testid=encode] .bar__fill');
+      if (fill && lastStop && parseFloat(getComputedStyle(fill).width) > 1) log.barBack.push(stop);
+    }
+    lastStop = stop;
+    // With ?debug=stores: whether the session hides the images, each time the screen changes.
+    const screen = ['interstitial', 'recall', 'results'].find((id) => document.querySelector(`[data-testid=${id}]`)) ?? '';
+    const session = window.__memoria?.session;
+    if (session && screen !== lastScreen) log.hidden.push([screen || 'walk', session.getState().imagesHidden]);
+    lastScreen = screen;
     // A timed run shows the place, the term, the meaning and the scene, and nothing else to read.
     for (const id of ['encode-reason', 'place-hint']) {
       if (document.querySelector(`[data-testid=${id}]`) && !log.extra.includes(id)) log.extra.push(id);
@@ -239,16 +257,13 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     assert(e.term.trim() === termAt[place], `encode stop ${i + 1}: wrong term at ${place}`);
   });
   await quietShot('interstitial');
-  if (pitch) {
-    // The pitch run waits here for its button, however long the judge takes to read.
-    // The reading time counts from when the screen appeared, not from when the harness finished its checks.
-    await page.waitForTimeout(Math.max(300, (passive ? READ_MS : 0) - (Date.now() - interstitialAt)));
-    await page.getByTestId('recall-start').click();
-    mark('spot check started');
-  } else if (!passive) {
-    // The pause ends by itself in the default run, so the button may already be gone.
-    await page.getByTestId('recall-start').click({ timeout: 2500 }).catch(() => {});
-  }
+  // Both runs wait here for the button, however long the judge takes to read.
+  // The reading time counts from when the screen appeared, not from when the harness finished its checks.
+  const read = passive ? (pitch ? READ_MS : READ_DEFAULT_MS) : 0;
+  await page.waitForTimeout(Math.max(300, read - (Date.now() - interstitialAt)));
+  assert((await page.getByTestId('interstitial').count()) === 1, 'the screen between the two walks moved on by itself');
+  await page.getByTestId('recall-start').click();
+  mark(pitch ? 'spot check started' : 'recall walk started');
 
   const stops = pitch ? 4 : 8;
   const label = (i) => (pitch ? `Spot check ${i} of 4` : `Place ${i} of 8`);
@@ -287,6 +302,13 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     assert(r.text.includes(expected[i].answer), `recall stop ${i + 1}: the correct term is not shown`);
   });
   await quietShot('results');
+  const { barBack, hidden } = await page.evaluate(() => window.__walkLog);
+  assert(barBack.length === 0, `the time bar ran backwards at the start of: ${barBack}`);
+  // With the stores exposed: the images are hidden for exactly as long as the screen between the walks is up.
+  if (hidden.length) {
+    const wrongly = hidden.filter(([screen, value]) => value !== (screen === 'interstitial'));
+    assert(hidden.some(([screen]) => screen === 'interstitial') && wrongly.length === 0, `session.imagesHidden by screen: ${JSON.stringify(hidden)}`);
+  }
   const timeline = Object.entries(phases)
     .map(([name, at]) => `${name} at ${at} s`)
     .join(', ');
@@ -372,6 +394,10 @@ const cases = {
 
   async b() {
     const { context, page, errors } = await open();
+    // With the stores exposed, the run also checks that the session hides the images between the walks.
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoria?.session);
     const { score } = await judgeRun(page, { wrong: 2 });
     assert(score === '6 of 8', `expected 6 of 8, got "${score}"`);
     const n = await page.getByTestId('strengthen').count();
@@ -453,7 +479,11 @@ const cases = {
     await tabTo(page, 'compose-title');
     await key('Control+A');
     await page.keyboard.type(DECK_TITLE);
-    await tabTo(page, 'compose-place');
+    // The skip link is the next Tab stop: it goes to the place button without a Tab through every card.
+    await page.keyboard.press('Tab');
+    assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'compose-skip'), 'the skip link is not the first stop after the palace name');
+    await key('Enter');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'compose-place');
     await page.getByTestId('compose-place').scrollIntoViewIfNeeded();
     await shot(page, 'compose-place');
     await key('Enter');
@@ -1083,9 +1113,29 @@ const cases = {
       await page.waitForFunction('window.__MEMORIA_READY__ === true');
       assert((await page.locator('.ov').count()) === 0, `overlay visible with ?${param}`);
     }
+
+    // A timed encode stop can be paused: P stops the clock where it is, Space starts it again.
+    await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title-judge').click();
+    const firstStop = page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 1 of 8")');
+    await page.getByTestId('encode-term').waitFor();
+    await page.keyboard.press('p');
+    await page.locator('[data-testid=encode-pause][aria-pressed=true]').waitFor();
+    const clock = () => page.locator('[data-testid=encode] [role=progressbar]').getAttribute('aria-valuenow');
+    const stoppedAt = await clock();
+    await shot(page, 'encode-paused');
+    // Longer than the stop itself would have lasted.
+    await page.waitForTimeout(5500);
+    assert((await firstStop.count()) === 1, 'a paused stop moved on by itself');
+    assert((await clock()) === stoppedAt, `the clock ran during the pause (${stoppedAt} -> ${await clock()})`);
+    assert((await text(page.getByTestId('encode-hint'))) === 'Paused. Space or P resumes.', 'a paused stop does not say how to resume');
+    await page.keyboard.press('Space');
+    await page.locator('[data-testid=encode-pause][aria-pressed=false]').waitFor();
+    assert((await firstStop.count()) === 1, 'Space moved on instead of resuming');
+    await page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 2 of 8")').waitFor({ timeout: 30000 });
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return '?judge starts Judge Mode; ?shot and ?rail hide the overlay';
+    return '?judge starts Judge Mode; ?shot and ?rail hide the overlay; P pauses a timed stop and Space resumes it';
   },
 };
 
