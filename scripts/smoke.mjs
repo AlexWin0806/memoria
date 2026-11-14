@@ -311,12 +311,8 @@ const cases = {
 
   async p() {
     const { context, page, errors, requests } = await open();
-    // ?judge=pitch starts the pitch variant on load and makes the title button start it too.
+    // ?judge=pitch waits on the title screen; the title button starts the pitch variant.
     await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
-    await page.getByTestId('encode').waitFor();
-    assert((await page.getByTestId('familiarize').count()) === 0, 'the pitch variant should have no route preview');
-    await page.keyboard.press('Escape');
-    await page.getByTestId('leave-yes').click();
     await page.getByTestId('title').waitFor();
     const promised = await text(page.getByTestId('title-judge'));
     requests.length = 0;

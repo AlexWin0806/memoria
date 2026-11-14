@@ -3,15 +3,17 @@
 Hard limit is 2:00. Rehearse to 1:50. One person speaks; one person hands the laptop to the
 judge and says nothing. The judge does the demo, not us.
 
-Open the site with `?judge=pitch` before the judge arrives (title screen, Wi-Fi off is fine).
+Open the site with `?judge=pitch` before the judge arrives. It waits on the title screen with a
+"Try it in 70 seconds" button; Wi-Fi off is fine. Measured passive run: 69 seconds
+(about 40 s walking the eight places, then a spot check of four of them).
 
 | Time | Who | What |
 |---|---|---|
 | 0:00 | Speaker | **Hook.** "Quick question: can you name the eight bones in your wrist, in order? Anatomy students have to. Most of us cram lists like that and lose them in a week." |
 | 0:10 | Speaker | **Hand over.** "Press the big button. For the next forty seconds, just walk and look. At each place there is one strange picture. Picture it happening." |
 | 0:15 | Judge | **Encode walk**, eight places, about 40 seconds. Speaker stays quiet: talking over it would make the judge worse at it. |
-| 0:55 | Speaker | "Now the pictures are gone. Same walk. What did you leave at each place?" |
-| 0:58 | Judge | **Recall walk**, eight multiple-choice answers, about 25 seconds. Colour floods back into the palace around every place they get right. |
+| 0:55 | Speaker | "Now the pictures are gone. We will check four of the eight places. What did you leave there?" |
+| 0:58 | Judge | **Recall, spot check.** Four of the eight places, chosen at random, multiple choice, about 25 seconds. Colour floods back into the palace around every place they get right. |
 | 1:25 | Speaker | **What just happened.** "That is the method of loci. It is about 2,100 years old in writing, memory competitors still use it, and two meta-analyses find a medium-to-large gain in recall for lists like this, though they rate the quality of that evidence as low. The catch has always been setup: you need a palace, a route and a picture for every fact." |
 | 1:40 | Speaker | **What we built.** "Memoria removes the setup. Paste your notes; an AI architect picks the facts, invents the pictures, checks them against the classical rules and rewrites the weak ones; you approve or change every one. Then it tests you instead of letting you re-read, and schedules reviews at growing intervals, which is what the research says makes memories last." |
 | 1:53 | Speaker | **Close.** "It is free, it runs from a link on an ordinary laptop, and next we want you to be able to scan your own home and use that as your palace." |

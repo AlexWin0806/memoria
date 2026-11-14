@@ -38,7 +38,10 @@ function OverlayRoot() {
   }, [theme]);
 
   useEffect(() => {
-    if (query().has('judge')) startJudge();
+    // `?judge` starts the run on load (for links and tests). `?judge=pitch` waits on the
+    // title screen instead, because in a live pitch the judge presses the button.
+    const judge = query().get('judge');
+    if (judge !== null && judge !== 'pitch') startJudge();
   }, []);
 
   useEffect(() => {
