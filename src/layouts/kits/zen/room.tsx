@@ -66,8 +66,9 @@ export const ZEN_SIGN_HEIGHT = 2.77;
 /** The gate's roof in section, eaves to ridge to eaves: it rises more steeply towards the ridge. */
 const ROOF: [number, number][] = [[-1.2, 3.38], [-0.8, 3.52], [-0.4, 3.72], [0, 3.98], [0.4, 3.72], [0.8, 3.52], [1.2, 3.38]];
 const ROOF_HALF = 1.95;
-/** Gravel before the front gate: the walk begins 8 m out. The front hedge is this wide either side, so nothing shows past its ends. */
+/** Gravel before the front gate: the walk begins 8 m out. */
 const FORECOURT = 10;
+/** The front hedge, its wall and the forecourt reach this far either side of the gate, so nothing shows past their ends from the walk in. */
 const FRONT_REACH = 13;
 /** How far past the middle of a gap between two places the trees and bamboo beyond the wall stand. */
 const PAST = 0.45;
@@ -228,14 +229,28 @@ function buildCourt({ index, plan, plots, open }: KitRoomProps): Parts {
   }
 
   if (v.stream) {
-    // From the wall across from the second place to the wall across from the third, between their plots.
-    const bed: [number, number][] = [[f * (inner + 0.1), 6.2], [f * 3.2, 6.5], [f * 1.2, 7.4], [-f * 1.2, 8.5], [-f * 3.2, 9.4], [-f * (inner + 0.1), 9.7]];
-    parts.stone.push(at(ribbonGeometry(bed, 1, 0.02), [0, 0, 0], [-HALF_PI, 0, 0]));
+    // From the wall across from the second place to the wall across from the third, between
+    // their plots: drawn in plan (x against -z), then laid flat. Its banks are raked lines.
+    const reach = inner + 0.1;
+    const bed = Array.from({ length: 25 }, (_, i): [number, number] => {
+      const u = i / 12 - 1;
+      return [-f * reach * u, 7.95 + 1.75 * Math.sin(u * HALF_PI)];
+    });
+    const flat = (g: BufferGeometry) => at(g, [0, 0, 0], [-HALF_PI, 0, 0]);
+    parts.stone.push(flat(ribbonGeometry(bed, 1, 0.02)));
+    parts.trim.push(flat(ribbonGeometry(bed, 1 + 2 * LINE, 0.012)));
+    // Pebbles down the middle of it, none where the path crosses on a slab.
+    for (let k = 0; k < 22; k++) {
+      const [x, z] = bed[1 + k];
+      if (Math.abs(x) < 0.75) continue;
+      const r = 0.09 + 0.06 * scatter(k, 12);
+      parts.stone.push(at(new CylinderGeometry(1, 1.1, 1, 6), [x + 0.5 * (scatter(k, 13) - 0.5), 0.035, -z + 0.5 * (scatter(k, 14) - 0.5)], [0, scatter(k, 15) * TAU, 0], [r * 1.3, 0.05, r]));
+    }
     parts.stone.push(box(1.0, 0.07, 1.9, [0, 0.045, -7.95]));
     parts.stone.push(rock([f * 2.5, 0.14, -6.15], [0.3, 0.2, 0.24], 0.4));
     parts.stone.push(rock([-f * 2.3, 0.15, -9.8], [0.32, 0.22, 0.25], 1.9));
-    parts.stone.push(rock([-f * 1.75, 0.1, -7.95], [0.22, 0.15, 0.2], 3.0));
-    parts.foliage.push(mound([f * 2.9, 0, -7.35], [0.7, 0.1, 0.4]));
+    parts.stone.push(rock([-f * 1.75, 0.1, -8.2], [0.22, 0.15, 0.2], 3.0));
+    parts.foliage.push(mound([f * 2.9, 0, -7.4], [0.7, 0.1, 0.4]));
   }
 
   // Beyond the side walls: what looks over them, behind stretches of wall no place stands by.
