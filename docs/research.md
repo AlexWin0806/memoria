@@ -68,7 +68,7 @@ The method of loci is a 2,000-year-old technique with real but modest-quality mo
 - Memoria is a hackathon prototype with no outcome data of its own. Every efficacy claim is borrowed from studies of the technique, not of this app.
 - The evidence base is mostly short laboratory studies with university students memorizing word lists. Both meta-analyses report a high risk of bias, and classroom evidence is thin (one small medical-school study on one topic).
 - Loci suit ordered, discrete facts. They do not teach understanding, and the best-known review of study techniques rates the keyword mnemonic and imagery for text as low utility while rating practice testing and spacing as high utility.
-- A browser is the desktop condition. The one head-to-head study found head-mounted VR better than desktop, and other work suggests navigation itself may not be the active ingredient, so the 3D walk is there for structure and engagement, not as a proven memory boost.
+- A browser is the desktop condition. The one head-to-head study we found reported head-mounted VR better than desktop, and other work suggests navigation itself may not be the active ingredient, so the 3D walk is there for structure and engagement, not as a proven memory boost.
 - AI-supplied images are not known to work as well as images the learner invents. The research on supplied versus self-made mnemonics is mixed, which is why editing is mandatory.
 - The large gains in training studies followed about six weeks of daily practice in young adult men. Benefits are smaller after brief instruction, vary with age, and have not reliably transferred to untrained material.
 
@@ -77,8 +77,8 @@ The method of loci is a 2,000-year-old technique with real but modest-quality mo
 - **"Ad Herennium III, sections 16-24."** Those are chapter numbers (xvi-xxiv). The standard citation for the memory section is III.xvi.28-xxiv.40; the image rules are III.xxii.35-37.
 - **"Moderately lit, moderate size."** Consistent with every summary found, but the Caplan sentences were not seen; only the rules on distinct form, deserted places, thirty feet and the fifth-locus markers were seen in Caplan's wording. UNVERIFIED at sentence level.
 - **"Emotional or comic" images.** The text extracts speak of striking, active, beautiful or ugly, ornamented or disfigured images. "Comic" was seen only in paraphrase and "emotional" looks like a modern gloss (Yates). Do not put either in quotation marks.
-- **Dresler 2017 "n-back" control and group sizes.** Sources confirm a working-memory training control, not its task type. The 72-word test and the size of the gain come from press coverage.
-- **Wagner 2021.** Real (Science Advances 7(10), eabc7606). A 24-hour test was not confirmed; per-group word counts come from press; it appears to share the Dresler training design, which we could not confirm.
+- **Dresler 2017 effect size.** The design, sample and four-month link are confirmed. The size of the gain (roughly doubling on a 72-word test) comes from press coverage, and the group sizes and the working-memory control's task type were not confirmed.
+- **Wagner 2021.** Real (Science Advances 7(10), eabc7606). Per-group word counts come from press, and it appears to share the Dresler training design, which we could not confirm.
 - **"Ondřej et al. 2025."** Real, but single-authored (Jan Ondřej, *British Journal of Psychology*).
 - **Krokos 2018 "8.8%."** Comes from the University of Maryland press release; we could not confirm whether it is relative or percentage points.
 - **Legge 2012 as proof that rendered virtual palaces work.** It shows a virtual environment can supply the loci; items were imagined, not displayed.
