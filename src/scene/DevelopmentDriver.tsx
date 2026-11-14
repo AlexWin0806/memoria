@@ -11,7 +11,8 @@ function easeInOutCubic(x: number): number {
 }
 
 /**
- * Drives the shared development field: one point per locus anchor, each value eased
+ * Drives the shared development field: one point per locus (its anchor, or the layout's
+ * `focus` for it where the image hangs to one side of the feature), each value eased
  * toward its target over about 900 ms and written straight into the uniforms every
  * frame. This is what makes colour flood in around a locus when an answer is right.
  * Only changes the learner is meant to watch are eased (an image placed, an answer given).
@@ -32,7 +33,7 @@ export function DevelopmentDriver({ layout, targets, snap, veil }: { layout: Pal
 
   useLayoutEffect(() => {
     const n = Math.min(layout.loci.length, MAX_LOCI);
-    for (let i = 0; i < n; i++) developmentUniforms.uDevPoints.value[i].set(...layout.loci[i].anchor);
+    for (let i = 0; i < n; i++) developmentUniforms.uDevPoints.value[i].set(...(layout.focus?.[i] ?? layout.loci[i].anchor));
     developmentUniforms.uDevCount.value = n;
   }, [layout]);
 

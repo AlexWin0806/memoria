@@ -199,14 +199,24 @@ export interface ImagoTokenProps {
   appear?: boolean;
   /** Fade out as the camera comes close, so a glide never pushes the lens through an image. */
   fadeNear?: boolean;
+  /**
+   * The image is no longer shown: with `appear`, play the appear backwards (about 200 ms),
+   * then stop drawing and call `onGone`, so the owner can unmount it. Shown again before
+   * that, it comes back from where it had got to.
+   */
+  leaving?: boolean;
+  onGone?: () => void;
 }
 
 const APPEAR_SECONDS = 0.45;
+/** A hide is the appear run backwards, this much faster: 200 ms from solid to gone. */
+const LEAVE_RATE = APPEAR_SECONDS / 0.2;
 /**
  * Camera distances (metres) between which a `fadeNear` token goes from hidden to solid.
- * At 3 m a token is half the height of the picture; closer than that (walking under the
- * image in the arch) it would fill the frame, so it is gone by then. No resting view has an
- * image nearer than 3 m in its picture: the viewpoints stand 4.3 m or more from their own.
+ * At 3 m a token is half the height of the picture; closer than that it would fill the
+ * frame, so it is gone by then. A safeguard: anchors are kept out of the walking lines, and
+ * no resting view has an image nearer than 3 m in its picture (the viewpoints stand 4.3 m
+ * or more from their own).
  */
 const NEAR_HIDDEN = 1.7;
 const NEAR_SOLID = 3.0;
@@ -239,7 +249,7 @@ function seedOf(text: string): number {
  * the theme (ink, paper, the locus accent), so it belongs to the page in any style.
  * A halo of bare paper keeps it legible against whatever is behind it.
  */
-export function ImagoToken({ imago, position, accent, presence = 1, still, appear, fadeNear }: ImagoTokenProps) {
+export function ImagoToken({ imago, position, accent, presence = 1, still, appear, fadeNear, leaving, onGone }: ImagoTokenProps) {
   const theme = useTheme();
   const group = useRef<Group>(null);
   const face = useRef<Group>(null);
@@ -249,6 +259,7 @@ export function ImagoToken({ imago, position, accent, presence = 1, still, appea
   const fade = useMemo<Fade>(() => ({ value: 1 }), []);
   const setDisc = useMemo(() => (m: ShaderMaterial) => void (disc.current = m), []);
   const age = useRef(0);
+  const gone = useRef(false);
   const { ink, paper, accents } = theme.palette;
   const pigment = accents[accent];
   const seed = useMemo(() => seedOf(imago.glyphs.join('') + imago.scene), [imago]);
@@ -262,11 +273,22 @@ export function ImagoToken({ imago, position, accent, presence = 1, still, appea
     let grow = presence;
     let opacity = presence;
     if (appear) {
-      age.current = Math.min(APPEAR_SECONDS, age.current + delta);
+      // One clock for both directions: a hide part-way through an appear (or the reverse)
+      // carries on from the scale and opacity on screen, so nothing jumps.
+      age.current = leaving ? Math.max(0, age.current - delta * LEAVE_RATE) : Math.min(APPEAR_SECONDS, age.current + delta);
       const p = age.current / APPEAR_SECONDS;
       grow = still ? 1 : easeOutBack(p);
       opacity = Math.min(1, p * 1.8);
     }
+    // Faded out: not drawn any more, and the owner is told once.
+    const out = leaving === true && (!appear || age.current <= 0);
+    g.visible = !out;
+    if (out) {
+      if (!gone.current) onGone?.();
+      gone.current = true;
+      return;
+    }
+    gone.current = false;
     if (fadeNear) {
       const k = Math.min(1, Math.max(0, (camera.position.distanceTo(g.position) - NEAR_HIDDEN) / (NEAR_SOLID - NEAR_HIDDEN)));
       opacity *= k * k * (3 - 2 * k);

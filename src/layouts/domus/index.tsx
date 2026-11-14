@@ -3,7 +3,7 @@ import { CylinderGeometry } from 'three';
 import type { PalaceLayout } from '@/layouts/types';
 import { Surface } from '@/styles';
 import { Features, NICHE, WINDOW } from './features';
-import { DOMUS_FOOTPRINT, DOMUS_META } from './meta';
+import { DOMUS_FOCUS, DOMUS_FOOTPRINT, DOMUS_META } from './meta';
 import { type Placement, Repeated, T, UNIT_BOX, wallGeometry } from './parts';
 
 /**
@@ -191,4 +191,4 @@ function Structure() {
   );
 }
 
-export const DOMUS: PalaceLayout = { ...DOMUS_META, Structure, footprint: DOMUS_FOOTPRINT };
+export const DOMUS: PalaceLayout = { ...DOMUS_META, Structure, footprint: DOMUS_FOOTPRINT, focus: DOMUS_FOCUS };

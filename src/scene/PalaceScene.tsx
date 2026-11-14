@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { JUDGE_DECK_ID } from '@/ai/fixtures';
+import type { Locus, MemoryItem } from '@/core/types';
 import type { PalaceLayout } from '@/layouts';
 import { getDeck, useDeck } from '@/state/decks';
 import { useReview } from '@/state/review';
@@ -17,6 +18,34 @@ import { resultsTour } from './tour';
 import type { Veil } from './veil';
 
 const NO_TOKENS: SceneView['tokens'] = [];
+
+/** One memory image in the scene. */
+interface Shown {
+  key: string;
+  item: MemoryItem;
+  locus: Locus;
+}
+const NONE: Shown[] = [];
+
+/**
+ * The images that have just stopped being shown, kept in the scene while they fade out
+ * (ImagoToken's `leaving`), and the callback that drops one when its fade has ended.
+ * Worked out while rendering, not in an effect: an image goes from shown to leaving in the
+ * same commit, so it is never unmounted and mounted again in between. With `fade` off
+ * (reduced motion, frozen QA shots) nothing lingers: a hidden image is gone at once.
+ */
+function useLeaving(shown: Shown[], fade: boolean): [Shown[], (key: string) => void] {
+  const [last, setLast] = useState(shown);
+  const [leaving, setLeaving] = useState(NONE);
+  if (last !== shown) {
+    setLast(shown);
+    const hidden = (t: Shown) => !shown.some((s) => s.key === t.key);
+    const next = fade ? [...leaving.filter(hidden), ...last.filter((t) => hidden(t) && !leaving.some((l) => l.key === t.key))] : NONE;
+    if (next.length || leaving.length) setLeaving(next.length ? next : NONE);
+  }
+  const drop = useCallback((key: string) => setLeaving((all) => (all.some((t) => t.key === key) ? all.filter((t) => t.key !== key) : all)), []);
+  return [fade ? leaving : NONE, drop];
+}
 
 /** `&tokens=all`: one deck's images (the Judge deck unless `&deck=` names another), all visible, wherever the session is. */
 function allTokens(layout: PalaceLayout, deckId: string): SceneView['tokens'] {
@@ -48,7 +77,7 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
     const input = { mode, layout, deck, stops, step, arrived, results, cards, imagesHidden };
     return deriveSceneView(input);
   }, [mode, layout, deck, stops, step, arrived, results, cards, imagesHidden]);
-  // While images are hidden none is mounted, so one that was still appearing is gone too.
+  // While images are hidden none is shown: each fades out from wherever its appear had got to.
   const tokens = useMemo(
     () => (qa.tokensAll ? allTokens(layout, qa.deck ?? JUDGE_DECK_ID) : imagesHidden ? NO_TOKENS : view.tokens),
     [qa.tokensAll, qa.deck, layout, view.tokens, imagesHidden],
@@ -60,6 +89,15 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
   }, [qa.dev, layout, view.development]);
 
   const still = qa.frozen || reduced;
+  const shown = useMemo(
+    () =>
+      tokens.flatMap(({ locusIndex, item, visible }): Shown[] => {
+        const locus = layout.loci[locusIndex];
+        return visible && locus ? [{ key: `${item.id}@${locus.id}`, item, locus }] : [];
+      }),
+    [tokens, layout],
+  );
+  const [leaving, drop] = useLeaving(shown, !still);
   const current = typeof view.camera === 'number' ? layout.loci[view.camera] : undefined;
 
   // Results: a tour of the places just walked, in place of the overview.
@@ -95,19 +133,27 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
         veil={veil}
       />
       <DevelopmentDriver layout={layout} targets={development} snap={qa.frozen} veil={veil} />
-      {tokens.map(({ locusIndex, item, visible }) => {
-        const locus = layout.loci[locusIndex];
-        return visible && locus ? (
-          <FlourishPulse key={`${item.id}@${locus.id}`} flourish={flourish} locusIndex={locus.index} anchor={locus.anchor}>
-            <ImagoToken imago={item.imago} position={locus.anchor} accent={locus.accent} still={still} appear={!qa.frozen} fadeNear />
-          </FlourishPulse>
-        ) : null;
-      })}
+      {/* One list, so that an image keeps its place in the scene when it moves from shown to leaving. */}
+      {[...shown, ...leaving].map(({ key, item, locus }, i) => (
+        <FlourishPulse key={key} flourish={flourish} locusIndex={locus.index} anchor={locus.anchor}>
+          <ImagoToken
+            imago={item.imago}
+            position={locus.anchor}
+            accent={locus.accent}
+            still={still}
+            appear={!qa.frozen}
+            fadeNear
+            leaving={i >= shown.length}
+            onGone={() => drop(key)}
+          />
+        </FlourishPulse>
+      ))}
       <FlourishRing flourish={flourish} layout={layout} />
       {view.labels && current && arrived && !qa.frozen && (
         <LocusLabel
           key={current.id}
           locus={current}
+          at={layout.focus?.[current.index]}
           total={layout.loci.length}
           raised={tokens.some((t) => t.visible && t.locusIndex === current.index)}
           still={reduced}

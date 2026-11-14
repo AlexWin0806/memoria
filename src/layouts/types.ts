@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import type { PalaceLayoutMeta } from '@/core/types';
+import type { PalaceLayoutMeta, Vec3 } from '@/core/types';
 
 /**
  * A palace layout: data (rooms, loci, camera poses) plus a Structure component that
@@ -10,8 +10,16 @@ export interface PalaceLayout extends PalaceLayoutMeta {
   Structure: FC;
   /**
    * By locus index: radius in metres of the floor that locus's feature stands on, measured
-   * from the point under its anchor. The engine draws its floor marks (the ring at the moment
-   * of recall) from there outwards, so they are not hidden under the feature. Default 0.5.
+   * from the point under its anchor (or its `focus`). The engine draws its floor marks (the
+   * ring at the moment of recall) from there outwards, so they are not hidden under the
+   * feature. Default 0.5.
    */
   footprint?: number[];
+  /**
+   * By locus index: the point a feature is centred on, where that is not its anchor (an image
+   * hung beside a doorway, clear of the walking line). The engine centres on it what belongs to
+   * the place and not to the image: the development field, the floor ring, the name plate.
+   * Default: the anchor.
+   */
+  focus?: Record<number, Vec3>;
 }
