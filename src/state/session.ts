@@ -29,6 +29,12 @@ export interface SessionState {
   results: WalkResult[];
   /** True during a Judge Mode run (timed, fixture deck, never touches the network). */
   judge: boolean;
+  /**
+   * True while the screen between the encode walk and the recall walk is up ("the images are
+   * now hidden"): no memory image may be visible then. False again once the recall walk
+   * starts or the walk is left. The engine passes it to `deriveSceneView`.
+   */
+  imagesHidden: boolean;
   /** Width in px that the overlay covers on the right; the engine re-centres the view. */
   insetRight: number;
   /** Height in px that the overlay covers at the bottom (the sheet on narrow screens), else 0. */
@@ -44,6 +50,7 @@ export interface SessionState {
   answer: (result: WalkResult) => void;
   toResults: () => void;
   setArrived: (arrived: boolean) => void;
+  setImagesHidden: (hidden: boolean) => void;
   setInsetRight: (px: number) => void;
   setInsetBottom: (px: number) => void;
 }
@@ -57,12 +64,14 @@ export const useSession = create<SessionState>()((set) => ({
   arrived: false,
   results: [],
   judge: false,
+  imagesHidden: false,
   insetRight: 0,
   insetBottom: 0,
 
-  toAttract: () => set({ mode: 'attract', stops: [], step: -1, arrived: false, results: [], judge: false }),
-  toCompose: () => set({ mode: 'compose', stops: [], step: -1, arrived: false, judge: false }),
-  toReview: () => set({ mode: 'review', stops: [], step: -1, arrived: false, judge: false }),
+  // Every way out of the screen between the two walks shows the images again.
+  toAttract: () => set({ mode: 'attract', stops: [], step: -1, arrived: false, results: [], judge: false, imagesHidden: false }),
+  toCompose: () => set({ mode: 'compose', stops: [], step: -1, arrived: false, judge: false, imagesHidden: false }),
+  toReview: () => set({ mode: 'review', stops: [], step: -1, arrived: false, judge: false, imagesHidden: false }),
   startWalk: (mode, { deckId, stops, judge }) =>
     set((s) => ({
       mode,
@@ -72,12 +81,14 @@ export const useSession = create<SessionState>()((set) => ({
       arrived: false,
       results: mode === 'recall' ? [] : s.results,
       judge: judge ?? s.judge,
+      imagesHidden: false,
     })),
   next: () => set((s) => (s.step < s.stops.length - 1 ? { step: s.step + 1, arrived: false } : s)),
   prev: () => set((s) => (s.step > 0 ? { step: s.step - 1, arrived: false } : s)),
   answer: (result) => set((s) => ({ results: [...s.results.filter((r) => r.itemId !== result.itemId), result] })),
-  toResults: () => set({ mode: 'results', arrived: false }),
+  toResults: () => set({ mode: 'results', arrived: false, imagesHidden: false }),
   setArrived: (arrived) => set({ arrived }),
+  setImagesHidden: (imagesHidden) => set({ imagesHidden }),
   setInsetRight: (insetRight) => set({ insetRight }),
   setInsetBottom: (insetBottom) => set({ insetBottom }),
 }));

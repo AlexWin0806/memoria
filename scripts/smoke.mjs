@@ -16,7 +16,8 @@
  *   d  (continues c) reload: the new deck is still listed; new versus due; reviews; the Leave dialog
  *   e  Judge Mode with the browser offline       -> "7 of 8", no requests at all, Strengthen at once
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
- *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay
+ *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay;
+ *      a timed encode stop can be paused (P) and resumed (Space)
  *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of four -> "4 of 4"
  *   r  Compose: the draft survives a reload at both steps; dropped lines, the three-fact minimum,
  *      emoji-only glyphs, the read-to-the-end gate, validation that names the card, Discard draft
@@ -24,6 +25,11 @@
  *      "I was right" overrules a miss; results say "self-marked", and right and missed are scheduled apart
  *   w  A recall walk survives a reload ("Resume your walk"), its answers are already recorded,
  *      and the browser's Back button opens the Leave dialog
+ *   s  Saved data of the wrong shape (four cases, the first the value from QA review 2) is set
+ *      aside: the title loads with one quiet line, the original is kept, Judge Mode still starts
+ *   x  A render error shows the error page, not a blank one: Reload, and the guarded Reset
+ *   l  Theme Lab (?lab): its buttons take a real click on the title and during a walk; Copy JSON
+ *      holds a change made in the Lab, Reset clears it; keys pressed in the Lab do not reach the walk
  *
  * Timing. Cases a and p print how long a passive run took, with THINK_MS of thought per
  * answer. Run them alone for a fair figure (software rendering slows down when cases share
@@ -82,6 +88,8 @@ const JUDGE_DECK_TITLE = 'The eight carpal bones';
 const THINK_MS = 2000;
 /** The pitch run waits on its "spot check" screen until its button is pressed: time to read its 18 words. */
 const READ_MS = 4000;
+/** The default run's "recall walk" screen waits too: time to read its 33 words at the same pace. */
+const READ_DEFAULT_MS = 8000;
 const spanishSrc = readFileSync('src/ai/fixtures/spanish-kitchen.ts', 'utf8');
 /** Spanish kitchen deck: the term at each named place. */
 const spanishAt = Object.fromEntries(
@@ -121,8 +129,8 @@ function assert(cond, message) {
 // ink style manages only a few frames per second, so run on the cheap greybox theme.
 const FAST = 'theme=greybox';
 
-async function open(viewport = { width: 1440, height: 900 }) {
-  const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+async function open(viewport = { width: 1440, height: 900 }, permissions = []) {
+  const context = await browser.newContext({ viewport, deviceScaleFactor: 1, permissions });
   const page = await context.newPage();
   page.setDefaultTimeout(60000);
   const errors = [];
@@ -145,16 +153,31 @@ const choiceTexts = (page, testid) => page.locator(`[data-testid=${testid}] span
  */
 function installWalkLog() {
   if (window.__walkLog) {
-    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '', extra: [] });
+    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [] });
     return;
   }
-  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '', extra: [] };
+  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [] };
   const note = (list, entry) => {
     if (!list.some((e) => e.label === entry.label)) list.push(entry);
   };
+  let lastStop = '';
+  let lastScreen = '';
   const look = () => {
     const log = window.__walkLog;
     if (document.querySelector('[data-testid=familiarize]')) log.preview = true;
+    // The "time at this place" bar only ever fills forwards: the moment a new stop begins it is
+    // already empty. (Easing back to empty, it would still be nearly full at this point.)
+    const stop = document.querySelector('[data-testid=encode] [data-testid=walk-label]')?.textContent ?? '';
+    if (stop && stop !== lastStop) {
+      const fill = document.querySelector('[data-testid=encode] .bar__fill');
+      if (fill && lastStop && parseFloat(getComputedStyle(fill).width) > 1) log.barBack.push(stop);
+    }
+    lastStop = stop;
+    // With ?debug=stores: whether the session hides the images, each time the screen changes.
+    const screen = ['interstitial', 'recall', 'results'].find((id) => document.querySelector(`[data-testid=${id}]`)) ?? '';
+    const session = window.__memoria?.session;
+    if (session && screen !== lastScreen) log.hidden.push([screen || 'walk', session.getState().imagesHidden]);
+    lastScreen = screen;
     // A timed run shows the place, the term, the meaning and the scene, and nothing else to read.
     for (const id of ['encode-reason', 'place-hint']) {
       if (document.querySelector(`[data-testid=${id}]`) && !log.extra.includes(id)) log.extra.push(id);
@@ -234,16 +257,13 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     assert(e.term.trim() === termAt[place], `encode stop ${i + 1}: wrong term at ${place}`);
   });
   await quietShot('interstitial');
-  if (pitch) {
-    // The pitch run waits here for its button, however long the judge takes to read.
-    // The reading time counts from when the screen appeared, not from when the harness finished its checks.
-    await page.waitForTimeout(Math.max(300, (passive ? READ_MS : 0) - (Date.now() - interstitialAt)));
-    await page.getByTestId('recall-start').click();
-    mark('spot check started');
-  } else if (!passive) {
-    // The pause ends by itself in the default run, so the button may already be gone.
-    await page.getByTestId('recall-start').click({ timeout: 2500 }).catch(() => {});
-  }
+  // Both runs wait here for the button, however long the judge takes to read.
+  // The reading time counts from when the screen appeared, not from when the harness finished its checks.
+  const read = passive ? (pitch ? READ_MS : READ_DEFAULT_MS) : 0;
+  await page.waitForTimeout(Math.max(300, read - (Date.now() - interstitialAt)));
+  assert((await page.getByTestId('interstitial').count()) === 1, 'the screen between the two walks moved on by itself');
+  await page.getByTestId('recall-start').click();
+  mark(pitch ? 'spot check started' : 'recall walk started');
 
   const stops = pitch ? 4 : 8;
   const label = (i) => (pitch ? `Spot check ${i} of 4` : `Place ${i} of 8`);
@@ -282,6 +302,13 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     assert(r.text.includes(expected[i].answer), `recall stop ${i + 1}: the correct term is not shown`);
   });
   await quietShot('results');
+  const { barBack, hidden } = await page.evaluate(() => window.__walkLog);
+  assert(barBack.length === 0, `the time bar ran backwards at the start of: ${barBack}`);
+  // With the stores exposed: the images are hidden for exactly as long as the screen between the walks is up.
+  if (hidden.length) {
+    const wrongly = hidden.filter(([screen, value]) => value !== (screen === 'interstitial'));
+    assert(hidden.some(([screen]) => screen === 'interstitial') && wrongly.length === 0, `session.imagesHidden by screen: ${JSON.stringify(hidden)}`);
+  }
   const timeline = Object.entries(phases)
     .map(([name, at]) => `${name} at ${at} s`)
     .join(', ');
@@ -367,6 +394,10 @@ const cases = {
 
   async b() {
     const { context, page, errors } = await open();
+    // With the stores exposed, the run also checks that the session hides the images between the walks.
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoria?.session);
     const { score } = await judgeRun(page, { wrong: 2 });
     assert(score === '6 of 8', `expected 6 of 8, got "${score}"`);
     const n = await page.getByTestId('strengthen').count();
@@ -448,7 +479,11 @@ const cases = {
     await tabTo(page, 'compose-title');
     await key('Control+A');
     await page.keyboard.type(DECK_TITLE);
-    await tabTo(page, 'compose-place');
+    // The skip link is the next Tab stop: it goes to the place button without a Tab through every card.
+    await page.keyboard.press('Tab');
+    assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'compose-skip'), 'the skip link is not the first stop after the palace name');
+    await key('Enter');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'compose-place');
     await page.getByTestId('compose-place').scrollIntoViewIfNeeded();
     await shot(page, 'compose-place');
     await key('Enter');
@@ -887,6 +922,187 @@ const cases = {
     return `reload mid-recall: 2 answers already recorded, resumed at place 3 (${thirdPlace}); Back opens the Leave dialog; Start over forgets the walk`;
   },
 
+  /** Saved data of the wrong shape is set aside, never fatal. */
+  async s() {
+    const { context, page, errors } = await open();
+    const good = {
+      id: 'deck-ok',
+      title: 'A kept palace',
+      kind: 'list',
+      layoutId: 'domus',
+      createdAt: 5,
+      items: [{ id: 'k1', term: 'Kept', locusId: 'domus-01', imago: { scene: 'A kept scene.', glyphs: ['⭐'], action: 'bob', source: 'learner' } }],
+    };
+    // [name, localStorage, learner decks that survive, sessionStorage]
+    const shapes = [
+      // The exact value from QA review 2, issue 1: it left every URL blank.
+      ['a deck with no item list', { 'memoria.decks.v1': '{"state":{"decks":[{"id":"a","title":"Old deck"}]},"version":0}' }, 0],
+      ['decks as a string', { 'memoria.decks.v1': '{"state":{"decks":"oops"},"version":0}' }, 0],
+      [
+        'malformed items, a number for a deck, an old version',
+        { 'memoria.decks.v1': JSON.stringify({ state: { decks: { a: { id: 'a', title: 'Old deck', items: [{ id: 'x', term: 'T' }, null, 7] }, b: 5, ok: good } }, version: 3 }) },
+        1,
+      ],
+      [
+        'a stray array of decks, and every other store malformed',
+        {
+          'memoria.decks.v1': JSON.stringify({ state: { decks: [good, { id: 'b' }] }, version: 0 }),
+          'memoria.review.v1': JSON.stringify({ state: { cards: { k1: { itemId: 'k1', deckId: 'deck-ok', box: 'two' }, z: null }, walk: 'yes' }, version: 0 }),
+          'memoria.settings.v1': JSON.stringify({ state: { themeId: 7, reducedMotion: 'maybe', recallInput: 'sung', familiarized: [1] }, version: 0 }),
+          'memoria.draft.v1': JSON.stringify({ state: { text: 5, stage: 'proposal', plan: { title: 'x' }, items: 'none', open: true }, version: 0 }),
+          'memoria.ab.v1': '{"rows":1}',
+        },
+        1,
+        { 'memoria.walk.v1': '{"mode":"recall","deckId":"deck-ok","stops":"all","results":[]}' },
+      ],
+    ];
+    for (const [name, local, kept, session = {}] of shapes) {
+      await page.evaluate(
+        ([l, s]) => {
+          localStorage.clear();
+          sessionStorage.clear();
+          for (const [k, v] of Object.entries(l)) localStorage.setItem(k, v);
+          for (const [k, v] of Object.entries(s)) sessionStorage.setItem(k, v);
+        },
+        [local, session],
+      );
+      await page.reload({ waitUntil: 'load' });
+      await page.getByTestId('title').waitFor();
+      assert((await page.getByTestId('storage-notice').count()) === 1, `${name}: the title does not say that data was set aside`);
+      assert((await text(page.getByTestId('storage-notice'))) === 'Some saved data could not be read and was set aside.', `${name}: wrong notice`);
+      const rows = await deckRows(page);
+      assert(rows.count === fixtureCount + kept, `${name}: expected ${fixtureCount + kept} deck rows, got ${rows.count}`);
+      if (kept) assert(rows.meta['A kept palace'] === '1 place · not started', `${name}: the well-formed deck was not kept: ${JSON.stringify(rows.meta)}`);
+      const aside = await page.evaluate(() => JSON.parse(localStorage.getItem('memoria.quarantine.v1') ?? '[]'));
+      for (const [k, v] of Object.entries({ ...local, ...session })) {
+        assert(aside.some((e) => e.key === k && e.raw === v), `${name}: the original of ${k} was not kept`);
+      }
+      if (name === shapes[0][0]) await shot(page, 'title-set-aside');
+      // Judge Mode still starts; then back to the title, so that the walk is not saved over the next case.
+      await page.getByTestId('title-judge').click();
+      await page.getByTestId('familiarize').waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByTestId('leave-yes').click();
+      await page.getByTestId('title').waitFor();
+      assert(errors.length === 0, `${name}: page errors: ${errors.join(' | ')}`);
+    }
+    // What was repaired stays repaired: the next load is quiet, and the kept deck is still there.
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert((await page.getByTestId('storage-notice').count()) === 0, 'the notice came back on a clean load');
+    assert((await deckRows(page)).count === fixtureCount + 1, 'the kept deck did not survive the repair');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `${shapes.length} malformed shapes: title loads, one quiet line, originals kept in memoria.quarantine.v1, Judge Mode starts`;
+  },
+
+  /** A render error shows a page with a way out. */
+  async x() {
+    const { context, page } = await open();
+    await page.goto(`${base}/?debug&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    // ?debug exposes the session store; a walk with no list of stops cannot be drawn.
+    const breakIt = async () => {
+      await page.waitForFunction(() => window.__memoria?.session);
+      await page.evaluate(() => window.__memoria.session.setState({ mode: 'encode', deckId: 'fixture-carpals', stops: null, step: 0 }));
+    };
+    await breakIt();
+    const fault = page.getByTestId('fault');
+    await fault.waitFor();
+    assert((await text(fault)).includes('Something went wrong while this page was being drawn'), 'the error page does not say what happened');
+    assert((await page.locator('canvas').count()) === 0 && (await page.locator('.ov').count()) === 0, 'the broken app is still mounted behind the error page');
+    assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'fault-reload'), 'Reload should have the focus');
+    await shot(page, 'fault');
+    await page.getByTestId('fault-reload').click();
+    await page.getByTestId('title').waitFor();
+
+    // Reset asks first, keeps everything on "Keep my data", and clears every memoria.* key on "Delete".
+    await page.evaluate(() => localStorage.setItem('memoria.settings.v1', JSON.stringify({ state: { recallInput: 'typed' }, version: 0 })));
+    await breakIt();
+    await fault.waitFor();
+    await page.getByTestId('fault-reset').click();
+    await page.getByTestId('fault-ask').waitFor();
+    await shot(page, 'fault-reset');
+    await page.getByTestId('fault-reset-no').click();
+    assert((await page.evaluate(() => localStorage.getItem('memoria.settings.v1'))) !== null, '"Keep my data" deleted something');
+    await page.getByTestId('fault-reset').click();
+    await page.getByTestId('fault-reset-yes').click();
+    await page.getByTestId('title').waitFor();
+    const left = await page.evaluate(() => [...Object.keys(localStorage), ...Object.keys(sessionStorage)].filter((k) => k.startsWith('memoria.')));
+    assert(left.length === 0, `Reset left saved data behind: ${left}`);
+    assert((await page.getByTestId('resume').count()) === 0 && (await page.getByTestId('storage-notice').count()) === 0, 'the title after a reset is not a clean one');
+    await context.close();
+    return 'a render error shows the error page; Reload returns to the title; Reset asks first, then clears every memoria.* key';
+  },
+
+  /** Theme Lab: the three buttons take a real click, on the title and during a walk. */
+  async l() {
+    const { context, page, errors } = await open(undefined, ['clipboard-read', 'clipboard-write']);
+    await page.goto(`${base}/?lab&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.getByTestId('lab-copy').waitFor();
+    const radiusVar = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ui-radius').trim());
+    const base0 = await radiusVar();
+    const onTop = () =>
+      page.evaluate(() =>
+        ['lab-copy', 'lab-download', 'lab-reset', 'lab-toggle'].filter((id) => {
+          const el = document.querySelector(`[data-testid=${id}]`);
+          const box = el.getBoundingClientRect();
+          return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) !== el;
+        }),
+      );
+    assert((await onTop()).length === 0, `on the title screen something covers ${await onTop()}`);
+    // The Lab does not sit on the title's text.
+    const clear = await page.evaluate(() => {
+      const lab = document.querySelector('[data-testid=lab]').getBoundingClientRect();
+      const name = document.querySelector('.title__name').getBoundingClientRect();
+      return lab.left >= name.right || lab.bottom <= name.top;
+    });
+    assert(clear, 'the Lab covers the "Memoria" heading');
+
+    // Change one value with the Lab's own controls: unfold the tokens, open "ui", set the corner radius.
+    await page.getByTestId('lab-toggle').click();
+    await page.locator('.lab').getByText('ui', { exact: true }).click();
+    const radius = page.locator('.lab input[id$="ui_radius"]');
+    await radius.fill('9');
+    await radius.press('Enter');
+    await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--ui-radius').trim() === '9px');
+    // The Settings menu names what is on screen, not the saved theme.
+    await page.getByTestId('settings').locator('summary').click();
+    const shown = await page.getByTestId('set-theme').evaluate((el) => el.selectedOptions[0].textContent);
+    assert(shown === 'Greybox (preview)', `the Settings theme menu shows "${shown}" while Greybox is on screen`);
+    await shot(page, 'lab-title');
+
+    await page.getByTestId('lab-copy').click({ timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector('[data-testid=lab-status]').textContent.startsWith('Copied'));
+    const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+    assert(copied.id === 'greybox' && copied.ui.radius === 9, `the clipboard does not hold the theme with the change: ${JSON.stringify(copied.ui)}`);
+    assert(copied.palette?.accents && copied.light && copied.fog && copied.type, 'the copied theme is not a whole theme');
+    const [file] = await Promise.all([page.waitForEvent('download'), page.getByTestId('lab-download').click({ timeout: 5000 })]);
+    assert(file.suggestedFilename() === 'greybox.json', `the download is named ${file.suggestedFilename()}`);
+    await page.getByTestId('lab-reset').click({ timeout: 5000 });
+    await page.waitForFunction((was) => getComputedStyle(document.documentElement).getPropertyValue('--ui-radius').trim() === was, base0);
+    // The field follows a moment after the scene does.
+    await page.waitForFunction((want) => Number(document.querySelector('.lab input[id$="ui_radius"]').value) === want, parseFloat(base0), { timeout: 5000 }).catch(() => {});
+    assert(Number(await radius.inputValue()) === parseFloat(base0), `Reset left the field at ${await radius.inputValue()}`);
+    await page.getByTestId('lab-toggle').click();
+
+    // During a walk: still on top, and a key pressed while the Lab has the focus is not a walk shortcut.
+    await page.getByRole('button', { name: `Walk ${JUDGE_DECK_TITLE}` }).click();
+    const first = page.locator('[data-testid=familiarize] [data-testid=walk-label]:has-text("Place 1 of 8")');
+    await first.waitFor();
+    await page.getByTestId('place-hint').waitFor();
+    assert((await onTop()).length === 0, `during a walk something covers ${await onTop()}`);
+    await page.getByTestId('lab-copy').click({ timeout: 5000 });
+    for (const key of ['ArrowRight', '1', 'Escape']) await page.keyboard.press(key);
+    await page.waitForTimeout(600);
+    assert((await first.count()) === 1 && (await page.getByTestId('leave-confirm').count()) === 0, 'a key pressed in the Lab reached the walk');
+    await shot(page, 'lab-walk');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'Copy JSON, Download JSON and Reset take a real click on the title and during a walk; the clipboard holds the change; Reset clears it';
+  },
+
   async g() {
     const { context, page, errors } = await open();
     await page.goto(`${base}/?judge&${FAST}`, { waitUntil: 'load' });
@@ -897,9 +1113,29 @@ const cases = {
       await page.waitForFunction('window.__MEMORIA_READY__ === true');
       assert((await page.locator('.ov').count()) === 0, `overlay visible with ?${param}`);
     }
+
+    // A timed encode stop can be paused: P stops the clock where it is, Space starts it again.
+    await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title-judge').click();
+    const firstStop = page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 1 of 8")');
+    await page.getByTestId('encode-term').waitFor();
+    await page.keyboard.press('p');
+    await page.locator('[data-testid=encode-pause][aria-pressed=true]').waitFor();
+    const clock = () => page.locator('[data-testid=encode] [role=progressbar]').getAttribute('aria-valuenow');
+    const stoppedAt = await clock();
+    await shot(page, 'encode-paused');
+    // Longer than the stop itself would have lasted.
+    await page.waitForTimeout(5500);
+    assert((await firstStop.count()) === 1, 'a paused stop moved on by itself');
+    assert((await clock()) === stoppedAt, `the clock ran during the pause (${stoppedAt} -> ${await clock()})`);
+    assert((await text(page.getByTestId('encode-hint'))) === 'Paused. Space or P resumes.', 'a paused stop does not say how to resume');
+    await page.keyboard.press('Space');
+    await page.locator('[data-testid=encode-pause][aria-pressed=false]').waitFor();
+    assert((await firstStop.count()) === 1, 'Space moved on instead of resuming');
+    await page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 2 of 8")').waitFor({ timeout: 30000 });
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return '?judge starts Judge Mode; ?shot and ?rail hide the overlay';
+    return '?judge starts Judge Mode; ?shot and ?rail hide the overlay; P pauses a timed stop and Space resumes it';
   },
 };
 

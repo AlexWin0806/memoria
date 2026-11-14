@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { CONTROL_LIST, JUDGE_DECK_ID } from '@/ai/fixtures';
 import { itemAt } from '@/flows/flow';
 import { plural } from '@/flows/format';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { isLastStop, useSession } from '@/state/session';
+import { ProgressBar } from '@/ui/Walk';
 import {
   DISTRACTOR_SECONDS,
   ENCODE_SECONDS_PER_STOP,
@@ -16,6 +16,7 @@ import {
   currentArm,
   finishDistractor,
   finishStudy,
+  materialFor,
   showResults,
   useAb,
 } from './store';
@@ -23,14 +24,8 @@ import { useLiveClock, usePausableCountdown } from './timer';
 
 const ARM_NAME = { list: 'Plain list', palace: 'Palace' } as const;
 
-function Bar({ value, label }: { value: number; label: string }) {
-  const pct = Math.round(Math.min(1, Math.max(0, value)) * 100);
-  return (
-    <div className="bar" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-      <div className="bar__fill" style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
+/** The overlay's bar: it fills forwards and resets at once when a new stop begins. */
+const Bar = ProgressBar;
 
 /** A whole number of seconds left, with the bar under it. Not a live region: it would be read out every second. */
 function Clock({ left, total, label, testid }: { left: number; total: number; label: string; testid: string }) {
@@ -61,7 +56,7 @@ export function Intro() {
       )}
       <p className="body">
         You will learn two sets of eight terms, in order: one as a numbered list on this page, one on a walk through the palace. Which comes
-        first is drawn at random.
+        first, and which set goes where, is drawn at random.
       </p>
       <p className="body">After each set come twenty seconds of sums, then a test of all eight in order. It takes about four minutes.</p>
       <p className="muted">
@@ -129,6 +124,8 @@ export function Ready() {
 /** List arm: the eight terms as plain text for a fixed time. The scene idles. */
 export function ListStudy() {
   const paused = useAb((s) => s.confirmAbandon);
+  // The list that is not in the palace for this participant.
+  const list = materialFor(useAb((s) => s.palaceList)).list;
   const total = LIST_STUDY_SECONDS * 1000;
   const left = usePausableCountdown(LIST_STUDY_SECONDS, !paused, 'list', () => finishStudy(total));
   return (
@@ -149,8 +146,8 @@ export function ListStudy() {
         // Hidden while the abandon question is open, so a pause is not extra study time.
         <p className="muted">Paused.</p>
       ) : (
-        <ol className="ab-list" aria-label={CONTROL_LIST.title}>
-          {CONTROL_LIST.items.map((it, i) => (
+        <ol className="ab-list" aria-label={list.title} data-list={list.id}>
+          {list.items.map((it, i) => (
             <li key={it.term} className="ab-list__item" data-testid="ab-list-item">
               <span className="ab-list__n">{i + 1}</span>
               <span className="ab-list__term" data-testid="ab-list-term">
@@ -167,8 +164,10 @@ export function ListStudy() {
 
 /**
  * Palace arm: a timed encode walk. Each image is shown for ENCODE_SECONDS_PER_STOP from the
- * moment the camera arrives, as in the pitch variant of Judge Mode, and nothing skips ahead:
- * every participant gets the same time at every place.
+ * moment the camera arrives, as in the pitch variant of Judge Mode, and nothing skips ahead
+ * or pauses: every participant gets the same time at every place. The panel shows what the
+ * Judge runs show (place, term, meaning, scene) and no "why" line, which a few seconds leave
+ * no time to read.
  */
 export function PalaceEncode() {
   const paused = useAb((s) => s.confirmAbandon);
@@ -176,7 +175,7 @@ export function PalaceEncode() {
   const stops = useSession((s) => s.stops);
   const step = useSession((s) => s.step);
   const arrived = useSession((s) => s.arrived);
-  const deck = useDeck(JUDGE_DECK_ID);
+  const deck = useDeck(materialFor(useAb((s) => s.palaceList)).deckId);
   const layout = getLayout(deck?.layoutId);
   const locus = layout.loci[stops[step]];
   const item = itemAt(deck, locus);
@@ -205,11 +204,6 @@ export function PalaceEncode() {
             {item.meaning && <p className="body">{item.meaning}</p>}
             <hr />
             <p className="scene">{item.imago.scene}</p>
-            {item.imago.reason && (
-              <p className="reason">
-                <span className="label">Why</span> {item.imago.reason}
-              </p>
-            )}
           </>
         ) : (
           <p className="muted">Walking to {locus.name}.</p>
@@ -321,6 +315,8 @@ export function RecallTest() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !/^[1-8]$/.test(e.key)) return;
+      // A digit typed into a Theme Lab field (`?lab`) is not an answer.
+      if (e.target instanceof Element && e.target.closest('[data-lab]')) return;
       const option = useAb.getState().options[Number(e.key) - 1];
       if (!option) return;
       e.preventDefault();

@@ -6,6 +6,7 @@ import { getDeck, useDecks } from '@/state/decks';
 import { dueItemIds, useReview } from '@/state/review';
 import { isLastStop, useSession, type WalkResult } from '@/state/session';
 import { useSettings } from '@/state/settings';
+import { cleanWalk, STORE_KEYS } from '@/state/storage';
 import { shuffle } from './answers';
 import { JUDGE_TIMING, type JudgeTiming, type JudgeVariant } from './timing';
 
@@ -50,27 +51,19 @@ interface FlowState {
   savedWalk: SavedWalk | null;
 }
 
-const WALK_KEY = 'memoria.walk.v1';
+const WALK_KEY = STORE_KEYS.walk;
 
+/**
+ * The walk a reload cut short, if it can still be walked: well formed (see @/state/storage),
+ * its deck still there, and every stop a place of that deck's palace.
+ */
 function readSavedWalk(): SavedWalk | null {
   try {
-    const w = JSON.parse(sessionStorage.getItem(WALK_KEY) ?? 'null') as Partial<SavedWalk> | null;
-    if (!w || typeof w.deckId !== 'string' || !Array.isArray(w.stops) || !Array.isArray(w.results)) return null;
-    if (w.mode !== 'familiarize' && w.mode !== 'encode' && w.mode !== 'recall') return null;
-    if (typeof w.step !== 'number' || w.step < 0 || w.step >= w.stops.length) return null;
-    return {
-      mode: w.mode,
-      phase: w.phase === 'routeCheck' || w.phase === 'interstitial' ? w.phase : 'walk',
-      layoutId: String(w.layoutId ?? ''),
-      deckId: w.deckId,
-      stops: w.stops,
-      step: w.step,
-      results: w.results,
-      judge: w.judge === true,
-      judgeVariant: w.judgeVariant === 'pitch' ? 'pitch' : 'default',
-      walkId: String(w.walkId ?? ''),
-      recallSpentMs: Number(w.recallSpentMs) || 0,
-    };
+    const w = cleanWalk(JSON.parse(sessionStorage.getItem(WALK_KEY) ?? 'null'));
+    const deck = w ? getDeck(w.deckId) : undefined;
+    if (!w || !deck) return null;
+    const places = getLayout(deck.layoutId).loci.length;
+    return w.stops.every((index) => index < places) ? w : null;
   } catch {
     return null;
   }
@@ -187,8 +180,14 @@ export function beginEncodeAfterFamiliarize(): void {
 
 export function advanceEncode(): void {
   const s = useSession.getState();
-  if (isLastStop(s)) useFlow.setState({ phase: 'interstitial' });
-  else s.next();
+  if (!isLastStop(s)) {
+    s.next();
+    return;
+  }
+  // "The images are now hidden" has to be true in the scene too, for as long as that screen is up:
+  // starting the recall walk or leaving (startWalk, toAttract) shows them again.
+  s.setImagesHidden(true);
+  useFlow.setState({ phase: 'interstitial' });
 }
 
 export function beginRecallAfterEncode(): void {
@@ -287,6 +286,8 @@ export function resumeWalk(): void {
     arrived: false,
     results: w.results,
     judge: w.judge,
+    // Resumed on the screen between the two walks: the images stay hidden there.
+    imagesHidden: w.mode === 'encode' && w.phase === 'interstitial',
   });
 }
 

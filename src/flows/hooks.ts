@@ -25,6 +25,10 @@ export interface WalkKeys {
   back?: () => void;
   /** 0-based option index for keys 1 to 4. */
   pick?: (index: number) => void;
+  /** The P key: pause or resume a timed stop. */
+  pause?: () => void;
+  /** Set while a timed stop is paused: Space resumes it instead of moving on. */
+  resume?: () => void;
 }
 
 function isTextField(el: EventTarget | null): boolean {
@@ -38,7 +42,7 @@ function activatesItself(el: EventTarget | null): boolean {
 }
 
 /**
- * Walk shortcuts: Right / Space / Enter next, Left back, 1 to 4 pick an option.
+ * Walk shortcuts: Right / Space / Enter next, Left back, 1 to 4 pick an option, P pause.
  * Keys are left alone while a text field has focus, and Space / Enter are left to a
  * focused button so that one press never counts twice.
  */
@@ -61,9 +65,14 @@ export function useWalkKeys(keys: WalkKeys): void {
           fn();
         }
       } else if (e.key === ' ' || e.key === 'Enter') {
-        if (isTextField(t) || activatesItself(t) || !k.next) return;
+        const fn = e.key === ' ' && k.resume ? k.resume : k.next;
+        if (isTextField(t) || activatesItself(t) || !fn) return;
         e.preventDefault();
-        k.next();
+        fn();
+      } else if (e.key === 'p' || e.key === 'P') {
+        if (isTextField(t) || !k.pause) return;
+        e.preventDefault();
+        k.pause();
       } else if (/^[1-4]$/.test(e.key)) {
         if (isTextField(t) || !k.pick) return;
         e.preventDefault();
@@ -81,20 +90,20 @@ export function useWalkKeys(keys: WalkKeys): void {
  * exactly `seconds` however coarse the progress steps are.
  */
 export function useCountdown(active: boolean, seconds: number, key: string | number, onDone: () => void): number {
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState({ key, value: 0 });
   const done = useRef(onDone);
   useEffect(() => {
     done.current = onDone;
   });
   useEffect(() => {
-    setProgress(0);
+    setProgress({ key, value: 0 });
     if (!active) return;
     const total = seconds * 1000;
     const started = Date.now();
-    const tick = setInterval(() => setProgress(Math.min(1, (Date.now() - started) / total)), Math.min(250, total / 4));
+    const tick = setInterval(() => setProgress({ key, value: Math.min(1, (Date.now() - started) / total) }), Math.min(250, total / 4));
     const end = setTimeout(() => {
       clearInterval(tick);
-      setProgress(1);
+      setProgress({ key, value: 1 });
       done.current();
     }, total);
     return () => {
@@ -102,7 +111,9 @@ export function useCountdown(active: boolean, seconds: number, key: string | num
       clearTimeout(end);
     };
   }, [active, seconds, key]);
-  return progress;
+  // A value belongs to the count it was measured in: the render that starts a new count
+  // reads 0, not the finished count's 1 (which made a bar jump ahead and fall back).
+  return progress.key === key ? progress.value : 0;
 }
 
 /** Resolved reduced-motion preference, following the OS setting live when set to "system". */

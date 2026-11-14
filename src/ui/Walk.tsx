@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildRouteQuestions } from '@/flows/answers';
 import {
   advanceEncode,
@@ -11,6 +11,7 @@ import {
   useFlow,
 } from '@/flows/flow';
 import { numberWord } from '@/flows/format';
+import { usePausableCountdown } from '@/ab/timer';
 import { useCountdown, useWalkKeys } from '@/flows/hooks';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
@@ -19,10 +20,23 @@ import { isLastStop, useSession } from '@/state/session';
 /** The one wording for the advance key, used on every walk screen. */
 export const ADVANCE_KEYS = 'Space or Right arrow';
 
+/**
+ * A thin progress bar. The fill eases forwards only: when the value drops (a new stop begins)
+ * it is reset at once, where the transition used to drain it from full to empty.
+ */
 export function ProgressBar({ value, label }: { value: number; label: string }) {
+  const pct = Math.round(Math.min(1, Math.max(0, value)) * 100);
+  const fill = useRef<HTMLDivElement>(null);
+  const shown = useRef(pct);
+  const dropped = pct < shown.current;
+  useLayoutEffect(() => {
+    shown.current = pct;
+    // Reading a layout value applies the reset now, before the next render switches the transition back on.
+    if (dropped) void fill.current?.offsetWidth;
+  });
   return (
-    <div className="bar" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}>
-      <div className="bar__fill" style={{ width: `${Math.round(value * 100)}%` }} />
+    <div className="bar" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+      <div ref={fill} className="bar__fill" style={{ width: `${pct}%`, transition: dropped ? 'none' : undefined }} />
     </div>
   );
 }
@@ -216,26 +230,39 @@ export function Encode() {
   const timing = judgeTiming();
   // Judge pitch: the recall walk checks only some of the places.
   const spot = judge && timing.spotCheckStops !== null && timing.spotCheckStops < stops.length ? timing.spotCheckStops : null;
-  // The interstitial moves on by itself only when the run has a hold time; otherwise it waits for its button.
-  const hold = judge ? timing.interstitialSeconds : null;
 
-  // Nothing moves on by itself while the "leave?" question is open.
+  // A timed stop can be paused (the button or P). The pause belongs to the stop it was set at.
+  const [heldAt, setHeldAt] = useState<number | null>(null);
+  const canHold = judge && walking && arrived;
+  const held = canHold && heldAt === step;
+  const pauseRef = useRef<HTMLButtonElement>(null);
+  const toggleHold = () => {
+    setHeldAt(held ? null : step);
+    // Focus on the control, so that Space (which otherwise moves on) is the key that resumes.
+    pauseRef.current?.focus({ preventScroll: true });
+  };
+
+  // The clock stops for the pause and while the "leave?" question is open, and goes on from where it was.
   const paused = useFlow((s) => s.confirmLeave);
-  const progress = useCountdown(judge && walking && arrived && !paused, timing.encodeSecondsPerStop, step, advanceEncode);
-  const wait = useCountdown(hold !== null && !walking && !paused, hold ?? 0, 'interstitial', beginRecallAfterEncode);
+  const total = timing.encodeSecondsPerStop * 1000;
+  const left = usePausableCountdown(timing.encodeSecondsPerStop, canHold && !held && !paused, step, advanceEncode);
+  const progress = 1 - left / total;
   const nextRef = useFocusWhenReady<HTMLButtonElement>(walking && arrived, step);
 
   useWalkKeys({
     next: !walking ? beginRecallAfterEncode : arrived ? advanceEncode : undefined,
     back: walking && step > 0 ? () => useSession.getState().prev() : undefined,
+    pause: canHold ? toggleHold : undefined,
+    resume: held ? toggleHold : undefined,
   });
 
   if (!walking) {
     return (
       <section className="screen" data-testid="interstitial">
         <p className="label">{spot ? 'Spot check' : 'Recall walk'}</p>
+        {/* This screen always waits for its button: it says why the next walk matters, and that takes reading. */}
         {spot ? (
-          // The pitch run: at most 20 words, and it waits for the button.
+          // The pitch run: at most 20 words.
           <>
             <h1 className="question">The images are now hidden.</h1>
             <p className="body" data-testid="spot-note">
@@ -250,15 +277,12 @@ export function Encode() {
             </p>
           </>
         )}
-        {hold !== null && <ProgressBar value={wait} label="Time until the recall walk starts" />}
         <div className="actions">
           <button type="button" className="btn btn--primary" autoFocus onClick={beginRecallAfterEncode} data-testid="recall-start">
             {spot ? 'Start the spot check' : 'Start the recall walk'}
           </button>
         </div>
-        <p className="hint">
-          {hold !== null ? `It starts by itself; ${ADVANCE_KEYS} starts it sooner.` : `${ADVANCE_KEYS}: start.`}
-        </p>
+        <p className="hint">{ADVANCE_KEYS}: start.</p>
       </section>
     );
   }
@@ -303,15 +327,25 @@ export function Encode() {
           <button type="button" className="btn btn--primary" ref={nextRef} disabled={!arrived} onClick={advanceEncode} data-testid="walk-next">
             {last ? 'I can see it. Finish' : 'I can see it'}
           </button>
+          {judge && (
+            <button type="button" className="btn" ref={pauseRef} disabled={!arrived} aria-pressed={held} onClick={toggleHold} data-testid="encode-pause">
+              {held ? 'Resume' : 'Pause'}
+              <span className="key" aria-hidden="true">
+                P
+              </span>
+            </button>
+          )}
           <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
             Back
           </button>
         </div>
       </div>
-      <p className="hint">
-        {judge
-          ? `It moves on by itself; ${ADVANCE_KEYS} moves on sooner.`
-          : `Picture it happening at this exact spot. ${ADVANCE_KEYS}: next. Left arrow: back.`}
+      <p className="hint" data-testid="encode-hint">
+        {held
+          ? 'Paused. Space or P resumes.'
+          : judge
+            ? `It moves on by itself; ${ADVANCE_KEYS} moves on sooner. P pauses.`
+            : `Picture it happening at this exact spot. ${ADVANCE_KEYS}: next. Left arrow: back.`}
       </p>
     </section>
   );

@@ -1,6 +1,7 @@
-import { LevaPanel, button, folder, useControls, useCreateStore } from 'leva';
-import { useEffect, useMemo, useRef } from 'react';
+import { LevaPanel, folder, useControls, useCreateStore } from 'leva';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Theme, Vec3 } from '@/core/types';
+import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { useThemeLab } from '@/state/themeLab';
 import { getTheme } from '@/themes';
@@ -85,13 +86,27 @@ function download(theme: Theme) {
   URL.revokeObjectURL(url);
 }
 
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function Panel({ base }: { base: Theme }) {
   const store = useCreateStore();
   const fields = useMemo(() => fieldsOf(base), [base]);
   const initial = useMemo<Values>(() => Object.fromEntries(fields.map((f) => [f.key, f.read(base)])), [fields, base]);
-  /** The theme as tuned so far, for the buttons (which are created once). */
+  /** The theme as tuned so far, for the buttons. */
   const latest = useRef(base);
-  const reset = useRef<() => void>(() => {});
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState('');
+  /** Shown when the clipboard is not available, so the JSON can still be selected and copied. */
+  const [json, setJson] = useState<string | null>(null);
+  // The docked panel's width: the Lab sits beside it, never on top of it.
+  const inset = useSession((s) => s.insetRight);
 
   const [values, set] = useControls(
     () => {
@@ -101,24 +116,13 @@ function Panel({ base }: { base: Theme }) {
         const input = typeof v === 'number' ? { ...slider(v, f.label), label: f.label } : { value: v, label: f.label };
         (groups[f.group] ??= {})[f.key] = input as Schema[string];
       }
-      const schema: Schema = {
-        'Copy JSON': button(() => void navigator.clipboard?.writeText(JSON.stringify(latest.current, null, 2))),
-        "Download JSON": button(() => download(latest.current)),
-        Reset: button(() => reset.current()),
-      };
+      const schema: Schema = {};
       for (const [name, group] of Object.entries(groups)) schema[name] = folder(group, { collapsed: name !== 'post' });
       return schema;
     },
     { store },
     [fields, base],
   );
-
-  useEffect(() => {
-    reset.current = () => {
-      set(initial as Parameters<typeof set>[0]);
-      useThemeLab.getState().setOverride(null);
-    };
-  }, [set, initial]);
 
   // Dragging a slider produces a stream of values: hand the scene a new theme object
   // at most every DEBOUNCE_MS. The saved theme is only replaced once something differs.
@@ -132,9 +136,58 @@ function Panel({ base }: { base: Theme }) {
 
   useEffect(() => () => useThemeLab.getState().setOverride(null), []);
 
+  const copy = async () => {
+    const text = JSON.stringify(latest.current, null, 2);
+    const ok = await copyText(text);
+    setJson(ok ? null : text);
+    setStatus(ok ? 'Copied the theme JSON.' : 'The clipboard is not available here. Select the text below and copy it.');
+  };
+  const save = () => {
+    download(latest.current);
+    setStatus(`Downloaded ${latest.current.id}.json.`);
+  };
+  const reset = () => {
+    set(initial as Parameters<typeof set>[0]);
+    latest.current = base;
+    useThemeLab.getState().setOverride(null);
+    setJson(null);
+    setStatus('Reset to the saved theme.');
+  };
+
+  /*
+   * The three actions are plain buttons outside Leva, so they are on screen and clickable
+   * whether its panel is folded or not (inside Leva they were hidden with the folded panel).
+   * Key presses stop here: a key pressed while the Lab has the focus must not also advance
+   * the walk or answer a question behind it.
+   */
   return (
-    <div style={{ position: 'fixed', top: 10, left: 10, width: 310, maxHeight: 'calc(100vh - 20px)', overflowY: 'auto', zIndex: 60 }}>
-      <LevaPanel store={store} fill flat collapsed titleBar={{ title: `Theme Lab: ${base.name}`, drag: false, filter: false }} />
+    <div className="lab" data-lab style={{ right: inset + 10 }} onKeyDown={(e) => e.stopPropagation()} data-testid="lab">
+      <div className="lab__bar">
+        <p className="lab__title">Theme Lab: {base.name}</p>
+        <button type="button" className="lab__btn" onClick={() => void copy()} data-testid="lab-copy">
+          Copy JSON
+        </button>
+        <button type="button" className="lab__btn" onClick={save} data-testid="lab-download">
+          Download JSON
+        </button>
+        <button type="button" className="lab__btn" onClick={reset} data-testid="lab-reset">
+          Reset
+        </button>
+        <button type="button" className="lab__btn" aria-expanded={open} onClick={() => setOpen(!open)} data-testid="lab-toggle">
+          {open ? 'Hide the tokens' : 'Show the tokens'}
+        </button>
+        <p className="lab__status" role="status" data-testid="lab-status">
+          {status}
+        </p>
+        {json !== null && <textarea className="lab__btn" readOnly rows={6} value={json} aria-label="Theme JSON" onFocus={(e) => e.target.select()} />}
+      </div>
+      <LevaPanel
+        store={store}
+        fill
+        flat
+        collapsed={{ collapsed: !open, onChange: (collapsed) => setOpen(!collapsed) }}
+        titleBar={{ title: 'Tokens', drag: false, filter: false }}
+      />
     </div>
   );
 }

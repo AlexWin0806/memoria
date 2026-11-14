@@ -114,7 +114,9 @@
 }
 .score {
   margin: 4px 0 4px;
-  font-family: var(--type-display);
+  /* Large numerals are set in the text face with lining figures: the display face's old-style 3 and 5 are hard to read. */
+  font-family: var(--type-text);
+  font-variant-numeric: lining-nums;
   font-size: 68px;
   font-weight: 400;
   line-height: 1.05;
@@ -382,6 +384,13 @@ textarea.field { resize: vertical; }
   padding-bottom: 18px;
   background: var(--ui-panel);
 }
+/*
+ * A pinned bar that starts with the progress bar (timed runs) keeps that bar's top margin
+ * inside itself. Without flow-root the margin fell outside, so in a short window the progress
+ * bar was drawn straight across the text scrolling under it instead of in a band of its own.
+ */
+.pin:has(> .bar:first-child) { display: flow-root; }
+.pin > .bar:first-child { margin-top: 12px; }
 .pin + .hint { margin-top: 4px; }
 /* First in the document and in the Tab order; drawn last, where a pinned bar belongs. */
 .results[data-long='true'] .results__actions { order: 1; }
@@ -516,6 +525,16 @@ textarea.field { resize: vertical; }
   font-size: 24px;
   font-style: italic;
 }
+/* One quiet line: saved data that could not be read was set aside. */
+.title__aside {
+  margin: 14px 0 0;
+  font-size: 16px;
+}
+/* The skip link above the proposal list. */
+.skip {
+  margin: 18px 0 0;
+  font-size: 16px;
+}
 .title .actions { margin-top: 26px; }
 .title .resume { margin: 24px 0 0; }
 .title .resume .actions { margin-top: 12px; }
@@ -591,4 +610,14 @@ textarea.field { resize: vertical; }
   .score { font-size: 56px; }
   /* A bottom sheet is too short to give up a third of its height to a pinned bar. */
   .dock { position: static; }
+}
+/*
+ * A short window (a phone on its side, 640 x 400): the pinned bar of a walk is made as low as
+ * it can be, so that the term and its meaning stay readable above it.
+ */
+@media (max-height: 520px) {
+  .pin { padding-bottom: 8px; }
+  .pin > .bar:first-child { margin-top: 6px; }
+  .pin .actions { margin-top: 10px; }
+  .pin .btn { padding-top: 6px; padding-bottom: 6px; }
 }

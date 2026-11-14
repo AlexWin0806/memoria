@@ -13,3 +13,98 @@ body {
 }
 .app { position: fixed; inset: 0; }
 .app > canvas, .app > div:first-child { position: absolute; inset: 0; }
+
+/*
+ * The error page (src/ui/ErrorBoundary.tsx). It stands alone: the overlay's stylesheet and
+ * the theme variables may not have loaded, so every value falls back to the vellum defaults.
+ */
+.fault {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px max(24px, calc(50vw - 300px));
+  background: var(--ui-panel, var(--paper));
+  color: var(--ui-fg, var(--ink));
+  font-family: var(--type-text, Georgia, 'Times New Roman', serif);
+  font-size: 18px;
+  line-height: 1.5;
+}
+.fault__name {
+  margin: 0 0 18px;
+  font-family: var(--type-display, Georgia, 'Times New Roman', serif);
+  font-size: 56px;
+  font-weight: 400;
+  line-height: 1;
+}
+.fault__what { margin: 0 0 10px; font-size: 22px; }
+.fault__how { margin: 0 0 26px; }
+.fault__ask p { margin: 0 0 16px; }
+.fault__actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.fault__btn {
+  padding: 11px 18px;
+  border: 1px solid currentColor;
+  border-radius: var(--ui-radius, 3px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.fault__btn--primary {
+  background: var(--ui-fg, var(--ink));
+  color: var(--ui-panel, var(--paper));
+}
+.fault__btn--danger { border-width: 2px; }
+.fault__btn:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+/*
+ * Theme Lab (?lab, src/lab/ThemeLab.tsx): a tool panel above everything else, the overlay's
+ * modal included, so that its buttons can always be clicked. It sits in the top corner
+ * beside the docked panel, clear of the title text; `right` is set inline from the panel width.
+ */
+.lab {
+  position: fixed;
+  top: 10px;
+  z-index: 1000;
+  width: 310px;
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
+  pointer-events: auto;
+}
+.lab__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 8px;
+  border: 1px solid var(--ui-fg, var(--ink));
+  border-radius: var(--ui-radius, 3px);
+  background: var(--ui-panel, var(--paper));
+  color: var(--ui-fg, var(--ink));
+  font: 16px/1.4 var(--type-text, Georgia, 'Times New Roman', serif);
+}
+.lab__title,
+.lab__status {
+  flex: 1 0 100%;
+  margin: 0;
+}
+.lab__status { min-height: 1.4em; }
+.lab__btn {
+  flex: 1 1 auto;
+  padding: 6px 10px;
+  border: 1px solid currentColor;
+  border-radius: var(--ui-radius, 3px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.lab__btn:focus-visible {
+  outline: 2px solid var(--ui-accent, currentColor);
+  outline-offset: 2px;
+}

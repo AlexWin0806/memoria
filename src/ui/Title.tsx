@@ -10,7 +10,10 @@ import { hasDraft, useDraft } from '@/state/draft';
 import { deckProgress, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { useSettings, type RecallInput } from '@/state/settings';
-import { THEMES } from '@/themes';
+import { savedDataWasSetAside } from '@/state/storage';
+import { useThemeLab } from '@/state/themeLab';
+import { getTheme, THEMES } from '@/themes';
+import { useActiveTheme } from '@/themes/active';
 
 /**
  * "8 places · not started", "8 places · 3 due now" or "8 places · next review tomorrow".
@@ -49,6 +52,12 @@ export function Title() {
     <div className="title" data-testid="title">
       <h1 className="title__name">Memoria</h1>
       <p className="title__pitch">Paste what you need to learn. Walk it into memory.</p>
+      {savedDataWasSetAside() && (
+        // Saved data that failed validation was dropped on load; the raw original is kept (see @/state/storage).
+        <p className="title__aside" role="status" data-testid="storage-notice">
+          Some saved data could not be read and was set aside.
+        </p>
+      )}
       {saved && savedDeck && (
         <div className="notice resume" role="status" data-testid="resume">
           <p>
@@ -126,15 +135,30 @@ export function Title() {
   );
 }
 
+/** Value of the menu entry that stands for a theme shown but not saved. */
+const PREVIEW = '(preview)';
+
 function Settings() {
   const s = useSettings();
   const motion = s.reducedMotion === null ? 'system' : s.reducedMotion ? 'on' : 'off';
+  // The menu shows the theme on screen. With `?theme=` or a Theme Lab override that is not
+  // the saved one: it is listed as a preview, and a choice made here is saved for later.
+  const active = useActiveTheme();
+  const tuned = useThemeLab((t) => t.override !== null);
+  const fromUrl = new URLSearchParams(location.search).get('theme');
+  const preview = tuned || (fromUrl !== null && THEMES[fromUrl] !== undefined && fromUrl !== s.themeId);
   return (
     <details className="settings" data-testid="settings">
       <summary className="label">Settings</summary>
       <div className="settings__grid">
         <label htmlFor="set-theme">Theme</label>
-        <select id="set-theme" value={s.themeId} onChange={(e) => s.setTheme(e.target.value)}>
+        <select
+          id="set-theme"
+          value={preview ? PREVIEW : getTheme(s.themeId).id}
+          onChange={(e) => e.target.value !== PREVIEW && s.setTheme(e.target.value)}
+          data-testid="set-theme"
+        >
+          {preview && <option value={PREVIEW}>{active.name} (preview)</option>}
           {Object.values(THEMES).map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
