@@ -11,8 +11,8 @@ import { viaBetween } from './rail';
  *
  * The route on the floor is a small graph, the trunk:
  *   a generated hall     its axis, from doorway to doorway. A place by a side wall is reached
- *                        by a branch that leaves the axis a step before it and comes to it
- *                        along the wall, from the side; the place at the far wall square-on
+ *                        by a branch that leaves the axis a step beyond it and comes back to
+ *                        it along the wall, into its far side; the place at the far wall square-on
  *   a generated ring     the circle the places themselves stand on, with a stub to each
  *                        doorway: a link runs round it as an arc from the side of one place to
  *                        the side of the next, where the learner standing in the middle of the
@@ -23,6 +23,8 @@ import { viaBetween } from './rail';
  * round the footprint of every place it passes. Links that share a stretch of trunk run side
  * by side in lanes, one lane per link for its whole length, so two never lie on top of each
  * other; where several links meet one place, their last stretches (the spurs) run side by side too.
+ * Down the axis of a generated palace the lanes lie either side of the middle, which stays
+ * clear: it is the walking line, and a kit may have laid something in it (the workshop's channel).
  *
  * Pure numbers (x, z pairs on the floor): no three, nothing measured in the scene.
  */
@@ -31,8 +33,15 @@ import { viaBetween } from './rail';
 export const MAX_LINKS = 48;
 /** Distance between two lanes, centre to centre, when there is room for it. */
 export const LANE = 0.24;
-/** The lanes of one stretch are no wider than this together: a doorway is 2.2 m wide. */
+/** The lanes of one stretch, where they lie to one side of the trunk, are no wider than this together. */
 const MAX_SPREAD = 1.2;
+/**
+ * Down the axis of a generated palace the first lane on each side runs this far from the
+ * middle (the workshop's channel is 0.46 m to the outside of its kerb), and the last no
+ * further out than DOOR_REACH: a doorway is 1.1 m to each side.
+ */
+const AXIS_CLEAR = 0.62;
+const DOOR_REACH = 0.93;
 /** Distance between the spurs of two links at one place. */
 const SLOT = 0.3;
 /** A link ends this far outside the footprint of its place. */
@@ -40,10 +49,11 @@ const SPUR_GAP = 0.12;
 /** Generated rooms: the trunk comes this close to the wall a doorway is in. */
 const DOOR_IN = 0.5;
 /**
- * A hall's branch to a place by a side wall leaves the axis this far before the place, on the
- * entrance side, where the learner looking at the place stands: the last stretch then runs
- * along the wall into the side of the place, in the picture. (Square-on it would come from
- * under the learner's feet, below the picture.) Clear of the lines inlaid across the floor.
+ * A hall's branch to a place by a side wall leaves the axis this far beyond the place and
+ * comes back to it along the wall. The learner looks at the place from across the hall and a
+ * little towards the entrance: square-on, or from the entrance side, a link would arrive from
+ * under their feet, below the picture; on the far side its last stretch lies beside the place,
+ * in the picture. Clear of the lines inlaid across the floor.
  */
 const HALL_LEAD = 1.15;
 /** A ring's trunk circle runs this far in from the sides of the room: through the middle of the plots. */
@@ -88,7 +98,7 @@ interface Net {
   /** The direction lanes are set off in at each vertex: a unit vector (longer at a sharp corner, to keep lanes apart). */
   nx: number[];
   nz: number[];
-  /** True where the trunk is the axis of the palace: the lanes there are centred on it. Elsewhere they lie to one side. */
+  /** True where the trunk is the axis of the palace: the lanes there lie either side of it. Elsewhere they lie to one side. */
   axial: boolean[];
   edges: Edge[][];
   /** By locus index. */
@@ -174,7 +184,7 @@ function generatedNet(layout: PalaceLayout): Net | null {
         const [sx, sz] = spotOf(layout, l.index);
         const side = Math.sign(sx - x0);
         const bySideWall = Math.abs(room.plots[plan.places[l.index]?.slot ?? -1]?.normal[0] ?? 0) > 0.5;
-        const v = vert(net, x0, bySideWall ? sz + HALL_LEAD : sz, 1, 0, true);
+        const v = vert(net, x0, bySideWall ? sz - HALL_LEAD : sz, 1, 0, true);
         if (prev >= 0) join(net, prev, v);
         prev = v;
         if (!bySideWall || side === 0) {
@@ -183,9 +193,9 @@ function generatedNet(layout: PalaceLayout): Net | null {
         }
         // The branch: across the hall, then along the wall. Each stretch has a vertex of its own
         // at the corner, so that its lanes run parallel to it; they lie on the inside of the turn.
-        const out = vert(net, x0, sz + HALL_LEAD, 0, -1);
-        const corner = vert(net, sx, sz + HALL_LEAD, 0, -1);
-        const along = vert(net, sx, sz + HALL_LEAD, -side, 0);
+        const out = vert(net, x0, sz - HALL_LEAD, 0, 1);
+        const corner = vert(net, sx, sz - HALL_LEAD, 0, 1);
+        const along = vert(net, sx, sz - HALL_LEAD, -side, 0);
         const at = vert(net, sx, sz, -side, 0);
         join(net, v, out);
         join(net, out, corner);
@@ -537,15 +547,40 @@ export function routeLinks(layout: PalaceLayout, deck: Deck | undefined): Routed
     d.lane = lane;
     widest = Math.max(widest, lane);
   }
-  const spacing = widest > 0 ? Math.min(LANE, MAX_SPREAD / widest) : LANE;
+  // Lanes as far apart as there is room for: to one side of the trunk, and through a doorway.
+  const eachSide = Math.ceil((widest + 1) / 2);
+  const throughDoor = eachSide > 1 && net.axial.some(Boolean) ? (DOOR_REACH - AXIS_CLEAR) / (eachSide - 1) : LANE;
+  const spacing = Math.min(LANE, widest > 0 ? MAX_SPREAD / widest : LANE, throughDoor);
   const scale = Math.max(0.45, spacing / LANE);
-  /** How far a lane lies from the trunk at a vertex: to one side, or about the axis where the trunk is one. */
-  const offset = (lane: number, v: number) => (net.axial[v] ? lane - widest / 2 : lane) * spacing;
+  /** How far a lane lies from the trunk at a vertex: to one side, or, down the axis, on alternate sides of the clear middle. */
+  const offset = (lane: number, v: number) => (net.axial[v] ? (lane % 2 ? -1 : 1) * (AXIS_CLEAR + (lane >> 1) * spacing) : lane * spacing);
 
   // The trunk part of each link, set off into its lane.
   const trunks = drafts.map((d) => {
+    const p = d.path;
     const line: number[] = [];
-    for (const v of d.path) line.push(net.x[v] + net.nx[v] * offset(d.lane, v), net.z[v] + net.nz[v] * offset(d.lane, v));
+    const px = (v: number) => net.x[v] + net.nx[v] * offset(d.lane, v);
+    const pz = (v: number) => net.z[v] + net.nz[v] * offset(d.lane, v);
+    for (let i = 0; i < p.length; i++) {
+      const v = p[i];
+      const w = p[i + 1];
+      // Two vertices at one point are a corner between two stretches with lanes of their own:
+      // the lane turns where its line along the one meets its line along the other.
+      if (i > 0 && i + 2 < p.length && Math.hypot(net.x[w] - net.x[v], net.z[w] - net.z[v]) < 1e-6) {
+        const ax = net.x[v] - net.x[p[i - 1]];
+        const az = net.z[v] - net.z[p[i - 1]];
+        const bx = net.x[p[i + 2]] - net.x[w];
+        const bz = net.z[p[i + 2]] - net.z[w];
+        const cross = ax * bz - az * bx;
+        if (Math.abs(cross) > 1e-6) {
+          const s = ((px(w) - px(v)) * bz - (pz(w) - pz(v)) * bx) / cross;
+          line.push(px(v) + ax * s, pz(v) + az * s);
+          i++;
+          continue;
+        }
+      }
+      line.push(px(v), pz(v));
+    }
     return untangle(line);
   });
 
