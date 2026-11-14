@@ -263,7 +263,7 @@ function furnace(p: Built, W: number, side: number, z: number) {
   p.stone.push(box(depth, mouth.base, 2 * mouth.half, [xc, mouth.base / 2, z]));
   p.stone.push(box(depth, 2.2 - mouth.top, 2 * mouth.half + 0.96, [xc, (2.2 + mouth.top) / 2, z]));
   // The hood: the breast narrows back into the wall.
-  p.stone.push(at(box(0.3, 1.4, 1.5, [0, 0, 0]), [side * (W - 0.05), 2.85, z], [0, 0, side * 0.22]));
+  p.stone.push(at(box(0.3, 1.4, 1.5, [0, 0, 0]), [side * (W - 0.2), 2.85, z], [0, 0, -side * 0.22]));
   // An iron lintel over the mouth and the fire inside it.
   p.metal.push(box(0.05, 0.08, 2 * mouth.half + 0.2, [x(-out / 2 - 0.03), mouth.top + 0.02, z]));
   p.glow.push(at(new PlaneGeometry(2 * mouth.half, mouth.top - mouth.base), [side * (W + RECESS - 0.01), (mouth.top + mouth.base) / 2, z], [0, -side * HALF_PI, 0]));

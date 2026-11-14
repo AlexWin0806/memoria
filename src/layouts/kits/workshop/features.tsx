@@ -107,7 +107,7 @@ function ScrewPress({ accent }: Props) {
 // ───────────────────────── 2. The Grindstone ─────────────────────────
 
 const GRIND_Y = 0.78;
-const GRIND_LEGS: Placement[] = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => timber([sx * 0.58, 0, sz * 0.32], [sx * 0.48, 0.6, sz * 0.21], 0.08, 0.08)));
+const GRIND_LEGS: Placement[] = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => timber([sx * 0.58, 0.03, sz * 0.32], [sx * 0.48, 0.6, sz * 0.21], 0.08, 0.08)));
 const GRIND_RAILS: Placement[] = [-1, 1].map((sz): Placement => ({ p: [0, 0.64, sz * 0.21], s: [1.2, 0.09, 0.09] }));
 const GRIND_BEARINGS: Placement[] = [-1, 1].map((sz): Placement => ({ p: [0, 0.72, sz * 0.21], s: [0.14, 0.08, 0.1] }));
 
@@ -157,7 +157,7 @@ function Grindstone({ accent }: Props) {
 
 const STILL_STOOL: Placement[] = [
   { p: [0.95, 0.56, 0.05], s: [0.36, 0.05, 0.36] },
-  ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => timber([0.95 + sx * 0.15, 0, 0.05 + sz * 0.15], [0.95 + sx * 0.13, 0.54, 0.05 + sz * 0.13], 0.045, 0.045))),
+  ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => timber([0.95 + sx * 0.15, 0.02, 0.05 + sz * 0.15], [0.95 + sx * 0.13, 0.54, 0.05 + sz * 0.13], 0.045, 0.045))),
 ];
 
 function AlembicStill({ accent }: Props) {
@@ -173,12 +173,12 @@ function AlembicStill({ accent }: Props) {
         <boxGeometry args={[0.8, 0.74, 0.74]} />
         <Surface slot="stone" />
       </mesh>
-      <mesh position={[0, 0.27, 0.382]}>
-        <planeGeometry args={[0.3, 0.22]} />
+      <mesh position={[0, 0.25, 0.382]}>
+        <planeGeometry args={[0.26, 0.2]} />
         <Surface slot="glow" />
       </mesh>
-      <mesh position={[0, 0.27, 0.385]} castShadow>
-        <torusGeometry args={[0.17, 0.02, 4, 4, Math.PI * 2]} />
+      <mesh position={[0, 0.35, 0.385]} castShadow>
+        <torusGeometry args={[0.15, 0.02, 4, 10, Math.PI]} />
         <Surface slot="metal" />
       </mesh>
       <mesh geometry={flue} castShadow>
@@ -198,7 +198,7 @@ function AlembicStill({ accent }: Props) {
         <Surface slot="wood" />
       </Repeated>
       <mesh geometry={flask} position={[0.95, 0, 0.05]} castShadow>
-        <Surface slot="glow" />
+        <Surface slot="water" />
       </mesh>
     </group>
   );
@@ -210,12 +210,12 @@ const HOPPER_Z = 0.55;
 const HOPPER_BRACKETS: Placement[] = [-1, 1].map((s) => timber([s * 0.32, 1.55, 0.03], [s * 0.2, 2.25, HOPPER_Z - 0.05], 0.08, 0.08));
 /** The chute: a sloping trough from under the spout to over the bin. */
 const CHUTE_A: Vec3 = [0.02, 2.02, HOPPER_Z];
-const CHUTE_B: Vec3 = [0.72, 1.0, 0.98];
+const CHUTE_B: Vec3 = [0.7, 0.66, 0.92];
 
 function HopperChute({ accent }: Props) {
-  const hopper = useGeometry(() => lathe([[0.13, 2.18], [0.7, 2.86], [0.66, 2.86], [0.1, 2.22]], 4, true));
-  const grain = useGeometry(() => lathe([[0.001, 3.02], [0.4, 2.8], [0.001, 2.8]], 4, true));
-  const bin = useGeometry(() => lathe([[0.001, 0], [0.4, 0], [0.46, 0.62], [0.42, 0.62], [0.36, 0.05], [0.001, 0.05]], 4, true));
+  const hopper = useGeometry(() => lathe([[0.13, 2.18], [0.7, 2.86], [0.66, 2.86], [0.1, 2.22]], 4, true).rotateY(Math.PI / 4));
+  const grain = useGeometry(() => lathe([[0.001, 3.02], [0.4, 2.8], [0.001, 2.8]], 4, true).rotateY(Math.PI / 4));
+  const bin = useGeometry(() => lathe([[0.001, 0], [0.4, 0], [0.46, 0.62], [0.42, 0.62], [0.36, 0.05], [0.001, 0.05]], 4, true).rotateY(Math.PI / 4));
   const chute = useGeometry(() => {
     const len = Math.hypot(CHUTE_B[0] - CHUTE_A[0], CHUTE_B[1] - CHUTE_A[1], CHUTE_B[2] - CHUTE_A[2]);
     const s = new Shape();
@@ -248,10 +248,10 @@ function HopperChute({ accent }: Props) {
       <Repeated items={HOPPER_BRACKETS} make={UNIT_BOX}>
         <Surface slot="wood" />
       </Repeated>
-      <mesh geometry={hopper} position={[0, 0, HOPPER_Z]} rotation={[0, Math.PI / 4, 0]} castShadow>
+      <mesh geometry={hopper} position={[0, 0, HOPPER_Z]} castShadow>
         <Surface slot="wood" accent={accent} doubleSided />
       </mesh>
-      <mesh geometry={grain} position={[0, 0, HOPPER_Z]} rotation={[0, Math.PI / 4, 0]}>
+      <mesh geometry={grain} position={[0, 0, HOPPER_Z]}>
         <Surface slot="cloth" />
       </mesh>
       <mesh position={[0, 2.11, HOPPER_Z]} castShadow>
@@ -261,12 +261,8 @@ function HopperChute({ accent }: Props) {
       <mesh geometry={chute} castShadow>
         <Surface slot="wood" doubleSided />
       </mesh>
-      {/* a post under the low end of the chute, and the bin it pours into */}
-      <mesh position={[CHUTE_B[0], 0.98 / 2 + 0.0, CHUTE_B[2] - 0.22]} castShadow>
-        <boxGeometry args={[0.07, 0.98, 0.07]} />
-        <Surface slot="wood" />
-      </mesh>
-      <mesh geometry={bin} position={[0.78, 0, 0.95]} rotation={[0, Math.PI / 4, 0]} castShadow receiveShadow>
+      {/* the bin it pours into, the low end of the chute resting on its rim */}
+      <mesh geometry={bin} position={[0.78, 0, 0.95]} castShadow receiveShadow>
         <Surface slot="wood" doubleSided />
       </mesh>
     </group>
@@ -282,7 +278,7 @@ const WHEEL_W = 0.5;
 const WHEEL_SPOKES: Placement[] = [-1, 1].flatMap((side) =>
   Array.from({ length: 4 }, (_, i): Placement => ({ p: [0, WHEEL_Y, WHEEL_Z + (side * WHEEL_W) / 2], r: [0, 0, (i * Math.PI) / 4], s: [2 * WHEEL_R - 0.06, 0.07, 0.06] })),
 );
-const WHEEL_PADDLES: Placement[] = ringZ(16, 0, WHEEL_Y, WHEEL_Z, WHEEL_R - 0.01, [0.2, 0.035, WHEEL_W + 0.04]);
+const WHEEL_PADDLES: Placement[] = ringZ(16, 0, WHEEL_Y, WHEEL_Z, WHEEL_R + 0.0, [0.3, 0.05, WHEEL_W + 0.06]);
 const RACE_WALLS: Placement[] = [-1, 1].map((s): Placement => ({ p: [s * 1.04, 0.17, 0.72], s: [0.1, 0.34, 1.0] }));
 
 function WaterWheel({ accent }: Props) {
@@ -350,7 +346,7 @@ function WaterWheel({ accent }: Props) {
         <Surface slot="wood" />
       </mesh>
       {/* a bracket under the launder, from the wall */}
-      <mesh position={[0, 2.1, 0.17]} rotation={[-0.9, 0, 0]} castShadow>
+      <mesh position={[0, 2.12, 0.27]} rotation={[-0.9, 0, 0]} castShadow>
         <boxGeometry args={[0.09, 0.62, 0.09]} />
         <Surface slot="wood" />
       </mesh>
@@ -361,19 +357,19 @@ function WaterWheel({ accent }: Props) {
 // ───────────────────────── 6. The Trip Hammer ─────────────────────────
 
 const HAMMER_PIVOT: Vec3 = [-0.3, 0.95, 0];
-const HAMMER_TAIL: Vec3 = [-1.05, 0.7, 0];
+const HAMMER_TAIL: Vec3 = [-0.98, 0.7, 0];
 /** The helve rises from the tail through the pivot to the head, caught at the top of its stroke. */
-const HAMMER_HEAD: Vec3 = [0.95, 0.95 + (1.25 * 0.25) / 0.75, 0];
+const HAMMER_HEAD: Vec3 = [0.92, 0.95 + (1.22 * 0.25) / 0.68, 0];
 const HELVE_TILT = Math.atan2(HAMMER_HEAD[1] - HAMMER_TAIL[1], HAMMER_HEAD[0] - HAMMER_TAIL[0]);
 const HAMMER_POSTS: Placement[] = [-1, 1].map((s): Placement => ({ p: [HAMMER_PIVOT[0], 0.56, s * 0.2], s: [0.14, 1.12, 0.1] }));
-const HAMMER_CAMS: Placement[] = ringZ(4, HAMMER_TAIL[0] + 0.02, 0.36, 0, 0.21, [0.2, 0.08, 0.14], Math.PI / 4);
+const HAMMER_CAMS: Placement[] = ringZ(4, HAMMER_TAIL[0] + 0.02, 0.36, 0, 0.17, [0.14, 0.08, 0.14], Math.PI / 4);
 const HAMMER_BLOCKS: Placement[] = [-1, 1].map((s): Placement => ({ p: [HAMMER_TAIL[0] + 0.02, 0.18, s * 0.3], s: [0.16, 0.36, 0.12] }));
 
 function TripHammer({ accent }: Props) {
   const len = Math.hypot(HAMMER_HEAD[0] - HAMMER_TAIL[0], HAMMER_HEAD[1] - HAMMER_TAIL[1]) + 0.1;
   const mid: Vec3 = [(HAMMER_HEAD[0] + HAMMER_TAIL[0]) / 2, (HAMMER_HEAD[1] + HAMMER_TAIL[1]) / 2, 0];
   return (
-    <group>
+    <group position={[0.06, 0, 0]}>
       {/* the frame that carries the pivot: two posts on a sill */}
       <mesh position={[HAMMER_PIVOT[0], 0.05, 0]} castShadow receiveShadow>
         <boxGeometry args={[0.24, 0.1, 0.7]} />
@@ -495,18 +491,18 @@ function StirringVat({ accent }: Props) {
   return (
     <group>
       <mesh geometry={tub} castShadow receiveShadow>
-        <Surface slot="wood" doubleSided />
+        <Surface slot="wood" accent={accent} doubleSided />
       </mesh>
       {[0.2, 0.72].map((y) => (
         <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <torusGeometry args={[0.553 + 0.065 * (y / 0.92) + 0.018, 0.018, 4, 32]} />
+          <torusGeometry args={[0.54 + 0.06 * (y / 0.92) + 0.012, 0.018, 4, 32]} />
           <Surface slot="metal" />
         </mesh>
       ))}
       {/* the dye */}
       <mesh position={[0, 0.78, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[0.565, 32]} />
-        <Surface slot="water" accent={accent} />
+        <Surface slot="water" />
       </mesh>
       {/* the gallows over the vat, its paddle shaft and the sweep that turns it */}
       <Repeated items={VAT_FEET} make={UNIT_BOX}>
@@ -541,7 +537,7 @@ function StirringVat({ accent }: Props) {
 // ───────────────────────── 9. The Pole Lathe ─────────────────────────
 
 const LATHE_Y = 0.86;
-const LATHE_TRESTLES: Placement[] = [-0.7, 0.7].flatMap((x) => [-1, 1].map((sz) => timber([x, 0, sz * 0.3], [x, LATHE_Y - 0.04, sz * 0.06], 0.08, 0.08)));
+const LATHE_TRESTLES: Placement[] = [-0.7, 0.7].flatMap((x) => [-1, 1].map((sz) => timber([x, 0.03, sz * 0.3], [x, LATHE_Y - 0.04, sz * 0.06], 0.08, 0.08)));
 const LATHE_BED: Placement[] = [-1, 1].map((sz): Placement => ({ p: [0, LATHE_Y, sz * 0.075], s: [1.8, 0.12, 0.1] }));
 const LATHE_STOCKS: Placement[] = [-0.48, 0.48].map((x): Placement => ({ p: [x, LATHE_Y + 0.26, 0], s: [0.12, 0.4, 0.3] }));
 const POLE: Vec3[] = [[-1.0, 0.2, -0.5], [-0.72, 1.6, -0.46], [-0.42, 2.45, -0.34], [-0.05, 2.88, -0.16], [0.18, 2.96, -0.06]];
@@ -575,7 +571,7 @@ function PoleLathe({ accent }: Props) {
       </mesh>
       {/* the spring pole over its crutch, the cord, and the treadle */}
       <mesh geometry={pole} castShadow>
-        <Surface slot="foliage" />
+        <Surface slot="wood" />
       </mesh>
       <mesh position={[-0.72, 0.78, -0.46]} castShadow>
         <cylinderGeometry args={[0.05, 0.06, 1.56, 8]} />
@@ -599,25 +595,19 @@ function PoleLathe({ accent }: Props) {
 
 // ───────────────────────── 10. The Blast Furnace (a landmark) ─────────────────────────
 
-const BELLOWS_X = 0.82;
+/** The bellows stand right of the stack, turned so that their long side faces the view and their nose the tuyere. */
+const BELLOWS_AT: Vec3 = [0.62, 0, 0.0];
+const BELLOWS_TURN = 0.6;
 
 function BlastFurnace({ accent }: Props) {
-  const stack = useGeometry(() => lathe([[0.001, 0], [0.86, 0], [0.86, 0.22], [0.8, 0.26], [0.58, 2.6], [0.66, 2.64], [0.66, 2.84], [0.46, 2.84], [0.42, 2.7], [0.001, 2.7]], 4, true));
-  // A wedge bellows in profile (z along its length, y up), extruded across x.
-  const bellows = useGeometry(() => {
-    const g = plate([[-0.62, 0.86], [0.42, 1.0], [0.5, 1.12], [0.42, 1.28], [-0.62, 1.62]], 0.36);
-    g.rotateY(Math.PI / 2);
-    return g;
-  });
-  const boards = useGeometry(() => {
-    const top = plate([[-0.66, 1.6], [0.44, 1.27], [0.44, 1.31], [-0.66, 1.66]], 0.42);
-    top.rotateY(Math.PI / 2);
-    return top;
-  });
-  const nozzle = useGeometry(() => tube([[BELLOWS_X, 1.12, 0.48], [BELLOWS_X - 0.1, 1.1, 0.6], [0.52, 1.05, 0.56], [0.36, 1.0, 0.5]], 0.04));
+  const stack = useGeometry(() => lathe([[0.001, 0], [0.86, 0], [0.86, 0.22], [0.8, 0.26], [0.58, 2.6], [0.66, 2.64], [0.66, 2.84], [0.46, 2.84], [0.42, 2.7], [0.001, 2.7]], 4, true).rotateY(Math.PI / 4));
+  // In the bellows' own frame: its length along x, the nose at -x, its width across z.
+  const bellows = useGeometry(() => plate([[0.55, 0.88], [-0.42, 1.0], [-0.5, 1.12], [-0.42, 1.26], [0.55, 1.6]], 0.36));
+  const lid = useGeometry(() => plate([[0.58, 1.6], [-0.44, 1.255], [-0.44, 1.295], [0.58, 1.66]], 0.42));
+  const nozzle = useGeometry(() => tube([[-0.48, 1.12, 0], [-0.62, 1.1, 0], [-0.8, 1.06, 0]], 0.04));
   return (
     <group position={[-0.24, 0, -0.1]}>
-      <mesh geometry={stack} rotation={[0, Math.PI / 4, 0]} castShadow receiveShadow>
+      <mesh geometry={stack} castShadow receiveShadow>
         <Surface slot="stone" />
       </mesh>
       {/* the breast at the foot of the stack, its arch, and the fire seen through the taphole */}
@@ -633,41 +623,46 @@ function BlastFurnace({ accent }: Props) {
         <torusGeometry args={[0.19, 0.04, 6, 14, Math.PI]} />
         <Surface slot="metal" />
       </mesh>
-      {/* the bellows lying beside the stack, its boards, and the nozzle into the tuyere */}
-      <mesh geometry={bellows} position={[BELLOWS_X, 0, 0]} castShadow>
-        <Surface slot="cloth" accent={accent} />
-      </mesh>
-      <mesh geometry={boards} position={[BELLOWS_X, 0, 0]} castShadow>
-        <Surface slot="wood" />
-      </mesh>
-      <mesh position={[BELLOWS_X, 0.83, -0.08]} castShadow>
-        <boxGeometry args={[0.42, 0.06, 1.2]} />
-        <Surface slot="wood" />
-      </mesh>
-      <mesh position={[BELLOWS_X, 0.4, -0.08]} castShadow>
-        <boxGeometry args={[0.3, 0.8, 0.9]} />
-        <Surface slot="wood" />
-      </mesh>
-      <mesh geometry={nozzle} castShadow>
+      {/* an iron band round the stack */}
+      <mesh position={[0, 1.7, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
+        <cylinderGeometry args={[0.675, 0.69, 0.1, 4]} />
         <Surface slot="metal" />
       </mesh>
-      {/* the rocking beam that works the bellows, on its post */}
-      <mesh position={[BELLOWS_X, 1.25, -0.82]} castShadow>
-        <boxGeometry args={[0.12, 2.5, 0.12]} />
-        <Surface slot="wood" />
-      </mesh>
-      <mesh position={[BELLOWS_X, 2.3, -0.3]} rotation={[-0.62, 0, 0]} castShadow>
-        <boxGeometry args={[0.1, 0.1, 1.4]} />
-        <Surface slot="wood" />
-      </mesh>
-      <mesh position={[BELLOWS_X, 1.88, 0.1]} castShadow>
-        <cylinderGeometry args={[0.012, 0.012, 0.6, 5]} />
-        <Surface slot="metal" />
-      </mesh>
+      {/* the bellows on their bench, the lid board, the nozzle, and the beam that works them */}
+      <group position={BELLOWS_AT} rotation={[0, BELLOWS_TURN, 0]}>
+        <mesh geometry={bellows} castShadow>
+          <Surface slot="cloth" accent={accent} />
+        </mesh>
+        <mesh geometry={lid} castShadow>
+          <Surface slot="wood" />
+        </mesh>
+        <mesh position={[0.04, 0.85, 0]} castShadow>
+          <boxGeometry args={[1.14, 0.06, 0.42]} />
+          <Surface slot="wood" />
+        </mesh>
+        <mesh position={[0.1, 0.41, 0]} castShadow>
+          <boxGeometry args={[0.8, 0.82, 0.3]} />
+          <Surface slot="wood" />
+        </mesh>
+        <mesh geometry={nozzle} castShadow>
+          <Surface slot="metal" />
+        </mesh>
+        <mesh position={[0.68, 1.3, 0]} castShadow>
+          <boxGeometry args={[0.12, 2.6, 0.12]} />
+          <Surface slot="wood" />
+        </mesh>
+        <mesh position={[0.2, 2.42, 0]} rotation={[0, 0, 0.32]} castShadow>
+          <boxGeometry args={[1.2, 0.1, 0.1]} />
+          <Surface slot="wood" />
+        </mesh>
+        <mesh position={[-0.12, 1.93, 0]} castShadow>
+          <cylinderGeometry args={[0.012, 0.012, 0.66, 5]} />
+          <Surface slot="metal" />
+        </mesh>
+      </group>
     </group>
   );
 }
-
 
 /**
  * In the order a palace uses them (append only). The fifth and the tenth stand at the far
@@ -678,11 +673,11 @@ export const WORKSHOP_FEATURES: FeatureDef[] = [
   { id: 'screw-press', name: 'Screw Press', hint: 'A tall timber frame whose great wooden screw bears down on a stack of cloths.', mount: 'floor', footprint: 0.75, height: 2.76, Component: ScrewPress },
   { id: 'grindstone', name: 'Grindstone', hint: 'A heavy stone disc on a low wooden frame, running in its wet trough, turned by a crank.', mount: 'floor', footprint: 0.65, height: 1.36, Component: Grindstone },
   { id: 'alembic-still', name: 'Alembic Still', hint: 'A copper pot on a brick furnace, its long beak dripping into a flask.', mount: 'floor', footprint: 0.75, height: 2.05, Component: AlembicStill },
-  { id: 'hopper-chute', name: 'Hopper and Chute', hint: 'A funnel of boards high on the wall, heaped with grain, pouring down a chute into a bin.', mount: 'wall', footprint: 1.2, height: 3.02, Component: HopperChute },
+  { id: 'hopper-chute', name: 'Hopper and Chute', hint: 'A funnel of boards high on the wall, heaped with grain, pouring down a chute into a bin.', mount: 'wall', footprint: 1.3, height: 3.02, Component: HopperChute },
   { id: 'water-wheel', name: 'Water Wheel', hint: 'A great paddled wheel in its stone race, fed by a trough of water out of the wall.', mount: 'wall', footprint: 1.25, height: 3.2, Component: WaterWheel },
-  { id: 'trip-hammer', name: 'Trip Hammer', hint: 'A long beam on a pivot, its iron head raised over an anvil, its tail on a turning cam.', mount: 'floor', footprint: 1.0, height: 1.6, Component: TripHammer },
+  { id: 'trip-hammer', name: 'Trip Hammer', hint: 'A long beam on a pivot, its iron head raised over an anvil, its tail on a turning cam.', mount: 'floor', footprint: 1.0, height: 1.5, Component: TripHammer },
   { id: 'gear-train', name: 'Gear Train', hint: 'Toothed wheels meshing on a frame against the wall, winding a stone up on a rope.', mount: 'wall', footprint: 0.8, height: 2.95, Component: GearTrain },
-  { id: 'stirring-vat', name: 'Stirring Vat', hint: 'A hooped tub of dye under a gallows beam, a paddle standing in it.', mount: 'floor', footprint: 0.85, height: 2.34, Component: StirringVat },
+  { id: 'stirring-vat', name: 'Stirring Vat', hint: 'A great hooped tub of dye under a gallows beam, a paddle standing in it.', mount: 'floor', footprint: 0.85, height: 2.34, Component: StirringVat },
   { id: 'pole-lathe', name: 'Pole Lathe', hint: 'A low bench with a turned piece between its centres, a bent sapling pole arching over it.', mount: 'floor', footprint: 1.0, height: 3.0, Component: PoleLathe },
   { id: 'blast-furnace', name: 'Blast Furnace', hint: 'A tapering stone tower with a glowing taphole, a great leather bellows lying at its side.', mount: 'floor', footprint: 1.05, height: 2.84, Component: BlastFurnace },
 ];
