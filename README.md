@@ -21,7 +21,7 @@ The palace starts as a line drawing. A place takes a light first glaze when an i
 
 ## Try it
 
-Live demo: (link added once deployed)
+Live demo: https://memoria-five-kappa.vercel.app (public, no login)
 
 Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent footage of the whole pitch run, 82 seconds. It was rendered offline, frame by frame on a virtual clock, by `scripts/capture.mjs`. It is not a screen recording from a laptop.
 
@@ -93,7 +93,7 @@ The default look, Ink & Vellum, is a custom non-photorealistic pipeline: flat wa
 4. *Revise*: the images that fail are rewritten.
 5. *Adapt*: when you miss an item in a recall walk, you can ask for a stronger image for that item.
 
-The Anthropic key is read from the server environment and never reaches the browser. Results are cached. This live path is built but has not yet been run against the real model, because there is no API key yet.
+The Anthropic key is read from the server environment and never reaches the browser. Results are cached. This live path has been run on the deployed site; what was measured is under [Status](#status).
 
 **The offline planner.** If the function is unreachable or has no key, the app falls back to a deterministic offline planner, so composing a palace still works without a network. From notes it keeps each whole sentence as the meaning and names the card with a noun phrase that is unique in the deck. It never repeats a picture within a deck. For vocabulary, the image depicts the meaning and quotes the word, in several sentence patterns. Its drafts are labelled as offline drafts in the app.
 
@@ -108,7 +108,7 @@ npm install
 npm run dev
 ```
 
-For the live Architect, copy `.env.example` to `.env.local` and set `ANTHROPIC_API_KEY`. The dev server serves the same `api/architect.ts` handler that Vercel runs. Without a key the app uses its offline planner. `ARCHITECT_MODEL` and `ARCHITECT_EFFORT` are optional overrides, described in `.env.example`.
+For the live Architect, copy `.env.example` to `.env.local` and set `ANTHROPIC_API_KEY`. The dev server serves the same `api/architect.ts` handler that Vercel runs. Without a key the app uses its offline planner. `ARCHITECT_MODEL`, `ARCHITECT_EFFORT` and `ARCHITECT_THINKING` are optional overrides, described in `.env.example`. Extended thinking is off by default for the Architect's calls; `ARCHITECT_THINKING=adaptive` turns it back on (with it on, a six-fact plan took about 26 seconds in a single run, against about 11 with it off).
 
 | Command | What it does |
 |---|---|
@@ -119,9 +119,10 @@ For the live Architect, copy `.env.example` to `.env.local` and set `ANTHROPIC_A
 | `node scripts/smoke.mjs` | End-to-end test of the learning loop in headless Chromium: Judge Mode (passive, with misses, offline, the pitch variant), a keyboard-only compose and walk, typed recall, drafts and walks that survive a reload, malformed saved data, the error page, and the Theme Lab buttons with real clicks. Run `npm run build` first. |
 | `node scripts/ab-smoke.mjs` | End-to-end test of the comparison test (`?compare`): two scripted participants with the lists swapped, the results table and CSV, and an abandoned run that stores nothing. Run `npm run build` first. |
 | `node scripts/architect-smoke.mjs` | Checks the fixture decks, the offline planner and the API handler's guard rails. Calls the real model only when a key is set. |
+| `node scripts/live-check.mjs --url <deployment> [--facts 12]` | Checks a deployed copy from the outside, in a real browser: the page is public, the API answers with its guard rails, the scene renders, "Build a palace" returns a plan (it reports whether the plan came from the live Architect or the offline planner, and how long it took), and Regenerate works. Anyone can run it to repeat the live check under Status. |
 | `node scripts/capture.mjs` | Renders footage, GIFs and interface stills frame by frame on a virtual clock, so motion plays at the right speed on a machine that draws only a few frames a second. The commands that made the files in `docs/media/` are in its header. Needs `ffmpeg` for video and GIF output. |
 
-`shots`, `smoke.mjs`, `ab-smoke.mjs` and `capture.mjs` need Playwright: `npm i -D playwright && npx playwright install chromium`.
+`shots`, `smoke.mjs`, `ab-smoke.mjs`, `capture.mjs` and `live-check.mjs` need Playwright: `npm i -D playwright && npx playwright install chromium`.
 
 ## URL switches
 
@@ -169,18 +170,20 @@ Checked by automated tests on the merged build (Saturday 14 November, 7:55 AM ET
 - The Theme Lab's Copy JSON, Download JSON and Reset buttons are exercised with real clicks by the end-to-end suite.
 - Three QA reviews by reviewers with no knowledge of the build are in [`docs/qa/`](docs/qa/). The third judged it safe to demo with precautions and found no blockers; its three major issues were fixed afterwards and are covered by tests.
 
+Checked on the deployed site (Saturday 14 November, about 12:55 PM ET):
+
+- **The live Architect.** It works on the deployed site: measured there with `scripts/live-check.mjs` (a real browser driving "Build a palace"), a six-fact plan took 11.3 seconds on the server (5.9 s to draft, 5.4 s for the self-check) and a full twelve-fact palace took 13.7 seconds (7.8 s to draft, 5.9 s for the self-check). The self-check rejected and rewrote 4 of 6 and 4 of 12 first drafts in those two runs, and Regenerate took about 3 seconds. These are single runs, not averages, with extended thinking off (the default); the build sandbox's network proxy cuts off any request longer than 30 seconds, so nothing slower than that could be observed from there.
+
 Not verified:
 
 - **Frame rate on a real laptop.** The target is 60 fps at 1440×900 on an integrated GPU. It has not been measured.
 - **Live motion on a real GPU.** Camera glides, the recall flourish and the results tour have been checked only in offline-rendered frames, not live.
-- **The live Architect.** Built, but never run against the real model: there is no API key yet. The offline planner is what has been tested.
 - **Any result with real people.** The comparison test is built and nobody has done it yet.
 - **Screen readers.** Not tested.
 
 Also:
 
 - Moving an item to a different place by hand is not built.
-- Not deployed yet.
 
 ## Roadmap
 

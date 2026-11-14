@@ -5,7 +5,8 @@ the palace against 4.0 of 8 with a plain list"). It is not a study and we never 
 
 ## Setup (once)
 
-1. Open the deployed site, or a local production build, on the demo laptop. It works offline.
+1. Open the deployed site (`https://memoria-five-kappa.vercel.app`, public, no login), or a local
+   production build, on the demo laptop. It works offline.
 2. Results stay in this browser only. Use one laptop and one browser for everyone, or copy
    the CSV from each device at the end.
 3. Use a fresh browser profile, so that no edited deck and no earlier result is in the way.

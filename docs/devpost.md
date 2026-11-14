@@ -18,7 +18,7 @@ Judge Mode shows the whole loop in about two minutes with the eight carpal bones
 
 React Three Fiber and three.js: a static site with one serverless function. Layout, Theme (JSON tokens) and Style (shader code) are separate, so any palace works with any look. The look is a custom non-photorealistic pipeline: watercolour washes, ink outlines found from depth and surface direction, and paper grain. A shared "development field" tells every material how well the nearest place has been learned.
 
-The Architect is a small agent loop on the Claude API, built to **plan** (which facts, which room), **act** (draft an image for each fact), **check** (a second, strict pass tests every image for concreteness, action, distinctness and a stated link to the meaning, and rewrites the ones that fail) and **adapt** (when you miss an item, it proposes a stronger image). The key stays on the server. If the function cannot be reached, a deterministic offline planner drafts the images instead, and says so. Judge Mode uses neither: it runs on built-in decks whose images we wrote by hand, so the demo never depends on the network. The model loop has been tested against a stand-in for the API, not yet against the live model. <!-- Before submitting: once the live model path has been run with a real key, replace the last sentence with what you saw (for example how long a twelve-item plan took). If it has not been run, leave the sentence as it is. -->
+The Architect is a small agent loop on the Claude API, built to **plan** (which facts, which room), **act** (draft an image for each fact), **check** (a second, strict pass tests every image for concreteness, action, distinctness and a stated link to the meaning, and rewrites the ones that fail) and **adapt** (when you miss an item, it proposes a stronger image). The key stays on the server. If the function cannot be reached, a deterministic offline planner drafts the images instead, and says so. Judge Mode uses neither: it runs on built-in decks whose images we wrote by hand, so the demo never depends on the network. We ran the loop on the deployed site: a six-fact plan took 11.3 seconds on the server and a full twelve-fact palace took 13.7 seconds, self-check included, and the self-check rejected and rewrote 4 of 6 and 4 of 12 first drafts. These are single runs, not averages.
 
 The code was written with Claude Code agents under the team's direction during the hackathon window, and checked by three independent QA reviews and automated end-to-end tests. Not yet checked: frame rate and motion on a real laptop, and screen readers.
 
@@ -43,7 +43,7 @@ The palace only helps you encode. What the literature shows makes memories last 
 
 ## What's next for Memoria
 
-First, run the comparison test with people and test the live Architect with a real key. Then a second palace layout, so a second topic gets its own route, a palace editor, shareable links and WebXR. Later: your own home as a palace from a phone scan, a community theme gallery, classroom mode and multilingual vocabulary packs.
+First, run the comparison test with people. Then a second palace layout, so a second topic gets its own route, a palace editor, shareable links and WebXR. Later: your own home as a palace from a phone scan, a community theme gallery, classroom mode and multilingual vocabulary packs.
 
 ## Built with
 
@@ -66,13 +66,12 @@ TypeScript, React, three.js, React Three Fiber, drei, postprocessing, GLSL, WebG
 
 - Repo: https://github.com/AlexWin0806/memoria
 - Demo footage (silent, rendered offline): https://github.com/AlexWin0806/memoria/blob/main/docs/media/demo-pitch.mp4
-- Live demo: <!-- add the Vercel URL -->
+- Live demo: https://memoria-five-kappa.vercel.app
 - Video: <!-- add the YouTube link -->
 
 ## Before submitting (delete this section)
 
 1. Inspiration: add Alex's two sentences.
-2. How we built it: update the last sentence about the live model path if it has been tested with a real key.
-3. What we learned: add the venue test sentence, or leave it out.
-4. Links: live demo URL and video link.
-5. On Devpost itself: track Education; special tracks Amazon Best Practical AI Innovation and ChatOverflow Agent Leaderboard; all four Discord usernames.
+2. What we learned: add the venue test sentence, or leave it out.
+3. Links: video link.
+4. On Devpost itself: track Education; special tracks Amazon Best Practical AI Innovation and ChatOverflow Agent Leaderboard; all four Discord usernames.

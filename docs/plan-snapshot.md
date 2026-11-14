@@ -1,6 +1,6 @@
 # Plan / Outline (snapshot of the Google Doc "Plan/Outline" tab)
 
-Snapshot taken: Sat Nov 14, 8:03 AM ET (Scribe sync after round four; no human edits found in the tab).
+Snapshot taken: Sat Nov 14, 1:00 PM ET (Scribe sync after the site was deployed and the live Architect verified; no human edits found in the tab).
 The Google Doc tab is the source of truth; this file exists so changes can be diffed.
 
 ## Defaults and decisions in force
@@ -37,7 +37,7 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | F-02 | Camera rail and walk controls | P0 | done | Engine | U, A | Camera glides between loci on a spline, eases, lingers. Right/Space = next, Left = back. Reduced motion replaces the glide with a cross-fade. |
 | F-03 | Persistence | P0 | done | App | U | Decks, review state and settings survive a refresh, including mid-walk. localStorage, no account. |
 | F-04 | Input | P0 | done (moving an item to a different place is not built) | App | U | Paste a list (one item per line, optional "term - meaning"); paste raw notes and have items extracted; add, edit, delete, reorder by hand. |
-| F-05 | Palace Architect (AI) | P0 | doing (built; offline planner improved; live model path untested until there is an API key) | AI | C, U | For each item: one vivid image (scene sentence, glyphs, motion) tied to the meaning, assigned to a locus, related items grouped by room. Self-checks for vividness and distinctness and revises. Learner can accept, edit or regenerate each image. Key stays server-side. Cached. Works offline with a local fallback. |
+| F-05 | Palace Architect (AI) | P0 | done (live path verified on the deployed site Sat 12:55 PM: twelve facts in about 14 s including the self-check; offline planner as fallback) | AI | C, U | For each item: one vivid image (scene sentence, glyphs, motion) tied to the meaning, assigned to a locus, related items grouped by room. Self-checks for vividness and distinctness and revises. Learner can accept, edit or regenerate each image. Key stays server-side. Cached. Works offline with a local fallback. |
 | F-06 | Familiarization walk | P0 | done | App, Engine | U | First use of a layout: a guided walk of the empty route that names each locus. Under 40 seconds. Skippable afterwards. |
 | F-07 | Encode walk | P0 | done | App, Engine | U, C | At each locus the image appears in-world with term, meaning and scene. Learner-paced. |
 | F-08 | Recall walk | P0 | done | App | U | Images hidden. Typed or multiple-choice answer at each locus, then feedback and the image is revealed. Score at the end. The answer is never shown before the learner commits. |
@@ -96,6 +96,9 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | D-18 | Sat 7:50 AM | Comparison test is counterbalanced: two lists (carpal bones, citric acid cycle), each as a palace deck and as a plain list; list and order are swapped between volunteers | Lead |
 | D-19 | Sat 7:00 AM | Demo footage and GIFs are rendered offline on a virtual clock (`scripts/capture.mjs`), because the build sandbox cannot show motion in real time | Lead |
 | D-20 | Sat 5:50 AM | First correct recall is next due tomorrow; a miss is due again in 10 minutes | Lead |
+| D-21 | Sat 9:40 AM | Judge runs are a sandbox (never added to reviews, never change saved decks); pitch spot check cut to three places | Lead |
+| D-22 | Sat 12:50 PM | Extended thinking is off by default for the Architect's two calls: it cut a six-fact plan from about 26 s to about 11 s, and the self-check pass still reviews every image; `ARCHITECT_THINKING=adaptive` restores it | Lead |
+| D-23 | Sat 12:30 PM | Public demo address is memoria-five-kappa.vercel.app; the first address shared was behind a Vercel login | Alex, Lead |
 
 ## Change log
 
@@ -107,3 +110,4 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | Sat 4:30 AM | Round two merged (app fixes, engine and palace polish, ink style, Theme Lab, theme-authoring skill); QA review 1 started | Lead |
 | Sat 6:05 AM | Round three merged (QA 1 fixes, comparison test, offline Architect, results tour and recall flourish) | Lead |
 | Sat 7:55 AM | Round four merged (QA 2 fixes, motion fixes found in the first footage, counterbalanced comparison test); all suites pass. Sat 9:40 AM: QA review 3 (safe to demo with precautions; C8 U7 Ch6 A8) and round five merged (Judge runs are a sandbox, spot check of three, pause on every timed stop, archway image moved, images fade out); all suites pass again | Lead |
+| Sat 12:55 PM | Site deployed and public; live Architect verified and two defects from its first live runs fixed; ChatOverflow connected | Lead |
