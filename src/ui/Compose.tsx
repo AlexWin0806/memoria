@@ -24,7 +24,7 @@ import { PLAN_TIMEOUT_MS, REGENERATE_TIMEOUT_MS } from '@/flows/timing';
 import { withDeadline } from '@/flows/deadline';
 import { getLayout } from '@/layouts';
 import { KIT_LIST } from '@/layouts/kits/list';
-import { MAX_PLACES, MAX_ROOMS, palaceLayoutId, parsePalaceId, ROOM_CAPACITY, specPlaces, specRoomLeft } from '@/layouts/spec';
+import { MAX_PLACES, MAX_ROOMS, palaceLayoutId, parsePalaceId, placeId, ROOM_CAPACITY, specPlaces, specRoomLeft } from '@/layouts/spec';
 import { useDecks } from '@/state/decks';
 import { ARCH_AUTO, ARCH_HOUSE, hasDraft, useDraft, type DraftPlan } from '@/state/draft';
 import { repairCounts, useReview } from '@/state/review';
@@ -106,6 +106,8 @@ export function Compose() {
   const [emojiNote, setEmojiNote] = useState<string | null>(null);
   const [copied, setCopied] = useState<'yes' | 'no' | null>(null);
   const [discarding, setDiscarding] = useState(false);
+  // What the last move to another room did, said on the card that was moved.
+  const [moved, setMoved] = useState<{ id: string; text: string } | null>(null);
   // What was already here when the screen opened is a draft from earlier: say so, quietly.
   const [restored, setRestored] = useState(() => hasDraft(useDraft.getState()));
   const heading = useRef<HTMLHeadingElement>(null);
@@ -328,7 +330,7 @@ export function Compose() {
     };
     try {
       if (standing) {
-        const ext = await extendPalace(standing, cleaned.text, { onStep, places: placesOf, onProgress: (e) => live() && report(showExtension(e, !showing, false)) });
+        const ext = await extendPalace(standing, cleaned.text, { onStep, places: placesOf, onProgress: (e) => live() && e.added.length > 0 && report(showExtension(e, !showing, false)) });
         if (live()) showExtension(ext, !showing, true);
       } else if (kit === ARCH_HOUSE) {
         const p = await planPalace(houseRequest(), { onStep });
@@ -407,6 +409,39 @@ export function Compose() {
   /** Renaming a category changes the name over the door, and so the layout id; never a place id. */
   const renameRoom = (roomId: string, name: string) => {
     if (plan?.spec) patchPlan({ spec: { ...plan.spec, rooms: plan.spec.rooms.map((r) => (r.id === roomId ? { ...r, name } : r)) } });
+  };
+
+  /**
+   * The learner decides where a fact sits: it moves to the end of another room of the proposal.
+   * Nothing is saved yet, so the rooms are simply counted again: the room it leaves closes up,
+   * the room it joins gains a place. A room holds five places at most and is never left empty.
+   */
+  const moveToRoom = (item: MemoryItem, roomId: string) => {
+    const d = useDraft.getState();
+    const spec = d.plan?.spec;
+    const from = roomOfPlace(item.locusId);
+    const to = spec?.rooms.find((r) => r.id === roomId);
+    if (!d.plan || !spec || !to || from === roomId) return;
+    const inRoom = (id: string) => d.items.filter((it) => roomOfPlace(it.locusId) === id);
+    const name = to.name.trim() || 'that room';
+    if (inRoom(roomId).length >= ROOM_CAPACITY) {
+      setMoved({ id: item.id, text: `${name} is full: a room holds ${ROOM_CAPACITY} places. Nothing was moved.` });
+      return;
+    }
+    if (inRoom(from).length <= 1) {
+      setMoved({ id: item.id, text: 'This is the only fact in its room, and a room is never left empty. Nothing was moved.' });
+      return;
+    }
+    const housed = spec.rooms.map((r) => [...inRoom(r.id).filter((it) => it.id !== item.id), ...(r.id === roomId ? [item] : [])]);
+    const rooms = spec.rooms.map((r, k) => ({ ...r, places: housed[k].length }));
+    d.patch({
+      items: housed.flatMap((list, k) => list.map((it, n) => ({ ...it, locusId: placeId(spec.rooms[k].id, n + 1) }))),
+      plan: { ...d.plan, spec: { ...spec, rooms }, rehoused: true },
+    });
+    const at = getLayout(palaceLayoutId({ ...spec, rooms })).loci.find((l) => l.id === placeId(roomId, housed[spec.rooms.indexOf(to)].length));
+    setMoved({ id: item.id, text: `Moved to ${name}${at ? `: it now sits at ${at.name}` : ''}.` });
+    // The card is drawn again in its new room: the menu that moved it keeps the focus.
+    setTimeout(() => document.getElementById(`room-of-${item.id}`)?.focus(), 0);
   };
 
   /**
@@ -591,6 +626,15 @@ export function Compose() {
               {palaceSizeLine(standingSpec)}.{' '}
               {left > 0 ? `It has room for ${left} more: a palace holds ${MAX_PLACES} places.` : `It is full: a palace holds ${MAX_PLACES} places.`}
             </p>
+            {left > 0 && (
+              // The names to write as headings, and what each room can still take.
+              <p className="body" data-testid="extend-rooms">
+                Free places: {standingSpec.rooms.map((r) => `${r.name} ${ROOM_CAPACITY - r.places}`).join(', ')}.{' '}
+                {standingSpec.rooms.length < MAX_ROOMS
+                  ? `${plural(MAX_ROOMS - standingSpec.rooms.length, 'more room')} can be added.`
+                  : 'No more rooms can be added.'}
+              </p>
+            )}
             {standing.items.length > 0 && unfinished * 2 >= standing.items.length && (
               // A suggestion and no more: adding places to a palace later has not been studied (docs/research.md 8.4).
               <p className="notice" data-testid="extend-finish-first">
@@ -639,8 +683,12 @@ export function Compose() {
         ) : (
           <p className="hint" data-testid="compose-rooms-hint">
             Formats: <code>term - meaning</code>, <code>term: meaning</code>, or one item per line. A line that starts with <code>#</code> is a
-            heading, and each heading becomes a room; without headings the facts are sorted into rooms for you. A palace holds up to {MAX_PLACES} places, in {MAX_ROOMS} rooms of {ROOM_CAPACITY}; each place
-            holds one fact{standing ? '.' : `, and a palace needs at least ${MIN_ITEMS}.`}
+            heading
+            {standing
+              ? ': one that names a room of this palace adds to that room, and any other opens a new room'
+              : ', and each heading becomes a room; without headings the facts are sorted into rooms for you'}
+            . A palace holds up to {MAX_PLACES} places, in {MAX_ROOMS} rooms of {ROOM_CAPACITY}; each place holds one fact
+            {standing ? '.' : `, and a palace needs at least ${MIN_ITEMS}.`}
           </p>
         )}
         <p className="hint" data-testid="compose-limits">
@@ -785,7 +833,7 @@ export function Compose() {
         {planning
           ? drawingRooms.length > 0
             ? `The Architect is still drawing ${plural(drawingRooms.length, 'room')}: ${roomsOf(drawingRooms).join(', ')}. Their images are offline drafts until then.`
-            : 'The Architect is checking its work.'
+            : 'The Architect is working.'
           : ''}
       </p>
       {planning && (
@@ -916,7 +964,8 @@ export function Compose() {
           {offline ? 'What the offline planner did' : 'What the Architect did'}
         </p>
         <ol className="steps" data-testid="compose-steps">
-          {plan.steps.map((s, i) => (
+          {/* While it works, each step as it happens; once it has finished, the plan's own account. */}
+          {(planning && liveSteps.length > 0 ? liveSteps : plan.steps).map((s, i) => (
             <li key={i}>
               <span className="label">{s.kind}</span> {s.label}
             </li>
@@ -933,6 +982,12 @@ export function Compose() {
         </>
       )}
 
+      {plan.rehoused && (
+        <p className="notice" data-testid="compose-rehoused">
+          You have moved facts between rooms. Each image was written for the place its fact first had, and some name what stands there: read the
+          moved ones, and the ones after them in the room they left, against their places.
+        </p>
+      )}
       <p className="skip">
         <button type="button" className="link" onClick={skipToPlace} data-testid="compose-skip">
           Skip to the place button
@@ -994,6 +1049,11 @@ export function Compose() {
                 emojiNote={emojiNote === item.id}
                 onEmojiStripped={() => emojiNote === null && setEmojiNote(item.id)}
                 onRegenerate={() => regenerate(item)}
+                // Where a fact sits is the learner's to change while the palace is new: rooms that stand are not rearranged.
+                rooms={plan.spec && !standing && !planning && groups.length > 1 ? groups.map((g, i) => ({ id: g.id, name: `${i + 1} · ${g.name.trim() || `Room ${i + 1}`}` })) : undefined}
+                roomId={room.id}
+                onMove={(roomId) => moveToRoom(item, roomId)}
+                moved={moved?.id === item.id ? moved.text : null}
                 // Tabbing into the last card counts as having read to the end.
                 onFocus={item.id === lastId ? () => setReadAll(true) : undefined}
               />

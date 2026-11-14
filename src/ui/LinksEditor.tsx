@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import type { ItemLink, LinkKind } from '@/core/types';
 import { plural } from '@/flows/format';
-import { LINK_KIND_NOTE, LINK_KINDS, linkInWords, samePair } from './palaceWords';
+import { LINK_KIND_WORDS, LINK_KINDS, linkInWords, samePair } from './palaceWords';
 
 /** A label on a link is a few words (the Architect's own rule). */
 const LABEL_WORDS = 4;
@@ -64,6 +64,9 @@ export function LinksEditor({
     onChange([...links, link]);
     setProblem('');
     setSaid(`Added: ${linkInWords(link, termOf)}.`);
+    // The form starts again empty: pressing the button twice must not ask for the same link again.
+    setFrom('');
+    setTo('');
     setLabel('');
   };
 
@@ -126,7 +129,7 @@ export function LinksEditor({
             <select id="link-kind" className="field" value={kind} onChange={(e) => setKind(e.target.value as LinkKind)} data-testid="link-kind">
               {LINK_KINDS.map((k) => (
                 <option key={k} value={k}>
-                  {LINK_KIND_NOTE[k]}
+                  {LINK_KIND_WORDS[k]}
                 </option>
               ))}
             </select>

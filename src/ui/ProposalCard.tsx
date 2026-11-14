@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Imago, ImagoAction, MemoryItem } from '@/core/types';
 import { emojiOnly } from '@/flows/answers';
 import { NO_MORE_OFFLINE } from '@/flows/suggest';
@@ -39,6 +40,10 @@ export function ProposalCard({
   onEmojiStripped,
   onRegenerate,
   onFocus,
+  rooms,
+  roomId,
+  onMove,
+  moved,
 }: {
   item: MemoryItem;
   /** Position on the route (or among the items being added), from 1. */
@@ -59,9 +64,17 @@ export function ProposalCard({
   onEmojiStripped: () => void;
   onRegenerate: () => void;
   onFocus?: () => void;
+  /** The rooms this fact can be moved to (its own among them). Absent: where it sits cannot be changed here. */
+  rooms?: { id: string; name: string }[];
+  roomId?: string;
+  onMove?: (roomId: string) => void;
+  /** What the last move of this card did. */
+  moved?: string | null;
 }) {
   const { patchItem, patchImago } = useDraft.getState();
   const drafted = useDraft((d) => d.drafted[it.id]);
+  // The room chosen in the menu. Nothing moves until the button is pressed, so the arrow keys can pass over a room.
+  const [wanted, setWanted] = useState(roomId ?? '');
   const id = (name: string) => `${name}-${it.id}`;
   const mine = it.imago.source === 'learner';
   const flag = checked && missing(it).length > 0;
@@ -154,6 +167,30 @@ export function ProposalCard({
           </select>
         </div>
       </div>
+      {rooms && onMove && (
+        <div className="prop__where">
+          <label className="sub" htmlFor={`room-of-${it.id}`}>
+            Room
+          </label>
+          <div className="prop__move">
+            <select id={`room-of-${it.id}`} className="field" value={wanted} onChange={(e) => setWanted(e.target.value)} data-testid="prop-room">
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="link" disabled={wanted === roomId} onClick={() => onMove(wanted)} data-testid="prop-move">
+              Move it there
+            </button>
+          </div>
+        </div>
+      )}
+      {moved && (
+        <p className="sub" role="status" data-testid="prop-moved">
+          {moved}
+        </p>
+      )}
       <div className="prop__foot">
         <button type="button" className="link" disabled={anyBusy || drawing} onClick={onRegenerate} data-testid="regenerate">
           {busy ? 'Drawing another' : 'Regenerate'}

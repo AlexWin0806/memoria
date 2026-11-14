@@ -24,17 +24,22 @@ export const roomOfPlace = (placeId: string): string => placeId.slice(0, placeId
 
 export const LINK_KINDS: readonly LinkKind[] = ['becomes', 'needs', 'blocks', 'mirrors'];
 
-/** What each kind of link says, for the menu that adds one. */
-export const LINK_KIND_NOTE: Record<LinkKind, string> = {
-  becomes: 'becomes (turns into, leads to)',
-  needs: 'needs (depends on)',
-  blocks: 'blocks (inhibits, prevents)',
-  mirrors: 'mirrors (a matched pair)',
+/**
+ * The four kinds in plain words, for the list of links and for the menu that adds one. A kind
+ * alone is never the whole truth: `blocks` is usually regulation, where one thing acts on what
+ * makes the other (succinyl-CoA inhibits the enzyme that makes citrate, not citrate), so it
+ * reads "holds back", and the link's label, when it has one, is the precise statement.
+ */
+export const LINK_KIND_WORDS: Record<LinkKind, string> = {
+  becomes: 'becomes',
+  needs: 'needs',
+  blocks: 'holds back',
+  mirrors: 'pairs with',
 };
 
-/** "Citrate becomes isocitrate: isomerisation". */
+/** "Citrate becomes isocitrate: isomerisation"; "Succinyl-CoA holds back citrate: inhibits citrate synthase". */
 export function linkInWords(link: ItemLink, termOf: (id: string) => string): string {
-  return `${termOf(link.from)} ${link.kind} ${termOf(link.to)}${link.label ? `: ${link.label}` : ''}`;
+  return `${termOf(link.from)} ${LINK_KIND_WORDS[link.kind]} ${termOf(link.to)}${link.label ? `: ${link.label}` : ''}`;
 }
 
 /** The same two items, in either direction: a palace keeps one link for any two facts. */

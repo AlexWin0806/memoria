@@ -24,15 +24,22 @@
  *      of the house as headings that cannot be renamed, no "Add" on its row; a draft saved by
  *      an earlier build opens as it did
  *   d  A PDF with three headings, then Design: three rooms named after the headings
- *   e  Saved data: a deck whose links name a missing item, link an item to itself, have an
- *      unknown kind or repeat a pair, and whose focus is not one of the two, keeps its items and
- *      its good link; the rest is dropped and the original is set aside
+ *   e  Saved data: a deck whose links name a missing item, link an item to itself or have an
+ *      unknown kind, and whose focus is not one of the two, keeps its items and its good links;
+ *      the rest is dropped and the original is set aside
+ *   v  Where a fact sits is the learner's to change: a fact is moved to another room (the room
+ *      it leaves closes up, the room it joins gains a place, the palace on screen follows); a
+ *      full room and a room's only fact are refused, in words; the screen says that the images
+ *      were written for the first places; the deck is saved as arranged and survives a reload
  *   m  The proposal fills in room by room. A stand-in for the Architect answers the outline at
  *      once, the first room's images after a moment and the second room's later: until then the
  *      second room's cards are marked as drafts and the place button waits; an image the learner
  *      rewrites meanwhile is not overwritten; the kit, the reason for it, the process focus and
  *      the links the outline carried are all shown. (This checks the screen against the wire
  *      format, not the live model.)
+ *   w  An Architect that does not answer: "Do not wait: continue by hand" gives the offline plan
+ *      at once; left alone, the request runs out of time by itself (28 s) and the offline plan
+ *      is shown with its notice, the notes untouched
  *   k  With two kits or more: another kit after planning keeps every place id, says the images
  *      were written for other places, and draws them again on request (skipped with one kit)
  *
@@ -350,6 +357,8 @@ const cases = {
     assert(JSON.stringify(await linkRows(page)) === JSON.stringify(['hablé becomes hablo', 'hablo becomes hablaré']), `links: ${await linkRows(page)}`);
     const about = await text(page.getByTestId('links-about'));
     assert(about.includes('a view of how the notes are organised') && !/remember|memory|understand|learn/i.test(about), `the links section claims too much: ${about}`);
+    const kinds = await page.locator('[data-testid=link-kind] option').allTextContents();
+    assert(JSON.stringify(kinds) === JSON.stringify(['becomes', 'needs', 'holds back', 'pairs with']), `the kinds of link are offered as: ${kinds}`);
     const ids = Object.fromEntries((await savedDraft(page)).items.map((it) => [it.term, it.id]));
     const tryLink = async (from, kind, to, label) => {
       await page.getByTestId('link-from').selectOption(from ? ids[from] : '');
@@ -367,13 +376,13 @@ const cases = {
     assert((await text(page.getByTestId('link-problem'))).startsWith('The label is 5 words'), 'a label of five words was accepted');
     await tryLink('comí', 'mirrors', 'como', 'same verb');
     assert((await page.getByTestId('link-problem').count()) === 0, `a good link was refused: ${await page.getByTestId('link-problem').allTextContents()}`);
-    assert((await text(page.getByTestId('links-status'))) === 'Added: comí mirrors como: same verb.', `after adding: ${await text(page.getByTestId('links-status'))}`);
-    assert((await linkRows(page)).at(-1) === 'comí mirrors como: same verb', `links: ${await linkRows(page)}`);
+    assert((await text(page.getByTestId('links-status'))) === 'Added: comí pairs with como: same verb.', `after adding: ${await text(page.getByTestId('links-status'))}`);
+    assert((await linkRows(page)).at(-1) === 'comí pairs with como: same verb', `links: ${await linkRows(page)}`);
     // Remove the first with the keyboard; the focus is not left on nothing.
     await page.getByTestId('room-name').last().focus();
     await tabTo(page, 'link-remove');
     await page.keyboard.press('Enter');
-    assert(JSON.stringify(await linkRows(page)) === JSON.stringify(['hablo becomes hablaré', 'comí mirrors como: same verb']), `after removing: ${await linkRows(page)}`);
+    assert(JSON.stringify(await linkRows(page)) === JSON.stringify(['hablo becomes hablaré', 'comí pairs with como: same verb']), `after removing: ${await linkRows(page)}`);
     assert((await text(page.getByTestId('links-status'))) === 'Removed: hablé becomes hablo.', `after removing: ${await text(page.getByTestId('links-status'))}`);
     assert((await focused(page)) === 'links-status', `after removing a link the focus is on ${await focused(page)}`);
     await shot(page, 'links');
@@ -483,7 +492,7 @@ const cases = {
     await page.getByTestId('link-kind').selectOption('mirrors');
     await page.getByTestId('link-to').selectOption(old['hablaré']);
     await page.getByTestId('link-add-button').click();
-    assert((await linkRows(page)).includes('hablaría mirrors hablaré'), `links: ${await linkRows(page)}`);
+    assert((await linkRows(page)).includes('hablaría pairs with hablaré'), `links: ${await linkRows(page)}`);
 
     await placeWithKeys(page, 'compose-skip');
     await page.locator('[data-testid=survey] [data-testid=walk-label]:has-text("Place 1 of 3")').waitFor();
@@ -640,14 +649,14 @@ const cases = {
       { from: c, to: d, kind: 'causes' },
       { from: b, to: a, kind: 'blocks' },
       'not a link',
-      { from: b, to: c, kind: 'needs', label: 'one two three four five six' },
+      { from: b, to: c, kind: 'needs', label: 5 },
     ];
     deck.focus = 'everything';
     const { context, page, errors } = await open({ seed: seedDecks([deck]) });
     await page.getByTestId('title').waitFor();
     const kept = (await savedDecks(page)).find((x) => x.id === deck.id);
     assert(kept && kept.items.length === 5, 'a deck with bad links lost its items, or was dropped');
-    assert(JSON.stringify(kept.links) === JSON.stringify([good, { from: b, to: c, kind: 'needs' }]), `links kept: ${JSON.stringify(kept.links)}`);
+    assert(JSON.stringify(kept.links) === JSON.stringify([good, { from: b, to: a, kind: 'blocks' }, { from: b, to: c, kind: 'needs' }]), `links kept: ${JSON.stringify(kept.links)}`);
     assert(!('focus' in kept), `a focus that is not one of the two was kept: ${kept.focus}`);
     assert((await text(page.getByTestId('storage-notice'))) === 'Some saved data could not be read and was set aside.', 'the title does not say that something was set aside');
     const aside = await page.evaluate(() => JSON.parse(localStorage.getItem('memoria.quarantine.v1') ?? '[]'));
@@ -655,7 +664,70 @@ const cases = {
     assert((await text(deckRow(page, 'Linked').locator('.deck__line'))).startsWith(`${KITS[0].name} · 2 rooms · 5 places`), 'the repaired deck is not listed');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return 'of 7 links the good one and one with its long label removed are kept; missing item, self link, unknown kind, repeated pair and a non-link are dropped; bad focus dropped; deck and items kept; original set aside';
+    return 'of 7 links three are kept (one loses a label that is not text); missing item, self link, unknown kind and a non-link are dropped; bad focus dropped; deck and items kept; original set aside';
+  },
+
+  async v() {
+    const { context, page, errors } = await open();
+    await page.getByTestId('title').waitFor();
+    await page.getByTestId('title-build').click();
+    await page.getByTestId('compose-text').fill(TENSES);
+    await page.getByTestId('compose-design').click();
+    const proposal = page.getByTestId('proposal');
+    await proposal.waitFor();
+    const where = async () => Object.fromEntries((await savedDraft(page)).items.map((it) => [it.term, it.locusId]));
+    const card = async (term) => {
+      const terms = await page.getByTestId('prop-term').evaluateAll((els) => els.map((el) => el.value));
+      assert(terms.includes(term), `no card for ${term}: ${terms}`);
+      return page.getByTestId('proposal-row').nth(terms.indexOf(term));
+    };
+    // The menu alone moves nothing (so the arrow keys can pass over a room); its button does.
+    const move = async (term, room) => {
+      const it = await card(term);
+      await it.getByTestId('prop-room').selectOption(room);
+      await it.getByTestId('prop-move').click();
+    };
+    const said = async (term) => text((await card(term)).getByTestId('prop-moved'));
+    const counts = async () => specOf(await proposal.getAttribute('data-layout')).rooms.map((r) => r.places);
+    assert((await page.getByTestId('compose-rehoused').count()) === 0, 'nothing has been moved yet');
+    await (await card('vivo')).getByTestId('prop-room').selectOption('r1');
+    assert((await where()).vivo === 'r2-3' && (await page.getByTestId('compose-rehoused').count()) === 0, 'choosing a room in the menu moved the fact before the button was pressed');
+
+    // To another room: it goes to the end of that room, and the room it left closes up.
+    await move('vivo', 'r3');
+    assert((await where()).vivo === 'r3-4' && JSON.stringify(await counts()) === '[3,2,4]', `after moving vivo: ${JSON.stringify(await where())}`);
+    assert(/^Moved to Future tense: it now sits at .+\.$/.test(await said('vivo')), `the card says: ${await said('vivo')}`);
+    assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'prop-room'), 'after a move the focus is not on the menu that made it');
+    assert((await text(page.getByTestId('compose-rehoused'))).includes('Each image was written for the place its fact first had'), 'nothing says that the images were written for other places');
+    await sceneShows(page, await proposal.getAttribute('data-layout'));
+    await move('comí', 'r3');
+    const second = await where();
+    assert(second['comí'] === 'r3-5' && second['viví'] === 'r1-2' && JSON.stringify(await counts()) === '[2,2,5]', `after moving comí: ${JSON.stringify(second)}`);
+    // A room holds five; a room is never left empty. Both are refused in words, and nothing moves.
+    await move('hablé', 'r3');
+    assert((await said('hablé')) === 'Future tense is full: a room holds 5 places. Nothing was moved.', `a sixth fact in a room: ${await said('hablé')}`);
+    await move('viví', 'r2');
+    await move('hablé', 'r2');
+    assert((await said('hablé')) === 'This is the only fact in its room, and a room is never left empty. Nothing was moved.', `the last fact of a room: ${await said('hablé')}`);
+    const final = { 'hablé': 'r1-1', hablo: 'r2-1', como: 'r2-2', 'viví': 'r2-3', 'hablaré': 'r3-1', 'comeré': 'r3-2', 'viviré': 'r3-3', vivo: 'r3-4', 'comí': 'r3-5' };
+    assert(JSON.stringify(await where()) === JSON.stringify(final) && JSON.stringify(await counts()) === '[1,3,5]', `the arrangement: ${JSON.stringify(await where())}`);
+    const perRoom = await page.locator('[data-testid=room]').evaluateAll((els) => els.map((el) => el.querySelectorAll('[data-testid=proposal-row]').length));
+    assert(JSON.stringify(perRoom) === '[1,3,5]', `cards per room: ${perRoom}`);
+    await shot(page, 'moved');
+
+    // Saved as arranged, in walking order, and kept over a reload.
+    await page.getByTestId('compose-title').fill('Smoke test moved');
+    await placeWithKeys(page, 'compose-title');
+    await page.locator('[data-testid=survey] [data-testid=walk-label]:has-text("Place 1 of 9")').waitFor();
+    const deck = (await savedDecks(page)).find((d) => d.title === 'Smoke test moved');
+    assert(JSON.stringify(Object.fromEntries(deck.items.map((it) => [it.term, it.locusId]))) === JSON.stringify(final), `the saved deck: ${JSON.stringify(deck.items.map((it) => [it.term, it.locusId]))}`);
+    assert(JSON.stringify(specOf(deck.layoutId).rooms.map((r) => r.places)) === '[1,3,5]' && deck.links.length === 2, `the saved palace: ${deck.layoutId}`);
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert(JSON.stringify((await savedDecks(page)).find((d) => d.id === deck.id)) === JSON.stringify(deck) && (await page.getByTestId('storage-notice').count()) === 0, 'the rearranged deck did not survive a reload');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'vivo and comí moved to the third room (3,3,3 -> 1,3,5 after three moves); a sixth fact in a room and the last fact of a room refused in words; saved as arranged; kept over a reload';
   },
 
   async m() {
@@ -674,7 +746,10 @@ const cases = {
               focusReason: 'Each compound is made from the one before it.',
               categories: [{ name: 'First half', shape: 'hall' }, { name: 'Second half', shape: 'hall' }],
               items: CYCLE.map((term, i) => ({ ref: `i${i + 1}`, term, category: i < 3 ? 0 : 1, picture: PICTURES[i] })),
-              links: [{ from: 'i1', to: 'i2', kind: 'becomes', label: 'isomerisation' }],
+              links: [
+                { from: 'i1', to: 'i2', kind: 'becomes', label: 'isomerisation' },
+                { from: 'i4', to: 'i1', kind: 'blocks', label: 'inhibits citrate synthase' },
+              ],
               overflow: [],
               steps: [{ kind: 'plan', label: 'Sorted 6 facts into 2 rooms.' }],
             },
@@ -731,7 +806,8 @@ const cases = {
     assert((await text(page.getByTestId('focus-read'))) === 'The Architect read these notes as a process: Each compound is made from the one before it.', `focus: ${await text(page.getByTestId('focus-read'))}`);
     assert((await picked(page, 'focus')) === 'process', 'the choice should start at what the Architect decided');
     const rows = await linkRows(page);
-    assert(rows[0] === 'Citrate becomes Isocitrate: isomerisation' && rows.length >= 5, `links: ${rows}`);
+    assert(rows[0] === 'Citrate becomes Isocitrate: isomerisation' && rows.length >= 6, `links: ${rows}`);
+    assert(rows.includes('Succinyl-CoA holds back Citrate: inhibits citrate synthase') && !rows.some((r) => / blocks | mirrors /.test(r)), `a link that regulates should read "holds back", with its label as the precise statement: ${rows}`);
     const ops = calls.map((c) => JSON.parse(c).op);
     assert(ops[0] === 'outline' && ops.filter((o) => o === 'images').length === 2, `requests: ${ops}`);
     const sent = JSON.parse(calls[0]);
@@ -741,6 +817,38 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return 'outline first, then room by room: the second room\'s cards are marked as drafts until its images arrive, the place button waits, a learner\'s edit made meanwhile is kept; kit with its reason, process focus and links shown';
+  },
+
+  async w() {
+    // Longer than the client waits for an outline (OUTLINE_TIMEOUT_MS in src/ai/palace.ts is 28 s).
+    const architect = (body) => (body.op === 'outline' ? { wait: 45000, body: {} } : null);
+    const { context, page, errors } = await open({ architect });
+    await page.getByTestId('title').waitFor();
+    await page.getByTestId('title-build').click();
+    await page.getByTestId('compose-text').fill(TENSES);
+    await page.getByTestId('compose-design').click();
+    await page.getByTestId('compose-working').waitFor();
+    assert(await page.getByTestId('compose-text').isDisabled(), 'the notes can be edited while the Architect reads them');
+    assert((await page.locator('[data-testid=arch] input:disabled').count()) === KITS.length + 2, 'the architecture can be changed while the Architect works');
+    await shot(page, 'working');
+    // Not waiting: the offline planner answers at once, with the rooms from the headings.
+    await page.getByTestId('compose-by-hand').click();
+    await page.getByTestId('proposal').waitFor();
+    assert((await page.getByTestId('compose-local').count()) === 1 && (await page.getByTestId('room').count()) === 3, 'continuing by hand did not give the offline plan');
+    // Waiting: the request runs out of time by itself, and the offline plan follows.
+    await page.getByTestId('compose-back').click();
+    await page.getByTestId('compose-design').click();
+    await page.getByTestId('compose-working').waitFor();
+    const asked = Date.now();
+    await page.getByTestId('proposal').waitFor({ timeout: 70000 });
+    const waited = Math.round((Date.now() - asked) / 1000);
+    assert(waited >= 15 && waited <= 45, `the screen waited ${waited} s for an Architect that never answers`);
+    assert((await page.getByTestId('compose-local').count()) === 1 && JSON.stringify(await roomNames(page)) === JSON.stringify(['Past tense', 'Present tense', 'Future tense']), 'after the wait the offline plan was not shown');
+    await page.getByTestId('compose-back').click();
+    assert((await page.getByTestId('compose-text').inputValue()) === TENSES, 'the notes were changed by the wait');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `continue by hand at once; left alone, the request ran out after ${waited} s and the offline plan was shown, notes untouched`;
   },
 
   async k() {

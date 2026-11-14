@@ -31,6 +31,8 @@ export interface DraftPlan extends Pick<ArchitectPlan, 'title' | 'kind' | 'steps
   pendingRooms: string[];
   /** Adding to a palace: the deck's layout id when the new notes were read. Null for a new palace. */
   base: string | null;
+  /** The learner has moved a fact to another room since the images were written. */
+  rehoused?: boolean;
 }
 
 /** One draft: a new palace, or the notes being added to a palace that stands. */

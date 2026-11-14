@@ -150,6 +150,16 @@
 .deck__line .deck__meta,
 .deck__palace { display: inline; }
 
+/* Where a fact sits: a menu half the width of the card, like one cell of a pair, and the button that moves it. */
+.prop__move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+}
+.prop__move select { flex: 0 1 calc(50% - 6px); }
+
 @media (max-width: 719px) {
   .links__form { grid-template-columns: 1fr; }
+  .prop__move select { flex-basis: 100%; }
 }

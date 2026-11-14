@@ -52,8 +52,6 @@ const WALK_KINDS = ['survey', 'recall', 'review'] as const;
 const SURVEY_OUTCOMES = ['known', 'unknown'] as const;
 const LINK_KINDS = ['becomes', 'needs', 'blocks', 'mirrors'] as const;
 const FOCUSES = ['facts', 'process'] as const;
-/** A label on a link is a few words (the Architect's own rule: src/ai/wire.ts). */
-const LINK_LABEL_WORDS = 4;
 
 /** Cleans every element; returns the same array when nothing changed, so a clean value is left untouched. */
 function cleanList<T>(list: unknown[], clean: (v: unknown, t: Tally) => T | null, t: Tally): T[] {
@@ -142,34 +140,23 @@ function onePerPlace(items: MemoryItem[], layoutId: unknown, t: Tally): MemoryIt
 
 /**
  * One link between two items: both ends are items the caller knows (`known`), never an item
- * with itself, one of the four kinds. A label that is not a few words is dropped from the link;
- * anything else wrong drops the link.
+ * with itself, one of the four kinds. A label that is not text is dropped from the link; anything
+ * else wrong drops the link.
  */
 function cleanLink(v: unknown, known: (id: string) => boolean, t: Tally): ItemLink | null {
   if (!isObj(v) || !str(v.from) || !str(v.to) || v.from === v.to || !oneOf(v.kind, LINK_KINDS) || !known(v.from) || !known(v.to)) return null;
-  if (v.label === undefined || (str(v.label) && v.label.trim() !== '' && v.label.trim().split(/\s+/).length <= LINK_LABEL_WORDS)) return v as unknown as ItemLink;
+  if (v.label === undefined || str(v.label)) return v as unknown as ItemLink;
   t.dropped = true;
   return { from: v.from, to: v.to, kind: v.kind };
 }
 
 /**
- * The links of a deck or a draft, one for any two items (the first wins). Returns the same
- * array when every link is kept as it is, so that a clean value is left untouched.
+ * The links of a deck or a draft: each one checked, the bad ones dropped. Returns the same
+ * array when every link is kept as it is, so that a clean value is left untouched. (Two links
+ * between the same two items are both kept: only the screen that adds a link refuses that.)
  */
 export function cleanLinks(list: unknown[], known: (id: string) => boolean, t: Tally): ItemLink[] {
-  const pairs = new Set<string>();
-  return cleanList(
-    list,
-    (v, tally) => {
-      const link = cleanLink(v, known, tally);
-      if (!link) return null;
-      const pair = link.from < link.to ? `${link.from}|${link.to}` : `${link.to}|${link.from}`;
-      if (pairs.has(pair)) return null;
-      pairs.add(pair);
-      return link;
-    },
-    t,
-  );
+  return cleanList(list, (v, tally) => cleanLink(v, known, tally), t);
 }
 
 /** A deck needs an id, a title and at least one well-formed item on a place of its palace; the rest is given a default. */
@@ -339,6 +326,7 @@ export interface CleanDraftDoc {
     pendingRooms: string[];
     /** An extension: the layout id of the deck when the new notes were read. */
     base: string | null;
+    rehoused?: boolean;
   } | null;
   items: MemoryItem[];
   title: string;
@@ -395,6 +383,7 @@ function cleanPlan(v: unknown, t: Tally): CleanDraftDoc['plan'] {
     lowConfidence: strings(v.lowConfidence),
     pendingRooms: strings(v.pendingRooms),
     base: str(v.base) ? v.base : null,
+    ...(v.rehoused === true ? { rehoused: true } : {}),
   };
 }
 
