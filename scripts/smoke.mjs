@@ -15,9 +15,12 @@
  *      Strengthen with the Architect unreachable, and with it never answering; no review card is
  *      written, and the image kept goes to the learner's own copy, not into the next Judge run;
  *      the feedback after an answer can be paused (P) and resumed (Space) like an encode stop
- *   c  Compose a 5-line list, place it, walk encode and recall with the keyboard only
+ *   c  Compose a 5-line list, place it, then with the keyboard only: the survey (which is also the
+ *      first walk of the route), the route check, the encode walk and the recall walk
  *   d  (continues c) reload: the new deck is still listed; new versus due; reviews; the Leave dialog
- *   e  Judge Mode with the browser offline       -> "7 of 8", no requests at all, Strengthen at once
+ *   e  Judge Mode with the browser offline       -> "7 of 8", no requests at all, Strengthen at once;
+ *      every place starts in ruins, goes under repair on the study walk and is restored or left
+ *      needing repair by the answer; the run writes nothing (no cards, no walk record, no survey date)
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
  *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay;
  *      a timed encode stop can be paused (P) and resumed (Space), whichever stop the key lands on
@@ -33,6 +36,13 @@
  *      a deck with two items on one place and one on a missing place) is set aside: the title
  *      loads with one quiet line, the original is kept, Judge Mode still starts
  *   x  A render error shows the error page, not a blank one: Reload, and the guarded Reset
+ *   v  The survey: right, wrong and "I don't know" answers give the expected state of each place and
+ *      reveal nothing; "I don't know" is never focused or picked by Enter; the states survive a
+ *      reload; the study walk shows each survey answer and puts places under repair; the recall walk
+ *      restores them; two walk records; the results compare with "before study"; the Progress view
+ *   u  A saved deck that was never surveyed is unchanged; a surveyed deck opens on the study walk, not
+ *      a second survey; the Progress view (empty, then three walks); skipping the survey; the right
+ *      answer's slot is balanced over ten questions
  *   l  Theme Lab (?lab): its buttons take a real click on the title and during a walk; Copy JSON
  *      holds a change made in the Lab, Reset clears it; keys pressed in the Lab do not reach the walk
  *
@@ -161,10 +171,10 @@ const choiceTexts = (page, testid) => page.locator(`[data-testid=${testid}] span
  */
 function installWalkLog() {
   if (window.__walkLog) {
-    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [] });
+    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [], whole: [] });
     return;
   }
-  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [] };
+  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [], whole: [] };
   const note = (list, entry) => {
     if (!list.some((e) => e.label === entry.label)) list.push(entry);
   };
@@ -183,6 +193,21 @@ function installWalkLog() {
     lastStop = stop;
     // With ?debug=stores: whether the session hides the images, each time the screen changes.
     const screen = ['interstitial', 'recall', 'results'].find((id) => document.querySelector(`[data-testid=${id}]`)) ?? '';
+    // With ?debug: how whole each place is (SceneView.integrity), once per moment that matters:
+    // the preview, each image placed, each answer given, the results.
+    const app = window.__memoriaApp;
+    if (app) {
+      const moment =
+        document.querySelector('[data-testid=results]') ? 'results'
+        : document.querySelector('[data-testid=recall-feedback] .reveal') ? `answer:${document.querySelector('[data-testid=recall] [data-testid=walk-label]').textContent}`
+        : document.querySelector('[data-testid=encode] [data-testid=encode-term]') ? `image:${document.querySelector('[data-testid=encode] [data-testid=walk-label]').textContent}`
+        : document.querySelector('[data-testid=familiarize]') ? 'preview'
+        : '';
+      if (moment && !log.whole.some((e) => e.moment === moment)) {
+        const view = app.view();
+        log.whole.push({ moment, integrity: view.integrity, shown: view.tokens.filter((t) => t.visible).map((t) => t.locusIndex) });
+      }
+    }
     const session = window.__memoria?.session;
     if (session && screen !== lastScreen) log.hidden.push([screen || 'walk', session.getState().imagesHidden]);
     lastScreen = screen;
@@ -381,10 +406,34 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     const wrongly = hidden.filter(([screen, value]) => value !== (screen === 'interstitial'));
     assert(hidden.some(([screen]) => screen === 'interstitial') && wrongly.length === 0, `session.imagesHidden by screen: ${JSON.stringify(hidden)}`);
   }
+  // With the overlay's debug hook: a Judge run starts in ruins, and each place follows the run.
+  const { whole } = await page.evaluate(() => window.__walkLog);
+  if (whole.length) {
+    const at = (moment) => whole.find((e) => e.moment.startsWith(moment));
+    const eight = (e) => e.integrity.slice(0, 8).join(' ');
+    if (!pitch) assert(at('preview') && eight(at('preview')) === '0 0 0 0 0 0 0 0', `a Judge run does not start in ruins: ${at('preview') && eight(at('preview'))}`);
+    for (let i = 1; i <= 8; i++) {
+      const e = at(`image:Place ${i} of 8`);
+      assert(e, `no state of repair noted for encode stop ${i}`);
+      const want = Array.from({ length: 8 }, (_, k) => (k < i ? 0.6 : 0)).join(' ');
+      assert(eight(e) === want, `encode stop ${i}: the places are ${eight(e)}, expected ${want}`);
+      // No image is ever shown at a place in ruins.
+      assert(e.shown.every((k) => e.integrity[k] > 0), `encode stop ${i}: an image is shown at a place in ruins`);
+    }
+    const end = at('results');
+    assert(end, 'no state of repair noted on the results');
+    const asked = visited.map((v) => routeOrder.indexOf(v));
+    const wantEnd = Array.from({ length: 8 }, (_, k) => (asked.includes(k) ? (expected[asked.indexOf(k)].state === 'right' ? 1 : 0.3) : 0.6)).join(' ');
+    assert(eight(end) === wantEnd, `results: the places are ${eight(end)}, expected ${wantEnd} (asked: ${asked})`);
+    assert(end.integrity.slice(8).every((v) => v === 1), 'a place that holds nothing is not whole');
+  }
+  // The legend of the three states is on the results; a Judge run has no trend and no Progress view to offer.
+  assert((await text(page.getByTestId('repair-legend'))) === 'In ruins: not known yet. Under repair: studied, not yet recalled. Restored: recalled.', 'the legend of the three states is not on the Judge results');
+  assert((await page.getByTestId('results-progress').count()) === 0 && (await page.getByTestId('results-trend').count()) === 0, 'a Judge run shows a trend or a Progress button');
   const timeline = Object.entries(phases)
     .map(([name, at]) => `${name} at ${at} s`)
     .join(', ');
-  return { score: await text(page.getByTestId('results-score')), ms, visited, timeline };
+  return { score: await text(page.getByTestId('results-score')), ms, visited, timeline, checkedRepair: whole.length > 0 };
 }
 
 /**
@@ -424,6 +473,26 @@ const learnerState = (page) =>
     const cards = JSON.parse(localStorage.getItem('memoria.review.v1') ?? '{}').state?.cards ?? {};
     return { deck: JSON.stringify(decks['fixture-carpals'] ?? null), card: JSON.stringify(cards['carpal-1'] ?? null), cards: Object.keys(cards).length };
   });
+
+/** What the walk history, the review cards and the survey dates hold in storage. */
+const storedProgress = (page) =>
+  page.evaluate(() => {
+    const read = (key) => JSON.parse(localStorage.getItem(key) ?? 'null')?.state ?? {};
+    const decks = Object.values(read('memoria.decks.v1').decks ?? {});
+    return {
+      records: read('memoria.history.v1').records ?? [],
+      cards: read('memoria.review.v1').cards ?? {},
+      surveyed: decks.filter((d) => d.surveyedAt !== undefined).map((d) => d.id),
+    };
+  });
+
+/** A Judge run is a sandbox: no walk record, no review card, no survey date. */
+async function assertNothingWritten(page, when) {
+  const { records, cards, surveyed } = await storedProgress(page);
+  assert(records.length === 0, `${when}: a walk record was written (${records.length})`);
+  assert(Object.keys(cards).length === 0, `${when}: review cards were written (${Object.keys(cards)})`);
+  assert(surveyed.length === 0, `${when}: a deck was marked as surveyed (${surveyed})`);
+}
 
 function assertLearnerKept(seeded, now, when) {
   assert(now.deck === seeded.deck, `${when}: the learner's saved copy of the carpal deck changed: ${now.deck}`);
@@ -490,13 +559,15 @@ const cases = {
   async p() {
     const { context, page, errors, requests } = await open();
     // ?judge=pitch waits on the title screen; the title button starts the pitch variant.
-    await page.goto(`${base}/?judge=pitch&${FAST}`, { waitUntil: 'load' });
+    await page.goto(`${base}/?judge=pitch&debug=stores&${FAST}`, { waitUntil: 'load' });
     await page.getByTestId('title').waitFor();
     const seeded = await seedLearner(page);
     const promised = await text(page.getByTestId('title-judge'));
     requests.length = 0;
-    const { score, ms, visited, timeline } = await judgeRun(page, { passive: true, think: THINK_MS, pitch: true, shots: 'pitch' });
+    const { score, ms, visited, timeline, checkedRepair } = await judgeRun(page, { passive: true, think: THINK_MS, pitch: true, shots: 'pitch' });
     assert(score === `${SPOT} of ${SPOT}`, `expected ${SPOT} of ${SPOT}, got "${score}"`);
+    assert(checkedRepair, 'the state of the places was not checked (no debug hook)');
+    assert((await storedProgress(page)).records.length === 0, 'a pitch run wrote a walk record');
     const order = visited.map((v) => routeOrder.indexOf(v));
     assert(new Set(visited).size === SPOT && order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])), `spot check not ${SPOT} places in route order: ${visited}`);
     const spotLine = await text(page.getByTestId('results-spot'));
@@ -627,15 +698,41 @@ const cases = {
     await shot(page, 'compose-place');
     await key('Enter');
 
-    // Familiarization walk of the empty route, then the route check.
+    // A new palace opens on the survey, which is also the first walk of the empty route. Keyboard only:
+    // 0 and the question mark are "I don't know", a digit picks an option, Space or the arrow moves on.
     const route = [];
     for (let i = 1; i <= 5; i++) {
-      await page.locator(`[data-testid=familiarize] [data-testid=walk-label]:has-text("Place ${i} of 5")`).waitFor();
-      await page.getByTestId('place-hint').waitFor();
+      await page.locator(`[data-testid=survey] [data-testid=walk-label]:has-text("Place ${i} of 5")`).waitFor();
+      await page.getByTestId('survey-question').waitFor();
       route.push(await text(page.getByTestId('place-name')));
-      if (i === 2) await shot(page, 'familiarize');
+      // The survey's one claim is made on its first screen and nowhere else.
+      const lede = (await page.getByTestId('survey-lede').count()) ? await text(page.getByTestId('survey-lede')) : '';
+      assert(i === 1 ? lede.includes('Guess first. Trying to answer before you study tends to help the answer stick once you see it, even if your guess is wrong.') : lede === '', `survey stop ${i}: the opening lines read "${lede}"`);
+      // Enter with nothing chosen answers nothing, and "I don't know" never has the focus by default.
+      assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') !== 'survey-unknown'), `survey stop ${i}: "I don't know" has the focus`);
+      await key('Enter');
+      assert((await page.getByTestId('survey-ack').count()) === 0, `survey stop ${i}: Enter answered with nothing chosen`);
+      if (i === 3) {
+        // One real answer: the question shows the meaning the learner pasted and asks for its term.
+        const cue = (await text(page.getByTestId('survey-cue'))).toLowerCase();
+        const fact = LIST.find((line) => cue.includes(line.split(' - ')[1].toLowerCase()));
+        assert(fact, `survey stop 3: the cue "${cue}" is not one of the pasted meanings`);
+        const options = await choiceTexts(page, 'survey-choice');
+        const term = fact.split(' - ')[0];
+        assert(options.includes(term), `survey stop 3: "${term}" is not among ${options}`);
+        await key(String(options.indexOf(term) + 1));
+      } else await key(i % 2 ? '0' : '?');
+      await page.getByTestId('survey-ack').waitFor();
+      if (i === 2) await shot(page, 'survey-own');
       await key(i % 2 ? 'ArrowRight' : 'Space');
     }
+    await page.getByTestId('survey-summary').waitFor();
+    assert((await text(page.getByTestId('survey-score'))) === 'You knew 1 of 5.', `survey summary: ${await text(page.getByTestId('survey-score'))}`);
+    assert((await text(page.getByTestId('survey-ruins'))) === '4 places are in ruins.', `survey summary: ${await text(page.getByTestId('survey-ruins'))}`);
+    await shot(page, 'survey-summary-own');
+    // The summary's main action leads on into study: here through the route check, because the route is new.
+    assert((await text(page.getByTestId('survey-study'))) === 'Check the route', 'after a walked survey on a new route the next step should be the route check');
+    await key('Enter');
     for (let n = 1; n <= 2; n++) {
       await page.locator(`[data-testid=route-check] .label:has-text("${n} of 2")`).waitFor();
       const anchor = (await text(page.getByTestId('route-question'))).match(/right after (.+)\?$/)[1];
@@ -767,10 +864,16 @@ const cases = {
 
   async e() {
     const { context, page, errors, requests } = await open();
+    // The stores and the overlay's debug hook, so that the run also checks the state of every place.
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp);
     await context.setOffline(true);
     requests.length = 0;
-    const { score } = await judgeRun(page, { wrong: 1 });
+    const { score, checkedRepair } = await judgeRun(page, { wrong: 1 });
     assert(score === '7 of 8', `expected 7 of 8 offline, got "${score}"`);
+    assert(checkedRepair, 'the state of the places was not checked (no debug hook)');
+    await assertNothingWritten(page, 'after an offline Judge run');
     // Strengthen must answer at once with no network, and say how to make the image stronger.
     const before = await page.getByTestId('result-row').first().locator('.place__term').textContent();
     const t0 = Date.now();
@@ -783,9 +886,10 @@ const cases = {
     assert(by !== 'offline' && by !== 'hand' ? true : (await text(draft)).includes('more distinct from its neighbours'), 'no guidance in the offline Strengthen editor');
     const offered = await page.getByTestId('strengthen-scene').inputValue();
     assert(requests.length === 0, `Judge Mode made requests while offline: ${requests.join(', ')}`);
+    await assertNothingWritten(page, 'with the Strengthen editor open');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return `${score} offline; Strengthen (${before}) -> "${by}" editor in ${took} ms: ${offered}`;
+    return `${score} offline, from ruins to restored, nothing written; Strengthen (${before}) -> "${by}" editor in ${took} ms: ${offered}`;
   },
 
   async f() {
@@ -1195,6 +1299,365 @@ const cases = {
     return 'a render error shows the error page; Reload returns to the title; Reset asks first, then clears every memoria.* key';
   },
 
+  /** The survey, and what follows from it: the palace as a map of what the learner knows. */
+  async v() {
+    const { context, page, errors } = await open();
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp && window.__memoria?.session);
+    const view = () => page.evaluate(() => window.__memoriaApp.view());
+    const saved = () => page.evaluate(() => window.__memoriaApp.viewOf('fixture-carpals'));
+    const eight = (v) => v.integrity.slice(0, 8).join(' ');
+    const DECK = 'fixture-carpals';
+
+    // What to do at each of the eight places, and so what the place should look like afterwards.
+    const plan = ['right', 'wrong', 'key0', 'rightKey', 'wrongKey', 'unknown', 'right', 'wrong'];
+    const known = plan.map((p) => p.startsWith('right'));
+    const afterSurvey = known.map((k) => (k ? 1 : 0)).join(' ');
+    const gave = [];
+    const slots = [];
+
+    await page.getByRole('button', { name: `Walk ${JUDGE_DECK_TITLE}` }).click();
+    for (let i = 1; i <= 8; i++) {
+      await page.locator(`[data-testid=survey] [data-testid=walk-label]:has-text("Place ${i} of 8")`).waitFor();
+      const question = page.getByTestId('survey-question');
+      await question.waitFor();
+      const place = await question.getAttribute('data-place');
+      assert(place === routeOrder[i - 1], `survey stop ${i}: at ${place}, expected ${routeOrder[i - 1]}`);
+      assert((await text(page.getByTestId('place-name'))) === place && (await page.getByTestId('place-hint').count()) === 1, `survey stop ${i}: the place is not named and described`);
+      const answer = termAt[place];
+      // The question shows the meaning and asks for the term; the term itself is nowhere but among the options.
+      assert((await question.getAttribute('data-form')) === 'meaning' && (await text(question)) === 'Which term is this?', `survey stop ${i}: wrong question`);
+      assert(!(await text(page.getByTestId('survey-cue'))).toLowerCase().includes(answer.toLowerCase()), `survey stop ${i}: the cue names the answer`);
+      const options = await choiceTexts(page, 'survey-choice');
+      assert(options.length === 4 && options.includes(answer), `survey stop ${i}: options ${options} lack ${answer}`);
+      slots.push(options.indexOf(answer));
+      // "I don't know" is always there, never focused by default, and not what Enter picks.
+      assert((await page.getByTestId('survey-unknown').count()) === 1, `survey stop ${i}: no "I don't know" option`);
+      assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'survey-question'), `survey stop ${i}: the focus is not on the question`);
+      await page.keyboard.press('Enter');
+      assert((await page.getByTestId('survey-ack').count()) === 0, `survey stop ${i}: Enter answered with nothing chosen`);
+      assert((await text(page.getByTestId('survey-feedback'))) === '', `survey stop ${i}: feedback before answering`);
+      // Not answered yet: the place stands.
+      assert((await view()).integrity[i - 1] === 1, `survey stop ${i}: the place is not whole before its answer`);
+      if (i === 1) await shot(page, 'survey-question');
+
+      const wrongAt = options.findIndex((o) => o !== answer);
+      const step = plan[i - 1];
+      if (step === 'right') await page.getByTestId('survey-choice').nth(options.indexOf(answer)).click();
+      else if (step === 'rightKey') await page.keyboard.press(String(options.indexOf(answer) + 1));
+      else if (step === 'wrong') await page.getByTestId('survey-choice').nth(wrongAt).click();
+      else if (step === 'wrongKey') await page.keyboard.press(String(wrongAt + 1));
+      else if (step === 'key0') await page.keyboard.press('0');
+      else await page.getByTestId('survey-unknown').click();
+      gave.push(step.startsWith('right') ? answer : step.startsWith('wrong') ? options[wrongAt] : '');
+      await page.getByTestId('survey-ack').waitFor();
+
+      // Nothing is revealed: a neutral acknowledgement, no verdict, no right answer marked, no image.
+      const panel = await page.getByTestId('survey').evaluate((el) => el.innerText);
+      assert(/\bNOTED\.|\bNoted\./.test(panel) && !/Correct|Not this time|right answer|wrong/i.test(panel), `survey stop ${i}: the panel gives a verdict: ${panel}`);
+      assert((await page.locator('[data-testid=survey] .reveal, [data-testid=survey] [data-state=right], [data-testid=survey] [data-state=wrong]').count()) === 0, `survey stop ${i}: something is marked right or wrong`);
+      const picked = await page.locator('[data-testid=survey] .choice[data-state=picked]').count();
+      assert(picked === 1, `survey stop ${i}: ${picked} options are marked as the learner's pick`);
+      const v = await view();
+      assert(v.tokens.every((t) => !t.visible), `survey stop ${i}: a memory image is shown`);
+      assert(v.labels === true && v.camera === i - 1, `survey stop ${i}: the scene is not at the place with its name (camera ${v.camera})`);
+      assert(v.integrity[i - 1] === (known[i - 1] ? 1 : 0), `survey stop ${i} (${step}): the place is at ${v.integrity[i - 1]}`);
+      // A place in ruins is never coloured.
+      assert(known[i - 1] || v.development[i - 1] <= 0.18, `survey stop ${i}: a place in ruins is coloured (${v.development[i - 1]})`);
+      if (i === 2) await shot(page, 'survey-answered');
+      // Nothing is saved until the survey ends.
+      assert((await storedProgress(page)).surveyed.length === 0, `survey stop ${i}: the deck is already marked as surveyed`);
+      if (i % 2) await page.getByTestId('survey-next').click();
+      else await page.keyboard.press('ArrowRight');
+    }
+    // Eight questions: the right answer is spread over the slots.
+    const perSlot = [0, 1, 2, 3].map((n) => slots.filter((x) => x === n).length);
+    assert(Math.max(...perSlot) <= 4, `the right answer was in one slot ${Math.max(...perSlot)} times out of 8: ${slots}`);
+    assert(!slots.some((x, k) => k >= 2 && x === slots[k - 1] && x === slots[k - 2]), `the right answer was in the same slot three times running: ${slots}`);
+
+    // The summary: what was known, what fell, and the legend of the three states.
+    await page.getByTestId('survey-summary').waitFor();
+    assert((await text(page.getByTestId('survey-score'))) === 'You knew 3 of 8.', `summary: ${await text(page.getByTestId('survey-score'))}`);
+    assert((await text(page.getByTestId('survey-ruins'))) === '5 places are in ruins.', `summary: ${await text(page.getByTestId('survey-ruins'))}`);
+    assert((await text(page.getByTestId('repair-legend'))) === 'In ruins: not known yet. Under repair: studied, not yet recalled. Restored: recalled.', 'the legend of the three states is not on the survey summary');
+    const states = await page.getByTestId('survey-place').evaluateAll((els) => els.map((el) => el.dataset.state === 'standing'));
+    assert(JSON.stringify(states) === JSON.stringify(known), `summary: the places read ${states}`);
+    // The summary names places, never the facts.
+    const summaryText = await text(page.getByTestId('survey-summary'));
+    assert(!Object.values(termAt).some((term) => summaryText.includes(term)), 'the survey summary shows a term');
+    let v = await view();
+    assert(eight(v) === afterSurvey && v.camera === 'overview' && v.tokens.every((t) => !known[t.locusIndex] ? !t.visible : true), `after the survey the places are ${eight(v)} (camera ${v.camera})`);
+    assert(v.integrity.slice(8).every((x) => x === 1), 'a place that holds nothing is not whole');
+    await shot(page, 'survey-summary');
+    let stored = await storedProgress(page);
+    assert(stored.surveyed.includes(DECK), 'the deck is not marked as surveyed');
+    assert(stored.records.length === 1 && stored.records[0].kind === 'survey' && stored.records[0].correct === 3 && stored.records[0].unknown === 2 && stored.records[0].total === 8, `the survey's walk record: ${JSON.stringify(stored.records)}`);
+    const outcomes = Array.from({ length: 8 }, (_, k) => stored.cards[`carpal-${k + 1}`]);
+    assert(outcomes.every((c, k) => c && c.survey === (known[k] ? 'known' : 'unknown') && c.surveyGiven === gave[k] && c.reps === 0), `the survey outcomes on the cards: ${JSON.stringify(outcomes)}`);
+
+    // A reload: the palace shows the same ruins from saved state, and the deck says where it stands.
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp);
+    assert(eight(await saved()) === afterSurvey, `after a reload the places are ${eight(await saved())}, expected ${afterSurvey}`);
+    assert((await deckRows(page)).meta[JUDGE_DECK_TITLE] === '8 places · surveyed, not yet studied', `the deck row after the survey: ${(await deckRows(page)).meta[JUDGE_DECK_TITLE]}`);
+    assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'a survey made something due');
+    assert((await text(page.getByTestId('resume'))).includes(`${JUDGE_DECK_TITLE}, survey, place 8 of 8`), `resume offer: ${await text(page.getByTestId('resume'))}`);
+    await page.getByTestId('resume-walk').click();
+    await page.getByTestId('survey-summary').waitFor();
+    assert((await text(page.getByTestId('survey-score'))) === 'You knew 3 of 8.', 'the resumed summary lost the count');
+
+    // On into study: the survey was the walk of the empty route, so only the route check is left.
+    assert((await text(page.getByTestId('survey-study'))) === 'Check the route', `the summary's main action reads "${await text(page.getByTestId('survey-study'))}"`);
+    await page.getByTestId('survey-study').click();
+    for (let n = 1; n <= 2; n++) {
+      await page.locator(`[data-testid=route-check] .label:has-text("${n} of 2")`).waitFor();
+      const anchor = (await text(page.getByTestId('route-question'))).match(/right after (.+)\?$/)[1];
+      const options = await choiceTexts(page, 'route-option');
+      await page.keyboard.press(String(options.indexOf(routeOrder[routeOrder.indexOf(anchor) + 1]) + 1));
+      await page.getByTestId('route-next').click();
+    }
+
+    // The study walk: each place shows the learner's survey answer, then the right one; an unknown place goes under repair on arrival.
+    for (let i = 1; i <= 8; i++) {
+      await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 8")`).waitFor();
+      await page.getByTestId('encode-term').waitFor();
+      const said = await text(page.getByTestId('encode-survey'));
+      const want = gave[i - 1] === '' ? 'In the survey you said: I don’t know.' : `In the survey you answered: ${gave[i - 1]}.`;
+      assert(said.startsWith(want) && said.includes('You knew this.') === known[i - 1], `encode stop ${i}: the survey line reads "${said}"`);
+      assert((await text(page.getByTestId('encode-term'))) === termAt[routeOrder[i - 1]], `encode stop ${i}: wrong term`);
+      v = await view();
+      const want6 = known.map((k, at) => (k ? 1 : at < i ? 0.6 : 0)).join(' ');
+      assert(eight(v) === want6, `encode stop ${i}: the places are ${eight(v)}, expected ${want6}`);
+      assert(v.tokens.filter((t) => t.visible).every((t) => v.integrity[t.locusIndex] > 0), `encode stop ${i}: an image is shown at a place in ruins`);
+      if (i === 2) await shot(page, 'encode-survey-answer');
+      await page.getByTestId('walk-next').click();
+    }
+    await page.getByTestId('interstitial').waitFor();
+    const studied = known.map((k) => (k ? 1 : 0.6)).join(' ');
+    assert(eight(await saved()) === studied, `after the study walk the saved places are ${eight(await saved())}, expected ${studied}`);
+    await page.getByTestId('recall-start').click();
+
+    // The recall walk: a right answer restores the place, a miss leaves it needing repair; the others keep their state.
+    const final = [];
+    for (let i = 1; i <= 8; i++) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 8")`).waitFor();
+      const question = page.getByTestId('recall-question');
+      await question.waitFor();
+      const answer = termAt[await question.getAttribute('data-place')];
+      const options = await choiceTexts(page, 'choice');
+      const miss = i === 2;
+      await page.getByTestId('choice').nth(miss ? options.findIndex((o) => o !== answer) : options.indexOf(answer)).click();
+      await page.getByTestId('recall-verdict').waitFor();
+      final.push(miss ? 0.3 : 1);
+      assert((await text(page.getByTestId('recall-place-state'))) === (miss ? 'This place needs another repair: it comes back for review soon.' : 'This place is restored.'), `recall stop ${i}: ${await text(page.getByTestId('recall-place-state'))}`);
+      v = await view();
+      const wantNow = known.map((k, at) => (at < i ? final[at] : k ? 1 : 0.6)).join(' ');
+      assert(eight(v) === wantNow, `recall stop ${i}: the places are ${eight(v)}, expected ${wantNow}`);
+      await page.getByTestId('recall-next').click();
+    }
+    await page.getByTestId('results').waitFor();
+    assert((await text(page.getByTestId('results-score'))) === '7 of 8', `expected 7 of 8, got ${await text(page.getByTestId('results-score'))}`);
+    assert(eight(await view()) === final.join(' '), `on the results the places are ${eight(await view())}`);
+    // The change is read against the survey, which is called what it is.
+    assert((await text(page.getByTestId('results-vs-survey'))) === 'Before study: 3 of 8. Now: 7 of 8.', `results against the survey: ${await text(page.getByTestId('results-vs-survey'))}`);
+    assert((await page.getByTestId('results-vs-previous').count()) === 0, 'a first recall walk has no earlier walk to compare with');
+    assert((await page.getByTestId('repair-legend').count()) === 1, 'the legend of the three states is not on the results');
+    const metas = await page.getByTestId('result-meta').allTextContents();
+    assert(metas[0].includes('· right · restored') && metas[1].includes('· missed · needs another repair'), `result rows: ${metas.slice(0, 2)}`);
+    await shot(page, 'results-after-survey');
+    stored = await storedProgress(page);
+    assert(stored.records.length === 2 && stored.records[1].kind === 'recall' && stored.records[1].correct === 7, `expected a survey and a recall record: ${JSON.stringify(stored.records.map((r) => [r.kind, r.correct]))}`);
+    // A right answer in the survey earned no interval: every card's schedule dates from this recall walk.
+    assert(Object.values(stored.cards).every((c) => c.reps === 1), 'a card was scheduled by something other than the recall walk');
+
+    // The Progress view, from the results: both walks, the survey as the score before study.
+    await page.getByTestId('results-progress').click();
+    await page.getByTestId('progress').waitFor();
+    assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'progress-heading'), 'the Progress view does not take the focus');
+    assert((await page.getByTestId('progress-palace').count()) === 1, 'expected one palace in the Progress view');
+    const summary = await text(page.getByTestId('progress-summary'));
+    assert(summary === 'Before study: 3 of 8. Latest (recall walk): 7 of 8. 2 walks in all.', `Progress summary: ${summary}`);
+    assert((await text(page.getByTestId('progress-repair'))) === 'Now: 7 restored, 0 under repair, 1 needing another repair, 0 in ruins.', `Progress, state of repair: ${await text(page.getByTestId('progress-repair'))}`);
+    const chart = page.getByTestId('progress-chart');
+    assert((await chart.getAttribute('role')) === 'img' && (await chart.getAttribute('aria-label')).includes('Before study: 3 of 8'), 'the chart has no text alternative');
+    assert((await text(page.getByTestId('chart-baseline'))) === 'before study', `the survey's level on the chart is labelled "${await text(page.getByTestId('chart-baseline'))}"`);
+    const small = await chart.evaluate((el) => [...el.querySelectorAll('text')].map((t) => parseFloat(getComputedStyle(t).fontSize)).filter((px) => px < 16));
+    assert(small.length === 0 && (await chart.evaluate((el) => el.getBoundingClientRect().width === Number(el.getAttribute('width')))), `chart text smaller than 16 px: ${small}`);
+    const kinds = await page.getByTestId('progress-row').evaluateAll((els) => els.map((el) => `${el.dataset.kind}:${el.children[3].textContent}`));
+    assert(kinds.join(' ') === 'survey:3 of 8 recall:7 of 8', `the table of walks: ${kinds}`);
+    assert((await text(page.getByTestId('progress-weak'))).includes(`${routeOrder[1]}missed on 1 of 1 walk`), `places to revisit: ${await text(page.getByTestId('progress-weak'))}`);
+    await page.locator('[data-testid=progress] details summary').click();
+    await shot(page, 'progress');
+    // Escape closes it; the results are still there, with the focus back on the score.
+    await page.keyboard.press('Escape');
+    await page.getByTestId('progress').waitFor({ state: 'detached' });
+    assert(await page.getByTestId('results-score').isVisible(), 'closing the Progress view did not return to the results');
+    await page.getByTestId('results-home').click();
+    await page.getByTestId('title').waitFor();
+
+    // After a reload the palace is as the recall walk left it, and Progress opens from the title with the keyboard.
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp);
+    assert(eight(await saved()) === final.join(' '), `after the last reload the places are ${eight(await saved())}`);
+    await tabTo(page, 'title-progress');
+    await page.keyboard.press('Enter');
+    await page.getByTestId('progress').waitFor();
+    assert((await page.getByTestId('progress-row').count()) === 2, 'the Progress view lost a walk over a reload');
+    await page.getByTestId('progress-back').click();
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'title-progress');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `survey 3 of 8 (places ${afterSurvey}), nothing revealed; kept over a reload; study ${studied}; recall 7 of 8 (${final.join(' ')}); two walk records; Progress view`;
+  },
+
+  /** What the survey must leave alone, and the quick paths around it. */
+  async u() {
+    const { context, page, errors } = await open();
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp && window.__memoria?.session);
+    const viewOf = (id) => page.evaluate((deckId) => window.__memoriaApp.viewOf(deckId), id);
+    const allWhole = (v) => v.integrity.every((x) => x === 1);
+
+    // Nothing walked yet: the Progress view says so.
+    await page.getByTestId('title-progress').click();
+    assert((await text(page.getByTestId('progress-heading'))) === 'No walks yet' && (await page.getByTestId('progress-empty').count()) === 1, 'the empty Progress view does not say that nothing has been walked');
+    assert((await page.getByTestId('progress-chart').count()) === 0, 'the empty Progress view draws a chart');
+    await shot(page, 'progress-empty');
+    await page.getByTestId('progress-back').click();
+    await page.getByTestId('title').waitFor();
+
+    // The right answer's slot: over every ten questions in a row, no slot more than four times, never three times running.
+    const dealt = await page.evaluate(() => {
+      const ids = Array.from({ length: 10 }, (_, k) => `mohs-${String(k + 1).padStart(2, '0')}`);
+      const terms = ['Talc', 'Gypsum', 'Calcite', 'Fluorite', 'Apatite', 'Orthoclase', 'Quartz', 'Topaz', 'Corundum', 'Diamond'];
+      const slots = [];
+      for (let walk = 0; walk < 300; walk++) ids.forEach((id, k) => slots.push(window.__memoriaApp.choicesFor('fixture-mohs', id).indexOf(terms[k])));
+      let worst = 0;
+      let runs = 0;
+      for (let at = 0; at + 10 <= slots.length; at++) {
+        const ten = slots.slice(at, at + 10);
+        worst = Math.max(worst, ...[0, 1, 2, 3].map((n) => ten.filter((x) => x === n).length));
+      }
+      for (let at = 2; at < slots.length; at++) if (slots[at] === slots[at - 1] && slots[at] === slots[at - 2]) runs++;
+      return { worst, runs, missing: slots.filter((x) => x < 0 || x > 3).length, used: [0, 1, 2, 3].map((n) => slots.filter((x) => x === n).length) };
+    });
+    assert(dealt.missing === 0, 'an option list lacks its right answer');
+    assert(dealt.worst <= 4, `in some ten questions one slot held the right answer ${dealt.worst} times`);
+    assert(dealt.runs === 0, `the right answer was in the same slot three times running (${dealt.runs} times in 3000 questions)`);
+    assert(Math.min(...dealt.used) === Math.max(...dealt.used), `the slots are not used equally: ${dealt.used}`);
+
+    // 1. A deck saved before the survey existed, already recalled: it looks as it did, and "Walk" does not survey it.
+    await seedLearner(page);
+    await page.waitForFunction(() => window.__memoriaApp);
+    assert(allWhole(await viewOf('fixture-carpals')), 'a saved deck that was never surveyed has a place that is not whole');
+    assert(allWhole(await viewOf('fixture-mohs')), 'a built-in deck that was never opened has a place that is not whole');
+    await page.getByRole('button', { name: `Walk ${LEARNER_DECK_TITLE}` }).click();
+    await page.getByTestId('familiarize').waitFor();
+    assert((await page.getByTestId('survey').count()) === 0, 'a deck that has already been recalled was surveyed');
+    assert(allWhole(await page.evaluate(() => window.__memoriaApp.view())), 'walking a deck that was never surveyed changed a place');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    // Recalling it leaves every place whole too, whatever the answer.
+    await page.getByRole('button', { name: `Recall ${LEARNER_DECK_TITLE}` }).click();
+    await page.getByTestId('recall-question').waitFor();
+    await page.getByTestId('recall-pass').click();
+    await page.getByTestId('recall-verdict').waitFor();
+    assert(allWhole(await page.evaluate(() => window.__memoriaApp.view())), 'a miss in a deck that was never surveyed damaged a place');
+    assert((await page.getByTestId('recall-place-state').count()) === 0, 'a deck that was never surveyed talks about the state of a place');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+
+    // 2. Surveyed, then left before studying: the deck says so, and opening it goes to the study walk, not to a second survey.
+    const day = 24 * 3600 * 1000;
+    await page.evaluate((dayMs) => {
+      const item = (n) => ({ id: `s-${n}`, term: `Term ${n}`, meaning: `Meaning ${n}`, locusId: `domus-0${n}`, imago: { scene: `Scene ${n}.`, glyphs: ['⭐'], action: 'bob', source: 'learner' } });
+      const deck = { id: 'deck-surveyed', title: 'A surveyed palace', kind: 'list', layoutId: 'domus', createdAt: 9, surveyedAt: Date.now() - 3 * dayMs, items: [item(1), item(2), item(3)] };
+      const card = (n, survey, given) => ({ itemId: `s-${n}`, deckId: 'deck-surveyed', box: 0, dueAt: 0, reps: 0, lapses: 0, survey, surveyGiven: given });
+      const rec = (id, kind, at, marks) => ({ id, deckId: 'deck-surveyed', kind, at, total: marks.length, correct: marks.filter((m) => m[1]).length, unknown: 0, ms: 9000, items: marks.map(([n, ok]) => ({ itemId: `s-${n}`, correct: ok })) });
+      localStorage.setItem('memoria.decks.v1', JSON.stringify({ state: { decks: { 'deck-surveyed': deck } }, version: 0 }));
+      localStorage.setItem('memoria.review.v1', JSON.stringify({ state: { cards: { 's-1': card(1, 'known', 'Term 1'), 's-2': card(2, 'unknown', 'Term 3'), 's-3': card(3, 'unknown', '') }, walk: null }, version: 0 }));
+      localStorage.setItem('memoria.settings.v1', JSON.stringify({ state: { familiarized: { domus: true } }, version: 0 }));
+      // Three walks: the survey, a recall walk and a review of one place (a record of the wrong shape is dropped on the way in).
+      const records = [
+        rec('w1', 'survey', Date.now() - 3 * dayMs, [[1, true], [2, false], [3, false]]),
+        rec('w2', 'recall', Date.now() - 2 * dayMs, [[1, true], [2, true], [3, false]]),
+        rec('w3', 'review', Date.now() - dayMs, [[3, false]]),
+        { id: 'bad', deckId: 'deck-surveyed', kind: 'recall', at: 5, total: 3, correct: 9, unknown: 0, ms: 1, items: [] },
+      ];
+      localStorage.setItem('memoria.history.v1', JSON.stringify({ state: { records }, version: 0 }));
+    }, day);
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp);
+    assert((await page.getByTestId('storage-notice').count()) === 1, 'a walk record of the wrong shape was not set aside');
+    assert((await storedProgress(page)).records.length === 3, 'the repair pass did not keep the three well-formed walk records');
+    assert((await deckRows(page)).meta['A surveyed palace'] === '3 places · surveyed, not yet studied', `the surveyed deck reads "${(await deckRows(page)).meta['A surveyed palace']}"`);
+    const before = await viewOf('deck-surveyed');
+    assert(before.integrity.slice(0, 3).join(' ') === '1 0 0', `the surveyed deck's places from saved state: ${before.integrity.slice(0, 3)}`);
+    assert(before.tokens.filter((t) => t.visible).map((t) => t.locusIndex).join() === '0', 'an image is shown at a place in ruins on the title');
+
+    // The Progress view: three walks, the first against the latest, the place missed most, each kind named.
+    await page.getByTestId('title-progress').click();
+    await page.getByTestId('progress').waitFor();
+    assert((await text(page.getByTestId('progress-summary'))) === 'Before study: 1 of 3. Latest (review): 0 of 1. 3 walks in all.', `Progress summary: ${await text(page.getByTestId('progress-summary'))}`);
+    assert((await text(page.getByTestId('progress-status'))) === '3 places · surveyed, not yet studied', 'the Progress view does not say that the palace is surveyed but not yet studied');
+    const rows = await page.getByTestId('progress-row').evaluateAll((els) => els.map((el) => `${el.children[2].textContent}: ${el.children[3].textContent}`));
+    assert(rows.join(' | ') === 'Before study (survey): 1 of 3 | Recall walk: 2 of 3 | Review: 0 of 1', `the table of walks: ${rows}`);
+    const weak = await page.getByTestId('progress-weak').locator('li').allTextContents();
+    assert(weak.length === 1 && weak[0] === `${routeOrder[2]}missed on 2 of 2 walks`, `places to revisit: ${weak}`);
+    // The pointer picks the nearest walk; the line under the chart says which.
+    const box = await page.getByTestId('progress-chart').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForFunction(() => document.querySelector('[data-testid=chart-readout]').textContent.startsWith('Walk 2 of 3 · recall walk · 2 of 3'));
+    await shot(page, 'progress-three-walks');
+    await page.getByTestId('progress-back').click();
+    await page.getByTestId('title').waitFor();
+
+    await page.getByRole('button', { name: 'Walk A surveyed palace' }).click();
+    await page.getByTestId('encode-term').waitFor();
+    assert((await page.getByTestId('survey').count()) === 0, 'a surveyed deck was surveyed a second time');
+    assert((await text(page.getByTestId('encode-survey'))).startsWith('In the survey you answered: Term 1. You knew this.'), `the study walk does not show the survey answer: ${await text(page.getByTestId('encode-survey'))}`);
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+
+    // 3. Skipping the survey: everything unknown, the whole palace in ruins; the route was not walked, so that walk comes first.
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp);
+    await page.getByRole('button', { name: 'Walk Spanish in the kitchen' }).click();
+    await page.getByTestId('survey').waitFor();
+    await page.getByTestId('survey-skip').click();
+    // The focus lands on the way back, not on the skip itself.
+    assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'survey-skip-no'), 'the skip question does not put the focus on "Keep answering"');
+    await page.getByTestId('survey-skip-yes').click();
+    await page.getByTestId('survey-summary').waitFor();
+    assert((await text(page.getByTestId('survey-score'))) === 'You knew 0 of 10.' && (await text(page.getByTestId('survey-ruins'))) === '10 places are in ruins.', 'a skipped survey does not leave the whole palace in ruins');
+    assert((await page.getByTestId('survey-skipped').count()) === 1, 'the summary does not say that the survey was skipped');
+    assert((await page.evaluate(() => window.__memoriaApp.view())).integrity.slice(0, 10).every((x) => x === 0), 'after a skipped survey a place is not in ruins');
+    assert((await text(page.getByTestId('survey-study'))) === 'Walk the route', 'after a skipped survey the empty route should be walked first');
+    await page.getByTestId('survey-study').click();
+    await page.getByTestId('familiarize').waitFor();
+    assert((await storedProgress(page)).records[0].unknown === 10, 'a skipped survey is not recorded as ten unknowns');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `unsurveyed decks unchanged; a surveyed deck opens on the study walk; Progress empty and with three walks; skip leaves ten places in ruins; the right slot over 3000 questions: at most ${dealt.worst} in ten, never three running`;
+  },
+
   /** Theme Lab: the three buttons take a real click, on the title and during a walk. */
   async l() {
     const { context, page, errors } = await open(undefined, ['clipboard-read', 'clipboard-write']);
@@ -1249,14 +1712,15 @@ const cases = {
 
     // During a walk: still on top, and a key pressed while the Lab has the focus is not a walk shortcut.
     await page.getByRole('button', { name: `Walk ${JUDGE_DECK_TITLE}` }).click();
-    const first = page.locator('[data-testid=familiarize] [data-testid=walk-label]:has-text("Place 1 of 8")');
+    const first = page.locator('[data-testid=survey] [data-testid=walk-label]:has-text("Place 1 of 8")');
     await first.waitFor();
-    await page.getByTestId('place-hint').waitFor();
+    await page.getByTestId('survey-question').waitFor();
     assert((await onTop()).length === 0, `during a walk something covers ${await onTop()}`);
     await page.getByTestId('lab-copy').click({ timeout: 5000 });
-    for (const key of ['ArrowRight', '1', 'Escape']) await page.keyboard.press(key);
+    for (const key of ['ArrowRight', '1', '0', 'Escape']) await page.keyboard.press(key);
     await page.waitForTimeout(600);
     assert((await first.count()) === 1 && (await page.getByTestId('leave-confirm').count()) === 0, 'a key pressed in the Lab reached the walk');
+    assert((await page.getByTestId('survey-ack').count()) === 0, 'a key pressed in the Lab answered the survey question');
     await shot(page, 'lab-walk');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();

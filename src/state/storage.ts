@@ -1,4 +1,4 @@
-import type { Deck, Imago, MemoryItem, PalaceLayoutMeta, RecallResult, ReviewCard } from '@/core/types';
+import type { Deck, Imago, MemoryItem, PalaceLayoutMeta, RecallResult, ReviewCard, WalkRecord } from '@/core/types';
 import { DOMUS_META } from '@/layouts/domus/meta';
 
 /**
@@ -22,6 +22,8 @@ export const STORE_KEYS = {
   settings: 'memoria.settings.v1',
   draft: 'memoria.draft.v1',
   ab: 'memoria.ab.v1',
+  /** Finished walks (survey, recall, review), for the Progress view. */
+  history: 'memoria.history.v1',
   /** sessionStorage: the walk in progress. */
   walk: 'memoria.walk.v1',
 } as const;
@@ -45,6 +47,8 @@ const oneOf = <T extends string>(v: unknown, all: readonly T[]): v is T => (all 
 const ACTIONS = ['spin', 'bob', 'pulse', 'shake', 'orbit', 'swing', 'hop'] as const;
 const SOURCES = ['architect', 'learner', 'fixture', 'fallback'] as const;
 const STEP_KINDS = ['plan', 'generate', 'check', 'revise', 'fallback'] as const;
+const WALK_KINDS = ['survey', 'recall', 'review'] as const;
+const SURVEY_OUTCOMES = ['known', 'unknown'] as const;
 
 /** Cleans every element; returns the same array when nothing changed, so a clean value is left untouched. */
 function cleanList<T>(list: unknown[], clean: (v: unknown, t: Tally) => T | null, t: Tally): T[] {
@@ -134,10 +138,14 @@ function cleanDeck(v: unknown, t: Tally): Deck | null {
   if (!isObj(v) || !str(v.id) || !str(v.title) || !Array.isArray(v.items)) return null;
   const items = onePerPlace(cleanList(v.items, cleanItem, t), v.layoutId, t);
   if (items.length === 0) return null;
-  if (items === v.items && oneOf(v.kind, ['list', 'pairs'] as const) && str(v.layoutId) && num(v.createdAt)) return v as unknown as Deck;
+  // A survey date that is not a number is dropped: the deck then reads as never surveyed.
+  const surveyed = v.surveyedAt === undefined || num(v.surveyedAt);
+  if (items === v.items && oneOf(v.kind, ['list', 'pairs'] as const) && str(v.layoutId) && num(v.createdAt) && surveyed) return v as unknown as Deck;
   t.changed = true;
+  if (!surveyed) t.dropped = true;
+  const { surveyedAt: _when, ...unsurveyed } = v;
   return {
-    ...v,
+    ...(surveyed ? v : unsurveyed),
     id: v.id,
     title: v.title,
     items,
@@ -170,9 +178,17 @@ export function cleanDecksState(state: unknown, t: Tally): { decks: Record<strin
   return { decks };
 }
 
-function cleanCard(v: unknown): ReviewCard | null {
+/** A card needs its schedule; a survey outcome or a study date of the wrong type is dropped from it. */
+function cleanCard(v: unknown, t: Tally = newTally()): ReviewCard | null {
   if (!isObj(v) || !str(v.itemId) || !str(v.deckId) || !num(v.box) || !num(v.dueAt) || !num(v.reps) || !num(v.lapses)) return null;
-  return v as unknown as ReviewCard;
+  const bad = [
+    ...(v.survey === undefined || oneOf(v.survey, SURVEY_OUTCOMES) ? [] : ['survey']),
+    ...(v.surveyGiven === undefined || str(v.surveyGiven) ? [] : ['surveyGiven']),
+    ...(v.studiedAt === undefined || num(v.studiedAt) ? [] : ['studiedAt']),
+  ];
+  if (bad.length === 0) return v as unknown as ReviewCard;
+  t.dropped = true;
+  return Object.fromEntries(Object.entries(v).filter(([k]) => !bad.includes(k))) as unknown as ReviewCard;
 }
 
 export interface CleanWalkLedger {
@@ -193,7 +209,7 @@ export function cleanReviewState(state: unknown, t: Tally): { cards: Record<stri
   const src = isObj(state) ? state.cards : undefined;
   if (isObj(src)) {
     for (const value of Object.values(src)) {
-      const card = cleanCard(value);
+      const card = cleanCard(value, t);
       if (card) cards[card.itemId] = card;
       else t.dropped = true;
     }
@@ -202,6 +218,26 @@ export function cleanReviewState(state: unknown, t: Tally): { cards: Record<stri
   const walk = cleanLedger(rawWalk);
   if (!walk && rawWalk !== undefined && rawWalk !== null) t.dropped = true;
   return { cards, walk };
+}
+
+/** One finished walk. Its counts must agree with its item list, or the Progress view would show a score nobody got. */
+function cleanRecord(v: unknown): WalkRecord | null {
+  if (!isObj(v) || !str(v.id) || !str(v.deckId) || !oneOf(v.kind, WALK_KINDS) || !Array.isArray(v.items)) return null;
+  if (!num(v.at) || !num(v.total) || !num(v.correct) || !num(v.unknown) || !num(v.ms)) return null;
+  const wellFormed = v.items.every((it) => isObj(it) && str(it.itemId) && typeof it.correct === 'boolean' && (it.unknown === undefined || typeof it.unknown === 'boolean'));
+  if (!wellFormed || v.total !== v.items.length || v.total < 1 || v.correct < 0 || v.correct > v.total) return null;
+  return v as unknown as WalkRecord;
+}
+
+/** The walk history: a plain list of finished walks, oldest first. */
+export function cleanHistoryState(state: unknown, t: Tally): { records: WalkRecord[] } {
+  const src = isObj(state) ? state.records : undefined;
+  if (src === undefined) return { records: [] };
+  if (!Array.isArray(src)) {
+    t.dropped = true;
+    return { records: [] };
+  }
+  return { records: cleanList(src, cleanRecord, t) };
 }
 
 export interface CleanSettings {
@@ -325,8 +361,8 @@ export function cleanAbRows(parsed: unknown, t: Tally): Rec[] {
 }
 
 export interface CleanWalk {
-  mode: 'familiarize' | 'encode' | 'recall';
-  phase: 'walk' | 'routeCheck' | 'interstitial';
+  mode: 'familiarize' | 'survey' | 'encode' | 'recall';
+  phase: 'walk' | 'routeCheck' | 'interstitial' | 'summary';
   layoutId: string;
   deckId: string;
   stops: number[];
@@ -336,6 +372,10 @@ export interface CleanWalk {
   judgeVariant: 'default' | 'pitch';
   walkId: string;
   recallSpentMs: number;
+  /** A recall walk over the whole deck, or a review of the places that were due. */
+  recallScope: 'all' | 'due';
+  /** The survey was walked to its last place, so it counts as the walk of the empty route. */
+  surveyWalked: boolean;
 }
 
 function cleanResult(v: unknown): CleanWalk['results'][number] | null {
@@ -346,12 +386,12 @@ function cleanResult(v: unknown): CleanWalk['results'][number] | null {
 /** The walk a reload cut short. null = not a walk that can be resumed. */
 export function cleanWalk(v: unknown, t: Tally = newTally()): CleanWalk | null {
   if (!isObj(v) || !str(v.deckId) || !Array.isArray(v.stops) || !Array.isArray(v.results)) return null;
-  if (!oneOf(v.mode, ['familiarize', 'encode', 'recall'] as const)) return null;
+  if (!oneOf(v.mode, ['familiarize', 'survey', 'encode', 'recall'] as const)) return null;
   if (!v.stops.every((s) => Number.isInteger(s) && (s as number) >= 0)) return null;
   if (!Number.isInteger(v.step) || (v.step as number) < 0 || (v.step as number) >= v.stops.length) return null;
   return {
     mode: v.mode,
-    phase: oneOf(v.phase, ['routeCheck', 'interstitial'] as const) ? v.phase : 'walk',
+    phase: oneOf(v.phase, ['routeCheck', 'interstitial', 'summary'] as const) ? v.phase : 'walk',
     layoutId: str(v.layoutId) ? v.layoutId : '',
     deckId: v.deckId,
     stops: v.stops as number[],
@@ -361,6 +401,8 @@ export function cleanWalk(v: unknown, t: Tally = newTally()): CleanWalk | null {
     judgeVariant: v.judgeVariant === 'pitch' ? 'pitch' : 'default',
     walkId: str(v.walkId) ? v.walkId : '',
     recallSpentMs: num(v.recallSpentMs) ? v.recallSpentMs : 0,
+    recallScope: v.recallScope === 'due' ? 'due' : 'all',
+    surveyWalked: v.surveyWalked === true,
   };
 }
 
@@ -450,6 +492,8 @@ export function repairStoredKey(key: string): void {
       return repairKey(local, key, persisted(cleanSettingsState));
     case STORE_KEYS.draft:
       return repairKey(local, key, persisted(cleanDraftState));
+    case STORE_KEYS.history:
+      return repairKey(local, key, persisted(cleanHistoryState));
     case STORE_KEYS.ab:
       return repairKey(local, key, (parsed, t) => {
         const rows = cleanAbRows(parsed, t);

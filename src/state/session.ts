@@ -25,7 +25,10 @@ export interface SessionState {
   step: number;
   /** True once the camera has settled at the current stop. Set by the engine. */
   arrived: boolean;
-  /** Recall answers given in this walk. An answered item's image is revealed. */
+  /**
+   * Answers given in this walk. On a recall walk an answered item's image is revealed; on a
+   * survey walk nothing is revealed, and the answer only decides whether the place stands.
+   */
   results: WalkResult[];
   /** True during a Judge Mode run (timed, fixture deck, never touches the network). */
   judge: boolean;
@@ -43,8 +46,8 @@ export interface SessionState {
   toAttract: () => void;
   toCompose: () => void;
   toReview: () => void;
-  /** Begin a walk. `stops` are locus indices in route order. */
-  startWalk: (mode: 'familiarize' | 'encode' | 'recall', opts: { deckId?: string | null; stops: number[]; judge?: boolean }) => void;
+  /** Begin a walk. `stops` are locus indices in route order. A survey or recall walk starts with no answers. */
+  startWalk: (mode: 'familiarize' | 'survey' | 'encode' | 'recall', opts: { deckId?: string | null; stops: number[]; judge?: boolean }) => void;
   next: () => void;
   prev: () => void;
   answer: (result: WalkResult) => void;
@@ -79,7 +82,7 @@ export const useSession = create<SessionState>()((set) => ({
       stops,
       step: 0,
       arrived: false,
-      results: mode === 'recall' ? [] : s.results,
+      results: mode === 'recall' || mode === 'survey' ? [] : s.results,
       judge: judge ?? s.judge,
       imagesHidden: false,
     })),

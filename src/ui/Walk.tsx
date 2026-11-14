@@ -14,6 +14,7 @@ import { numberWord, termLength } from '@/flows/format';
 import { useCountdown, useTimedStop, useWalkKeys } from '@/flows/hooks';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
+import { useReview } from '@/state/review';
 import { isLastStop, useSession } from '@/state/session';
 
 /** The one wording for the advance key, used on every walk screen. */
@@ -241,6 +242,8 @@ export function Encode() {
     pauseRef.current?.focus({ preventScroll: true });
   };
   const nextRef = useFocusWhenReady<HTMLButtonElement>(walking && arrived, step);
+  // What the learner answered in the survey, shown beside the right answer. A Judge run has no survey.
+  const card = useReview((s) => (!judge && deck?.surveyedAt !== undefined && item ? s.cards[item.id] : undefined));
 
   useWalkKeys({
     next: !walking ? beginRecallAfterEncode : arrived ? advanceEncode : undefined,
@@ -290,6 +293,20 @@ export function Encode() {
       <div aria-live="polite">
         {arrived ? (
           <>
+            {/*
+              The learner's own survey answer, then the right one under it. Every fact is studied,
+              the ones the survey found known too: a right pick there may have been a guess.
+            */}
+            {card?.survey && (
+              <p className="state" data-testid="encode-survey" data-outcome={card.survey}>
+                {card.surveyGiven === undefined
+                  ? 'The survey did not reach this place.'
+                  : card.surveyGiven === ''
+                    ? 'In the survey you said: I don’t know.'
+                    : `In the survey you answered: ${card.surveyGiven}.`}
+                {card.survey === 'known' && ' You knew this. Picture it anyway: a right pick can be a guess.'}
+              </p>
+            )}
             <h2 className="term" data-length={termLength(item.term)} data-testid="encode-term">
               {item.term}
             </h2>

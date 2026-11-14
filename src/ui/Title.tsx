@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { CompareLink } from '@/ab/CompareLink';
 import type { Deck, ReviewCard } from '@/core/types';
-import { discardSavedWalk, judgeVariantFromUrl, resumeWalk, startEncode, startJudge, startRecall, useFlow } from '@/flows/flow';
+import { discardSavedWalk, judgeVariantFromUrl, openProgress, resumeWalk, startEncode, startJudge, startRecall, useFlow } from '@/flows/flow';
 import { formatWhen, plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
 import { JUDGE_PROMISE } from '@/flows/timing';
 import { getDeck, useAllDecks, useDecks } from '@/state/decks';
 import { hasDraft, useDraft } from '@/state/draft';
+import { useHistory } from '@/state/history';
 import { deckProgress, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { useSettings, type RecallInput } from '@/state/settings';
@@ -18,10 +19,16 @@ import { useActiveTheme } from '@/themes/active';
 /**
  * "8 places · not started", "8 places · 3 due now" or "8 places · next review tomorrow".
  * A place that has never been recalled is new, not due; a partly studied palace says how many are new.
+ * A palace that has been surveyed but not recalled yet says how far it got: "surveyed, not yet
+ * studied" until every image has been placed, then "studied, not yet recalled".
  */
 export function deckStatus(deck: Deck, cards: Record<string, ReviewCard>, now: number): string {
   const places = plural(deck.items.length, 'place');
   const p = deckProgress(deck, cards, now);
+  if (p.studied === 0 && deck.surveyedAt !== undefined) {
+    const placed = deck.items.every((it) => cards[it.id]?.studiedAt !== undefined);
+    return `${places} · ${placed ? 'studied, not yet recalled' : 'surveyed, not yet studied'}`;
+  }
   if (p.studied === 0) return `${places} · not started`;
   const fresh = p.fresh > 0 ? ` · ${p.fresh} new` : '';
   if (p.due > 0) return `${places} · ${p.due} due now${fresh}`;
@@ -45,6 +52,7 @@ export function Title() {
   const remove = (deckId: string) => {
     useDecks.getState().remove(deckId);
     useReview.getState().resetDeck(deckId);
+    useHistory.getState().removeDeck(deckId);
     setDeleting(null);
   };
 
@@ -61,8 +69,8 @@ export function Title() {
       {saved && savedDeck && (
         <div className="notice resume" role="status" data-testid="resume">
           <p>
-            You were on a walk: {savedDeck.title}, {saved.mode === 'recall' ? 'recall, ' : ''}place {saved.step + 1} of{' '}
-            {saved.stops.length}.
+            You were on a walk: {savedDeck.title}, {saved.mode === 'recall' ? 'recall, ' : saved.mode === 'survey' ? 'survey, ' : ''}place{' '}
+            {saved.step + 1} of {saved.stops.length}.
           </p>
           <div className="actions">
             <button type="button" className="btn btn--primary" autoFocus onClick={resumeWalk} data-testid="resume-walk">
@@ -88,9 +96,14 @@ export function Title() {
           <h2 id="palaces-h" className="label">
             Your palaces
           </h2>
-          <button type="button" className="link" onClick={() => useSession.getState().toReview()} data-testid="title-review">
-            Reviews{totalDue > 0 ? ` (${totalDue} due)` : ''}
-          </button>
+          <span className="rowhead__links">
+            <button type="button" className="link" onClick={() => useSession.getState().toReview()} data-testid="title-review">
+              Reviews{totalDue > 0 ? ` (${totalDue} due)` : ''}
+            </button>
+            <button type="button" className="link" onClick={openProgress} data-testid="title-progress">
+              Progress
+            </button>
+          </span>
         </div>
         <ul className="decks">
           {decks.map((deck) => (

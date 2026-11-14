@@ -59,6 +59,14 @@ export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; labe
   pitch: { measuredSeconds: 77, label: 'Try it in 90 seconds' },
 };
 
+/**
+ * A Judge run starts with every place of its deck in ruins (the judge has not learned the list
+ * yet): a place goes under repair when its image is placed on the study walk, and is restored
+ * or left damaged by the answer on the recall walk. Set to false and a Judge run looks as it
+ * did before: every place whole throughout. Read in src/state/sceneView.ts and nowhere else.
+ */
+export const JUDGE_STARTS_IN_RUINS = true;
+
 /** If the engine has not reported `arrived` after this long, the walk carries on anyway. */
 export const ARRIVED_FALLBACK_MS = 6000;
 

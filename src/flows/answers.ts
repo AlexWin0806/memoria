@@ -80,7 +80,40 @@ export function answerOf(item: MemoryItem): string {
   return item.term;
 }
 
-/** The right answer plus up to three distractors from the same deck, shuffled. */
+/**
+ * Where the right answer goes among `size` options. A plain shuffle can put it in the same
+ * slot several times running, and a learner who sees that stops trusting the quiz. So the
+ * slot is dealt from a bag that holds every slot twice, in shuffled order, and is refilled
+ * when it is empty: over any ten questions in a row no slot is dealt more than four times.
+ * Twice rather than once, so that the last slot of a round cannot be worked out by
+ * elimination. And a slot that has just been dealt twice running is passed over, so the
+ * right answer is never in the same slot three times in a row. One bag per number of
+ * options, shared by the survey and the recall walk.
+ */
+const slotBags = new Map<number, { bag: number[]; last: number; run: number }>();
+
+export function dealSlot(size: number): number {
+  if (size <= 1) return 0;
+  const state = slotBags.get(size) ?? { bag: [], last: -1, run: 0 };
+  slotBags.set(size, state);
+  const barred = state.run >= 2 ? state.last : -1;
+  let at = state.bag.findIndex((slot) => slot !== barred);
+  if (at < 0) {
+    // Empty. (A bag never holds only the barred slot: a slot dealt twice running has at most one copy left among others.)
+    const slots = Array.from({ length: size }, (_, i) => i);
+    state.bag = [...state.bag, ...shuffle([...slots, ...slots])];
+    at = state.bag.findIndex((slot) => slot !== barred);
+  }
+  const [slot] = state.bag.splice(at, 1);
+  state.run = slot === state.last ? state.run + 1 : 1;
+  state.last = slot;
+  return slot;
+}
+
+/**
+ * The right answer plus up to three distractors from the same deck. The distractors are in
+ * random order; the slot of the right answer is balanced (see dealSlot).
+ */
 export function buildChoices(deck: Deck, item: MemoryItem): string[] {
   const right = answerOf(item);
   const seen = new Set([normalize(right)]);
@@ -93,7 +126,9 @@ export function buildChoices(deck: Deck, item: MemoryItem): string[] {
     seen.add(key);
     pool.push(a);
   }
-  return shuffle([right, ...shuffle(pool).slice(0, 3)]);
+  const others = shuffle(pool).slice(0, 3);
+  const slot = dealSlot(others.length + 1);
+  return [...others.slice(0, slot), right, ...others.slice(slot)];
 }
 
 export interface RouteQuestion {
@@ -133,4 +168,42 @@ export function emojiOnly(raw: string): { glyphs: string[]; stripped: boolean } 
 
 export function splitGlyphs(raw: string): string[] {
   return emojiOnly(raw).glyphs;
+}
+
+/** "1st", "2nd", "3rd", "4th", "11th", "22nd". */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+  return `${n}${suffix}`;
+}
+
+/** The meaning with the term itself blanked out, so that a gloss which names its term does not answer the question. */
+export function maskTerm(meaning: string, term: string): string {
+  const t = term.trim();
+  if ([...t].length < 3) return meaning;
+  const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return meaning.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu'), '…');
+}
+
+export interface SurveyQuestion {
+  /**
+   * `meaning`: the item's meaning is shown and its term is asked for.
+   * `position`: a bare list item with no meaning, asked for by its place in the order.
+   */
+  form: 'meaning' | 'position';
+  /** The meaning as shown (`form: 'meaning'` only). */
+  cue?: string;
+  /** The question in words. */
+  prompt: string;
+}
+
+/**
+ * The survey's question about the fact that will live at a place. The answer is always the
+ * item's term, as on the recall walk, so the same options and the same grading apply.
+ * `position` is the item's 1-based place in the deck's route order.
+ */
+export function surveyQuestion(deck: Deck, item: MemoryItem, position: number): SurveyQuestion {
+  const meaning = item.meaning?.trim();
+  if (meaning) return { form: 'meaning', cue: maskTerm(meaning, item.term), prompt: 'Which term is this?' };
+  return { form: 'position', prompt: `Which comes ${ordinal(position)} in ${deck.title}?` };
 }
