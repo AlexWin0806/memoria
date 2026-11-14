@@ -3,6 +3,7 @@ import type { useDecks } from '@/state/decks';
 import type { useReview } from '@/state/review';
 import type { useSession } from '@/state/session';
 import type { useSettings } from '@/state/settings';
+import type { Flourish } from './RecallFlourish';
 import type { RailNode } from './rail';
 
 declare global {
@@ -15,6 +16,10 @@ declare global {
       settings: typeof useSettings;
       layout: PalaceLayoutMeta;
       camera?: { position: { x: number; y: number; z: number } };
+      /** The results tour: whether it is running, and the locus the camera rests at (-1 while it moves). */
+      tour?: { active: boolean; index: number; at: number };
+      /** The flourish at the moment of recall. */
+      flourish?: Flourish;
     };
   }
 }
@@ -27,9 +32,12 @@ declare global {
  *   &tokens=all                          show the Judge deck's images at all loci
  *   &deck=<id>                           with tokens=all: show that deck's images instead
  *   &inset=<px>                          with shot/rail: shift the view as a docked panel that wide does
+ *   &insetBottom=<px>                    with shot/rail: lift the view as a bottom sheet that tall does
+ *   &flourish=<0..1>                     with shot=<locus index>: the right-answer flourish, held that far through
  *   &veil=hold                           keep the loading veil up (to look at it)
  *   &dev=0.2 | &dev=1,0.2,…              override development (one value for all, or per locus)
  *   &debug                               posts at the locus anchors; stores on window.__memoria
+ *   &debug=stores                        the stores only, no posts (for clean screenshots of driven states)
  *   ?perf                                frame-time overlay
  *   ?theme=<id>                          override the theme from settings
  */
@@ -43,9 +51,15 @@ export interface Qa {
   deck: string | null;
   /** Width in px of an imagined panel docked on the right, for frozen views. */
   inset: number;
+  /** Height in px of an imagined bottom sheet, for frozen views. */
+  insetBottom: number;
+  /** Progress of a held right-answer flourish at the pinned locus; null = none. */
+  flourish: number | null;
   holdVeil: boolean;
   dev: number[] | null;
   debug: boolean;
+  /** Posts and ground grid at the locus anchors. */
+  posts: boolean;
   perf: boolean;
   theme: string | null;
 }
@@ -75,9 +89,12 @@ export function readQa(lociCount: number, search = location.search): Qa {
     tokensAll: q.get('tokens') === 'all',
     deck: q.get('deck'),
     inset: Math.max(0, Number(q.get('inset')) || 0),
+    insetBottom: Math.max(0, Number(q.get('insetBottom')) || 0),
+    flourish: q.has('flourish') ? Math.min(1, Math.max(0, Number(q.get('flourish')) || 0)) : null,
     holdVeil: q.get('veil') === 'hold',
     dev: dev && dev.length ? dev : null,
     debug: q.has('debug'),
+    posts: q.has('debug') && q.get('debug') !== 'stores',
     perf: q.has('perf'),
     theme: q.get('theme'),
   };

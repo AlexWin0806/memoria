@@ -66,16 +66,17 @@ function CloakBench() {
       ),
     [],
   );
-  // One corner of the cloak hanging off the end of the bench, down to a point.
+  // One corner of the cloak hanging off the end of the bench. It stops at knee height: run
+  // down to the floor it read as a red blade standing beside the leg.
   const corner = useMemo(() => {
     const s = new Shape();
     s.moveTo(-0.34, 0.56);
     s.lineTo(0.27, 0.56);
-    s.lineTo(0.2, 0.34);
-    s.lineTo(0.02, 0.2);
-    s.lineTo(-0.14, 0.03);
-    s.lineTo(-0.2, 0.22);
-    s.lineTo(-0.4, 0.3);
+    s.lineTo(0.23, 0.42);
+    s.lineTo(0.08, 0.33);
+    s.lineTo(-0.1, 0.2);
+    s.lineTo(-0.21, 0.31);
+    s.lineTo(-0.4, 0.36);
     s.closePath();
     return new ExtrudeGeometry(s, { depth: 0.035, bevelEnabled: false });
   }, []);

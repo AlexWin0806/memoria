@@ -71,10 +71,11 @@ const KEYFRAMES = '@keyframes memoria-veil-rule { from { transform: scaleX(0); }
  * The veil's DOM: the sheet, and on first load the title with its rule. The rule is a
  * transform animation, so it keeps drawing while shader compilation blocks the main thread.
  * `titled`: the title screen is up and already carries the word in its text column, so the
- * veil shows the rule alone, centred in the part of the page that column leaves free.
+ * veil shows the rule centred in the part of the page that column leaves free, with a line
+ * under it saying what is going on. A rule on its own there read as a stray stroke (QA #14).
  */
 export function VeilSheet({ veil, theme, reduced, titled }: { veil: Veil; theme: Theme; reduced: boolean; titled: boolean }) {
-  const { paper, ink } = theme.palette;
+  const { paper, ink, inkSoft } = theme.palette;
   return (
     <div
       aria-hidden
@@ -117,6 +118,11 @@ export function VeilSheet({ veil, theme, reduced, titled }: { veil: Veil; theme:
               animation: reduced ? undefined : `memoria-veil-rule ${RULE_SECONDS}s cubic-bezier(0.12, 0.7, 0.2, 1) both`,
             }}
           />
+          {titled && (
+            <div style={{ marginTop: 14, color: inkSoft, fontFamily: `'${theme.type.display}', Georgia, serif`, fontStyle: 'italic', fontSize: 17, letterSpacing: '0.01em' }}>
+              The palace is being drawn
+            </div>
+          )}
         </div>
       )}
     </div>

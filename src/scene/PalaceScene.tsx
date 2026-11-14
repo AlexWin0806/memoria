@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { JUDGE_DECK_ID } from '@/ai/fixtures';
 import type { PalaceLayout } from '@/layouts';
 import { getDeck, useDeck } from '@/state/decks';
@@ -11,7 +11,9 @@ import { DebugPosts } from './DebugPosts';
 import { DevelopmentDriver } from './DevelopmentDriver';
 import { ImagoToken } from './ImagoToken';
 import { LocusLabel } from './LocusLabel';
+import { FlourishPulse, FlourishRing, createFlourish, holdFlourish, startFlourish } from './RecallFlourish';
 import type { Qa } from './qa';
+import { resultsTour } from './tour';
 import type { Veil } from './veil';
 
 /** `&tokens=all`: one deck's images (the Judge deck unless `&deck=` names another), all visible, wherever the session is. */
@@ -52,6 +54,26 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
   const still = qa.frozen || reduced;
   const current = typeof view.camera === 'number' ? layout.loci[view.camera] : undefined;
 
+  // Results: a tour of the places just walked, in place of the overview.
+  const tour = useMemo(() => (mode === 'results' ? resultsTour(layout, deck, stops, results) : null), [mode, layout, deck, stops, results]);
+
+  // The moment of recall: an answer has arrived for the place the learner is standing at.
+  const flourish = useMemo(createFlourish, []);
+  const answered = useRef(results);
+  useEffect(() => {
+    const before = answered.current;
+    answered.current = results;
+    if (mode !== 'recall' || still) return;
+    const given = results.find((r) => !before.includes(r));
+    const here = layout.loci[stops[step]];
+    if (!given || !here) return;
+    if (deck?.items.some((it) => it.locusId === here.id && it.id === given.itemId)) startFlourish(flourish, here.index, given.correct);
+  }, [results, mode, still, layout, stops, step, deck, flourish]);
+  useEffect(() => {
+    if (qa.flourish !== null && typeof qa.shot === 'number') holdFlourish(flourish, qa.shot, qa.flourish);
+    if (window.__memoria) window.__memoria.flourish = flourish;
+  }, [qa, flourish]);
+
   return (
     <>
       <CameraRail
@@ -60,6 +82,7 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
         session={session}
         reduced={reduced}
         drift={mode === 'attract' || mode === 'results' || mode === 'review'}
+        tour={tour}
         qa={qa}
         veil={veil}
       />
@@ -67,9 +90,12 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
       {tokens.map(({ locusIndex, item, visible }) => {
         const locus = layout.loci[locusIndex];
         return visible && locus ? (
-          <ImagoToken key={`${item.id}@${locus.id}`} imago={item.imago} position={locus.anchor} accent={locus.accent} still={still} appear={!qa.frozen} fadeNear />
+          <FlourishPulse key={`${item.id}@${locus.id}`} flourish={flourish} locusIndex={locus.index} anchor={locus.anchor}>
+            <ImagoToken imago={item.imago} position={locus.anchor} accent={locus.accent} still={still} appear={!qa.frozen} fadeNear />
+          </FlourishPulse>
         ) : null;
       })}
+      <FlourishRing flourish={flourish} layout={layout} />
       {view.labels && current && arrived && !qa.frozen && (
         <LocusLabel
           key={current.id}
@@ -79,7 +105,7 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
           still={reduced}
         />
       )}
-      {qa.debug && <DebugPosts layout={layout} />}
+      {qa.posts && <DebugPosts layout={layout} />}
     </>
   );
 }
