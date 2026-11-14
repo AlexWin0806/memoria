@@ -67,7 +67,7 @@ export function CompareResults() {
               <span data-testid="ab-study" data-list-ms={studyMs.list} data-palace-ms={studyMs.palace}>
                 {' '}
                 Study time: {formatDuration(studyMs.list)} for the list, {formatDuration(studyMs.palace)} for the walk. Answering time leaves
-                out the camera's travel between places.
+                out the camera&rsquo;s travel between places.
               </span>
             )}
           </p>

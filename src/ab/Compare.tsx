@@ -91,7 +91,8 @@ function ComparePanel({ size, running, children }: { size: 'normal' | 'wide' | '
       want = { right: 0, bottom: 0 };
       apply();
     };
-  }, []);
+    // Measured again when the panel changes width, without waiting for the observer's next frame.
+  }, [size]);
   return (
     <aside ref={ref} className={size === 'normal' ? 'panel ab' : `panel ab ab--${size}`} aria-label="Memoria: compare list against palace" data-testid="ab-panel">
       <header className="panel__head">

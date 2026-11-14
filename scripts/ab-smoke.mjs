@@ -4,6 +4,7 @@
  *
  *   npm run build && node scripts/ab-smoke.mjs
  *   node scripts/ab-smoke.mjs --url http://localhost:5173     # against a running server
+ *   node scripts/ab-smoke.mjs --only 3                        # only the abandoned run (cases 1 and 2 go together)
  *
  * What it does, keyboard only wherever a participant would use keys:
  *   1  participant one, list first, every answer right      -> 8 of 8 in both arms, one stored row
@@ -38,6 +39,7 @@ const flag = (name) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
+const only = flag('only')?.split(',');
 const outDir = path.resolve(flag('out') ?? path.join('qa', 'shots', 'ab'));
 mkdirSync(outDir, { recursive: true });
 
@@ -210,7 +212,7 @@ async function participant(page, { order, wrong = 0, shots = '', think = 0, debu
           return { mode: st.mode, deckId: st.deckId, inset: st.insetRight, panel: Math.round(document.querySelector('.ab').getBoundingClientRect().width) };
         });
         assert(s.mode === 'attract' && s.deckId === null, `the scene should idle with no deck during the list arm: ${JSON.stringify(s)}`);
-        assert(s.inset === s.panel, `the view is not re-centred for the test's panel: ${JSON.stringify(s)}`);
+        assert(s.inset === s.panel && s.panel > 380, `the view is not re-centred for the wider list panel: ${JSON.stringify(s)}`);
       }
       await page.waitForTimeout(1500);
       await snap('list-study');
@@ -446,7 +448,8 @@ async function main() {
 
 async function abandoned() {
   const { context, page, errors } = await open();
-  await page.goto(`${base}/?compare&${FAST}`, { waitUntil: 'load' });
+  // List first, so that the stopped clock can be read off the screen.
+  await page.goto(`${base}/?compare=list-first&${FAST}`, { waitUntil: 'load' });
   await page.getByTestId('ab-intro').waitFor();
   await page.keyboard.press('Enter');
   const arm = await page.getByTestId('ab-ready').getAttribute('data-arm');
@@ -497,13 +500,13 @@ async function abandoned() {
   assert((await stored(page, 'memoria.ab.v1')) === null, 'something was stored without a finished run');
   assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
   await context.close();
-  lines.push(`ok   3  abandoned run (${arm} arm first): ${arm === 'list' ? 'the clock stops while the dialog is open, ' : ''}nothing is stored, the title comes back`);
+  lines.push(`ok   3  abandoned run (${arm} arm): ${arm === 'list' ? 'the clock stops while the dialog is open, ' : ''}nothing is stored, the title comes back`);
 }
 
 try {
   // One after the other: two software-rendered pages at once would stretch the timings.
-  await main();
-  await abandoned();
+  if (!only || only.includes('1') || only.includes('2')) await main();
+  if (!only || only.includes('3')) await abandoned();
 } catch (e) {
   failed = true;
   lines.push(`FAIL ${String(e.message ?? e).split('\n').slice(0, 6).join('\n     ')}`);
