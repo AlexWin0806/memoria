@@ -293,6 +293,17 @@ interface AskOptions<T> {
 }
 
 /**
+ * Both calls are short structured writing tasks, and the draft is checked by a second pass.
+ * On the live fast model, extended thinking made a six-fact plan take about 26 s (15 s to
+ * draft, 11 s to check), so thinking is off unless ARCHITECT_THINKING=adaptive is set.
+ * `disabled` is accepted only by the Haiku line at effort high or below, so it is sent only there.
+ */
+function thinkingOff(model: string, effort: Effort | null): boolean {
+  if ((process.env.ARCHITECT_THINKING ?? '').trim().toLowerCase() === 'adaptive') return false;
+  return model.startsWith('claude-haiku') && (effort === null || effort === 'low' || effort === 'medium' || effort === 'high');
+}
+
+/**
  * One structured call. Retries once when the answer fails validation or the API has a
  * transient failure, as long as there is time left; otherwise throws.
  */
@@ -313,6 +324,7 @@ async function ask<T>(opts: AskOptions<T>): Promise<T> {
           // The system prompt is identical on every request, so let it be cached.
           system: [{ type: 'text', text: opts.system, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: opts.user }],
+          ...(thinkingOff(opts.model, opts.effort) ? { thinking: { type: 'disabled' as const } } : {}),
           output_config: {
             format: zodOutputFormat(opts.schema),
             ...(opts.effort ? { effort: opts.effort } : {}),

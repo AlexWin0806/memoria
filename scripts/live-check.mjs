@@ -110,8 +110,16 @@ page.setDefaultTimeout(90000);
 const errors = [];
 const apiCalls = [];
 page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
-page.on('response', (r) => {
-  if (r.url().includes('/api/architect')) apiCalls.push({ status: r.status(), timing: r.headers()['server-timing'] ?? '' });
+page.on('response', async (r) => {
+  if (!r.url().includes('/api/architect')) return;
+  const call = { status: r.status(), timing: r.headers()['server-timing'] ?? '', error: '' };
+  apiCalls.push(call);
+  // On a failure, keep what the server said: its error code explains a fallback.
+  if (r.status() !== 200) {
+    const h = r.headers();
+    // Who answered: the deployment's platform or something in between (a proxy with a shorter limit).
+    call.error = `${(await r.text().catch(() => '')).slice(0, 200)} [server: ${h.server ?? 'none'}; x-vercel-error: ${h['x-vercel-error'] ?? 'none'}; x-vercel-id: ${h['x-vercel-id'] ? 'present' : 'absent'}]`;
+  }
 });
 
 const FACTS = [
@@ -158,6 +166,7 @@ try {
 
   const statuses = apiCalls.map((c) => c.status).join(', ') || 'none';
   for (const c of apiCalls) if (c.timing) note(`server timing: ${c.timing}`);
+  for (const c of apiCalls) if (c.error) note(`server said (${c.status}): ${c.error}`);
   if (source === 'api') ok(`the live Architect answered in ${seconds} s with ${cards} images (API status ${statuses})`);
   else if (offlineOk) note(`--offline-ok: the plan came from ${source} in ${seconds} s with ${cards} images`);
   else bad(`the plan came from "${source}", not the live Architect, after ${seconds} s (API status ${statuses}). 503 means ANTHROPIC_API_KEY is not set on the deployment, or it was not redeployed after the key was added.`);

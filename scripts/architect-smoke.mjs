@@ -569,7 +569,7 @@ try {
     }
     const first = seen[1] ?? {};
     check('request: model, effort, structured output', first.model === 'claude-haiku-5-5' && first.output_config?.effort === 'low' && first.output_config?.format?.type === 'json_schema', `${first.model} / ${first.output_config?.effort} / ${first.output_config?.format?.type}`);
-    check('request: no sampling params, no prefill, thinking left adaptive', !('temperature' in first) && !('thinking' in first) && first.messages?.length === 1 && first.messages[0].role === 'user');
+    check('request: no sampling params, no prefill, thinking off on the fast model', !('temperature' in first) && first.thinking?.type === 'disabled' && first.messages?.length === 1 && first.messages[0].role === 'user');
     check('request: schema is closed and pins the locus ids', JSON.stringify(first.output_config?.format?.schema ?? {}).includes('"domus-12"') && first.output_config?.format?.schema?.additionalProperties === false);
     check('critic is told the measured problems', String(seen[2]?.messages?.[0]?.content).includes('Measured problems') && String(seen[2]?.messages?.[0]?.content).includes('30 words'));
 
