@@ -3,35 +3,38 @@
 Agent-level tasks. Human tasks live in the Google Doc "To-Do List" tab.
 Status: `todo`, `doing`, `done`, `blocked`. Feature ids match `docs/plan-snapshot.md`.
 
-## Status at Sat 5:45 AM ET
+## Status at Sat 8:00 AM ET
 
-Everything below is merged to `main` and pushed unless marked running.
+Everything below is merged to `main` and pushed unless marked running. All three suites
+pass on the merged build: `scripts/smoke.mjs` 13 of 13, `scripts/ab-smoke.mjs` 3 of 3,
+`scripts/architect-smoke.mjs` (live model path skipped: no key).
 
 | Area | State |
 |---|---|
-| Full loop on the real palace (title, compose, familiarize, encode, recall, results, review, Judge Mode, pitch variant) | done; smoke cases pass on greybox |
-| Ink & Vellum style: even first glaze, sparse hatching, inked tokens, instancing support, quality 1 default | done; not yet watched in motion or on a real GPU |
-| Sanguine variant, Theme Lab (`?lab`), theme-authoring skill | done; Lab buttons not clicked through; Sanguine blue vs teal unverified |
-| Engine: framing with the panel, rail safety, overview, loading veil, results tour, recall flourish, phone framing | done; flourish and tour seen as stills only |
-| Architect: server function, client, cache, offline planner, fixture alternates, progress callback | done; live path untested (no API key yet) |
-| QA review 1 (`docs/qa/review-1.md`) | done: C7 U6 Ch6 A7, 1 blocker, 9 majors |
-| App fixes from QA (draft persistence, pitch readability, recall cue, grading, resume, scheduling text, results layout) | running |
-| A/B list-versus-palace test (`?compare`) | running |
-| README, Devpost draft, pitch script, Google Doc sync | done at 4:40 AM; needs a refresh after this round |
+| Full loop: title, compose (drafts survive reload), familiarize, encode, recall (place is the cue; fair typed grading; resume after reload), results, review, Judge Mode, pitch variant | done and covered by tests |
+| Saved-data repair and error page | done and covered by tests |
+| Ink & Vellum: first glaze, full colour and ink ring on recall, sparse hatching, instancing; Sanguine variant; Theme Lab | done; Lab buttons covered by tests; Sanguine blue against teal judged from few frames |
+| Engine: framing, rail safety, results tour, turn-rate cap, adaptive resolution, loading veil | done; motion checked in offline-rendered frames only |
+| Architect: server function, cache, offline planner, alternates for every built-in item, five built-in decks | done; live path untested |
+| Comparison test (`?compare`), counterbalanced by list and order | done and covered by tests; never run with people |
+| QA reviews 1 and 2 (`docs/qa/`) | done: review 2 scored C8 U7 Ch6 A8, no blockers |
+| Capture tool and media (`scripts/capture.mjs`, `docs/media/`) | first set done; re-render from the final build running |
+| README, Devpost draft, pitch script, Google Doc | sync running |
 
 ## Next
 
 | Task | Owner | Status | Notes |
 |---|---|---|---|
-| Merge app fixes and the A/B test; full smoke run | Lead | todo | |
-| QA/Judge review 2 (fresh context) | QA | todo | After the merge |
-| README GIF of the recall moment; offline-rendered demo footage as a video fallback | Lead | todo | Deterministic frame capture, ffmpeg |
+| Commit re-rendered media and synced docs | Lead | todo | When the two jobs finish |
 | Live Architect test with a real key | Lead | blocked | Needs Alex: "key ready" |
 | Vercel deploy check | Lead | blocked | Needs Alex's import and the URL |
-| ChatOverflow sign-in | Lead | blocked | CLI installed; needs Alex's GitHub approval code |
-| Frame-rate check on a real laptop (`?perf`), quality 1 vs 2 | Richard | todo | Cannot be measured in the build sandbox |
-| Watch one recall answer and one results tour on a real GPU | any human | todo | Seen as stills only |
-| Venue comparison test with 3 to 5 people | Eric W., Eric C. | todo | Uses `?compare` once merged |
+| ChatOverflow sign-in | Lead | blocked | CLI installed; needs a fresh link and Alex's GitHub approval code |
+| Save a setup script on the cloud environment (`npm install`) | Lead | blocked | Needs Alex present to approve the prompt |
+| Frame-rate check on a real laptop (`?perf`), quality 1 against 2 | Richard | todo | Cannot be measured in the build sandbox |
+| Watch the app live on a real GPU | any human | todo | Motion seen only in offline frames |
+| Venue comparison test with 3 to 5 people | Eric W., Eric C. | todo | `docs/venue-test.md` |
+| Pitch rehearsal and timing decision | everyone | todo | Demo is about 85 of 120 seconds |
+| Known leftovers | Engine / App | todo | Image in the archway looms when walked under; images vanish in one frame at the spot-check start; 640×400 needs a scroll for the scene line; Cyanotype style unchecked for instancing; a second palace layout does not exist |
 
 ## Earlier milestones
 
