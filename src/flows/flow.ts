@@ -4,7 +4,7 @@ import type { Deck, Locus, MemoryItem } from '@/core/types';
 import { getLayout, type PalaceLayout } from '@/layouts';
 import { getDeck, useDecks } from '@/state/decks';
 import { dueItemIds, useReview } from '@/state/review';
-import { isLastStop, useSession } from '@/state/session';
+import { isLastStop, useSession, type WalkResult } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { shuffle } from './answers';
 import { JUDGE_TIMING, type JudgeTiming, type JudgeVariant } from './timing';
@@ -15,30 +15,76 @@ import { JUDGE_TIMING, type JudgeTiming, type JudgeVariant } from './timing';
  * after familiarization, the interstitial between encode and recall); they live here.
  */
 export type WalkPhase = 'walk' | 'routeCheck' | 'interstitial';
+type WalkMode = 'familiarize' | 'encode' | 'recall';
+
+/** A walk in progress, as kept in sessionStorage so that a reload can offer it again. */
+export interface SavedWalk {
+  mode: WalkMode;
+  phase: WalkPhase;
+  layoutId: string;
+  deckId: string;
+  stops: number[];
+  step: number;
+  results: WalkResult[];
+  judge: boolean;
+  judgeVariant: JudgeVariant;
+  walkId: string;
+  /** Ms of the recall walk already spent when this was saved. */
+  recallSpentMs: number;
+}
 
 interface FlowState {
   phase: WalkPhase;
   /** Epoch ms when the current recall walk began, and how long the last one took. */
   recallStartedAt: number;
   recallMs: number;
+  /** Names the recall walk in progress, so that its answers are recorded exactly once. */
+  walkId: string;
   /** The "leave?" question is open. Screen shortcuts are suspended meanwhile. */
   confirmLeave: boolean;
-  /** Compose holds a proposal that has not been placed yet. */
-  unsavedDraft: boolean;
-  /** Text in the Compose box, kept so that leaving the screen does not lose it. */
-  draftText: string;
+  /** An editor on screen holds text that is saved nowhere yet (the Strengthen editor). */
+  unsavedEdits: boolean;
   /** Which Judge Mode run this is: the default, or the shorter one for a live pitch. */
   judgeVariant: JudgeVariant;
+  /** A walk that was cut short by a reload, offered on the title screen. */
+  savedWalk: SavedWalk | null;
+}
+
+const WALK_KEY = 'memoria.walk.v1';
+
+function readSavedWalk(): SavedWalk | null {
+  try {
+    const w = JSON.parse(sessionStorage.getItem(WALK_KEY) ?? 'null') as Partial<SavedWalk> | null;
+    if (!w || typeof w.deckId !== 'string' || !Array.isArray(w.stops) || !Array.isArray(w.results)) return null;
+    if (w.mode !== 'familiarize' && w.mode !== 'encode' && w.mode !== 'recall') return null;
+    if (typeof w.step !== 'number' || w.step < 0 || w.step >= w.stops.length) return null;
+    return {
+      mode: w.mode,
+      phase: w.phase === 'routeCheck' || w.phase === 'interstitial' ? w.phase : 'walk',
+      layoutId: String(w.layoutId ?? ''),
+      deckId: w.deckId,
+      stops: w.stops,
+      step: w.step,
+      results: w.results,
+      judge: w.judge === true,
+      judgeVariant: w.judgeVariant === 'pitch' ? 'pitch' : 'default',
+      walkId: String(w.walkId ?? ''),
+      recallSpentMs: Number(w.recallSpentMs) || 0,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export const useFlow = create<FlowState>()(() => ({
   phase: 'walk',
   recallStartedAt: 0,
   recallMs: 0,
+  walkId: '',
   confirmLeave: false,
-  unsavedDraft: false,
-  draftText: '',
+  unsavedEdits: false,
   judgeVariant: 'default',
+  savedWalk: readSavedWalk(),
 }));
 
 /** `?judge=pitch` selects the pitch variant, for the URL start and for the title button alike. */
@@ -68,11 +114,13 @@ export function itemAt(deck: Deck | undefined, locus: Locus | undefined): Memory
   return deck.items.find((it) => it.locusId === locus.id);
 }
 
-function begin(mode: 'familiarize' | 'encode' | 'recall', deck: Deck, stops: number[], judge: boolean) {
+const newWalkId = () => `walk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+function begin(mode: WalkMode, deck: Deck, stops: number[], judge: boolean) {
   useFlow.setState({
     phase: 'walk',
     confirmLeave: false,
-    ...(mode === 'recall' ? { recallStartedAt: Date.now(), recallMs: 0 } : {}),
+    ...(mode === 'recall' ? { recallStartedAt: Date.now(), recallMs: 0, walkId: newWalkId() } : {}),
   });
   useSession.setState({ layoutId: deck.layoutId });
   useSession.getState().startWalk(mode, { deckId: deck.id, stops, judge });
@@ -162,24 +210,44 @@ function startSpotCheck(deckId: string, count: number): void {
   if (stops.length) begin('recall', deck, stops, true);
 }
 
-/** After the last recall stop: schedule every answered item, then show the results. */
+/** Write the walk's answers to the review store. Safe to call again: a recorded answer is not counted twice. */
+function recordWalk(): void {
+  const s = useSession.getState();
+  if (s.deckId) useReview.getState().record(s.deckId, s.results, { walkId: useFlow.getState().walkId });
+}
+
+/** A recall answer: revealed in the scene and scheduled at once, so a reload cannot lose it. */
+export function answerRecall(result: WalkResult): void {
+  useSession.getState().answer(result);
+  recordWalk();
+}
+
+/** "I was right": the learner overrules the grader on a typed miss. The schedule follows. */
+export function markRight(itemId: string): void {
+  const s = useSession.getState();
+  const was = s.results.find((r) => r.itemId === itemId);
+  if (!was || was.correct) return;
+  answerRecall({ ...was, correct: true, selfMarked: true });
+}
+
+/** After the last recall stop: show the results. Every answer was recorded when it was given. */
 export function advanceRecall(): void {
   const s = useSession.getState();
   if (!isLastStop(s)) {
     s.next();
     return;
   }
-  if (s.deckId) useReview.getState().record(s.deckId, s.results);
+  recordWalk();
   useFlow.setState({ recallMs: Date.now() - useFlow.getState().recallStartedAt });
   s.toResults();
 }
 
 export function leave(): void {
-  useFlow.setState({ phase: 'walk', confirmLeave: false, unsavedDraft: false });
+  useFlow.setState({ phase: 'walk', confirmLeave: false });
   useSession.getState().toAttract();
 }
 
-/** Escape and the Leave button: ask first when a walk or an unplaced proposal would be lost. */
+/** Escape, the Leave button and the browser's Back button: ask first when a walk would be cut short. */
 export function requestLeave(): void {
   const { mode } = useSession.getState();
   const f = useFlow.getState();
@@ -188,6 +256,121 @@ export function requestLeave(): void {
     return;
   }
   if (mode === 'attract') return;
-  if (isWalking(mode) || (mode === 'compose' && f.unsavedDraft)) useFlow.setState({ confirmLeave: true });
+  // Leaving Compose loses nothing: its draft is kept until it is placed or discarded.
+  if (isWalking(mode)) useFlow.setState({ confirmLeave: true });
   else leave();
+}
+
+/** Return to the walk that a reload cut short, at the same stop. */
+export function resumeWalk(): void {
+  const w = useFlow.getState().savedWalk;
+  const deck = w ? getDeck(w.deckId) : undefined;
+  if (!w || !deck) {
+    discardSavedWalk();
+    return;
+  }
+  useFlow.setState({
+    phase: w.phase,
+    confirmLeave: false,
+    judgeVariant: w.judgeVariant,
+    walkId: w.walkId || newWalkId(),
+    recallStartedAt: Date.now() - w.recallSpentMs,
+    recallMs: 0,
+    savedWalk: null,
+  });
+  useSession.setState({
+    mode: w.mode,
+    layoutId: deck.layoutId,
+    deckId: deck.id,
+    stops: w.stops,
+    step: w.step,
+    arrived: false,
+    results: w.results,
+    judge: w.judge,
+  });
+}
+
+/** "Start over": forget the walk that was cut short. */
+export function discardSavedWalk(): void {
+  try {
+    sessionStorage.removeItem(WALK_KEY);
+  } catch {
+    /* nothing to remove */
+  }
+  useFlow.setState({ savedWalk: null });
+}
+
+/*
+ * Two things follow every walk from here, whichever screen started it:
+ *   1. it is saved to sessionStorage as it goes, and forgotten when it ends or is left;
+ *   2. it owns one history entry, so that the browser's Back button asks "Leave this walk?"
+ *      instead of leaving the site.
+ */
+const HISTORY_MARK = 'memoriaWalk';
+const onWalkEntry = () => (history.state as Record<string, unknown> | null)?.[HISTORY_MARK] === true;
+let wasWalking = false;
+let lastSaved = '';
+let ignoreNextPop = false;
+
+function followWalk(): void {
+  const s = useSession.getState();
+  const f = useFlow.getState();
+  const walking = isWalking(s.mode) && s.deckId !== null;
+  try {
+    if (walking) {
+      const walk: SavedWalk = {
+        mode: s.mode as WalkMode,
+        phase: f.phase,
+        layoutId: s.layoutId,
+        deckId: s.deckId as string,
+        stops: s.stops,
+        step: Math.max(0, s.step),
+        results: s.results,
+        judge: s.judge,
+        judgeVariant: f.judgeVariant,
+        walkId: f.walkId,
+        recallSpentMs: 0,
+      };
+      // The clock is left out of the comparison, so that only real progress causes a write.
+      const key = JSON.stringify(walk);
+      if (key !== lastSaved) {
+        lastSaved = key;
+        walk.recallSpentMs = s.mode === 'recall' ? Date.now() - f.recallStartedAt : 0;
+        sessionStorage.setItem(WALK_KEY, JSON.stringify(walk));
+      }
+      if (!wasWalking) {
+        if (f.savedWalk) useFlow.setState({ savedWalk: null });
+        if (!onWalkEntry()) history.pushState({ [HISTORY_MARK]: true }, '');
+      }
+    } else if (wasWalking) {
+      lastSaved = '';
+      sessionStorage.removeItem(WALK_KEY);
+      // Give the history entry back, so that Back from the title or the results is not swallowed.
+      if (onWalkEntry()) {
+        ignoreNextPop = true;
+        history.back();
+      }
+    }
+  } catch {
+    // Storage or history unavailable (private mode, sandboxed frame): the walk itself goes on.
+  }
+  wasWalking = walking;
+}
+
+if (typeof window !== 'undefined') {
+  useSession.subscribe(followWalk);
+  useFlow.subscribe(followWalk);
+  window.addEventListener('popstate', () => {
+    if (ignoreNextPop) {
+      ignoreNextPop = false;
+      return;
+    }
+    if (!isWalking(useSession.getState().mode)) return;
+    try {
+      history.pushState({ [HISTORY_MARK]: true }, '');
+    } catch {
+      /* the dialog below still opens */
+    }
+    useFlow.setState({ confirmLeave: true });
+  });
 }

@@ -2,11 +2,18 @@ import { create } from 'zustand';
 import type { Mode, RecallResult } from '@/core/types';
 import { DEFAULT_LAYOUT_ID } from '@/layouts';
 
+/** A recall answer as the overlay keeps it. The engine reads only the RecallResult part. */
+export interface WalkResult extends RecallResult {
+  /** The learner overruled the grader on a typed answer ("I was right"). */
+  selfMarked?: boolean;
+}
+
 /**
  * The session store is the contract between the 2D app and the 3D engine.
  * The app writes it (mode, stops, step, results); the engine reads it to decide where
  * the camera goes and which images are visible, and writes back only `arrived`.
- * Not persisted: a refresh returns to the title screen (decks and review state persist).
+ * Not persisted here: a walk in progress is saved to sessionStorage by src/flows/resume.ts
+ * and offered again on the title screen after a reload.
  */
 export interface SessionState {
   mode: Mode;
@@ -19,7 +26,7 @@ export interface SessionState {
   /** True once the camera has settled at the current stop. Set by the engine. */
   arrived: boolean;
   /** Recall answers given in this walk. An answered item's image is revealed. */
-  results: RecallResult[];
+  results: WalkResult[];
   /** True during a Judge Mode run (timed, fixture deck, never touches the network). */
   judge: boolean;
   /** Width in px that the overlay covers on the right; the engine re-centres the view. */
@@ -34,7 +41,7 @@ export interface SessionState {
   startWalk: (mode: 'familiarize' | 'encode' | 'recall', opts: { deckId?: string | null; stops: number[]; judge?: boolean }) => void;
   next: () => void;
   prev: () => void;
-  answer: (result: RecallResult) => void;
+  answer: (result: WalkResult) => void;
   toResults: () => void;
   setArrived: (arrived: boolean) => void;
   setInsetRight: (px: number) => void;

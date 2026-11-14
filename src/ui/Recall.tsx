@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { answerOf, buildChoices, typedMatches } from '@/flows/answers';
-import { advanceRecall, itemAt, judgeTiming, useFlow } from '@/flows/flow';
+import { advanceRecall, answerRecall, itemAt, judgeTiming, markRight, useFlow } from '@/flows/flow';
 import { useCountdown, useWalkKeys } from '@/flows/hooks';
-import { ProgressBar } from './Walk';
+import { ADVANCE_KEYS, ProgressBar } from './Walk';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { isLastStop, useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
 
 /**
- * Recall walk: retrieval practice. Nothing about the answer is rendered until the
- * learner has committed to one; committing is what reveals the image in the scene.
+ * Recall walk: retrieval practice. The place is the only cue: both answer modes ask what
+ * was left there, the answer is the item's term, and nothing about the item is rendered
+ * until the learner has committed. Committing is what reveals the image in the scene.
  */
 export function Recall() {
   const { stops, step, arrived, judge, layoutId, deckId, results } = useSession();
@@ -29,18 +30,24 @@ export function Recall() {
   const arrivedAt = useRef(0);
   const nextRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const questionRef = useRef<HTMLHeadingElement>(null);
 
+  const answered = Boolean(result);
+  // When the stop is ready, focus goes to the answer field, or (multiple choice) to the
+  // question, so that the next Tab is the first option and no stray key press can answer.
   useEffect(() => {
     if (!arrived) return;
     arrivedAt.current = Date.now();
     setTyped('');
-    inputRef.current?.focus();
+    if (answered) return;
+    if (inputRef.current) inputRef.current.focus();
+    else questionRef.current?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when a stop becomes ready, not when it is answered
   }, [arrived, step]);
 
-  const answered = Boolean(result);
   useEffect(() => {
     if (answered) nextRef.current?.focus();
-  }, [answered]);
+  }, [answered, step]);
 
   // Judge Mode keeps moving: the feedback is shown briefly, then the walk goes on by itself.
   const paused = useFlow((s) => s.confirmLeave);
@@ -55,9 +62,9 @@ export function Recall() {
 
   const commit = (given: string) => {
     if (!deck || !item || !arrived || result) return;
-    const right = answerOf(deck, item);
+    const right = answerOf(item);
     const correct = input === 'choice' ? given === right : typedMatches(given, right);
-    useSession.getState().answer({ itemId: item.id, correct, given, ms: Date.now() - arrivedAt.current });
+    answerRecall({ itemId: item.id, correct, given, ms: Date.now() - arrivedAt.current });
   };
 
   useWalkKeys({
@@ -67,8 +74,9 @@ export function Recall() {
   });
 
   if (!deck || !locus || !item) return null;
-  const askMeaning = deck.kind === 'pairs' && Boolean(item.meaning);
-  const right = answerOf(deck, item);
+  const right = answerOf(item);
+  // Only a typed answer can be overruled: the grader may be wrong about wording, never about a picked option.
+  const canOverrule = input === 'typed' && result !== undefined && !result.correct && result.given.trim() !== '';
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -81,17 +89,12 @@ export function Recall() {
         {spot ? `Spot check ${step + 1} of ${stops.length}` : `Place ${step + 1} of ${stops.length} · Recall`}
       </p>
       {!arrived && !result ? (
-        <p className="muted">Walking to {locus.name}.</p>
+        <h1 className="muted">Walking to {locus.name}.</h1>
       ) : (
         <>
-          <h2 className="question" data-testid="recall-question" data-place={locus.name}>
+          <h1 className="question" tabIndex={-1} ref={questionRef} data-testid="recall-question" data-place={locus.name}>
             What did you leave at {locus.name}?
-          </h2>
-          {askMeaning && (
-            <p className="body">
-              The term at this place is <strong data-testid="recall-cue">{item.term}</strong>. What does it mean?
-            </p>
-          )}
+          </h1>
           {input === 'choice' ? (
             <ol className="choices">
               {choices.map((c, i) => {
@@ -141,11 +144,27 @@ export function Recall() {
         </>
       )}
 
+      {result && (
+        <div className="actions">
+          <button type="button" className="btn btn--primary" ref={nextRef} onClick={advanceRecall} data-testid="recall-next">
+            {last ? 'See the results' : 'Next place'}
+          </button>
+          {canOverrule && (
+            <button type="button" className="btn" onClick={() => markRight(item.id)} data-testid="recall-overrule">
+              I was right
+            </button>
+          )}
+        </div>
+      )}
+      {result && judge && <ProgressBar value={moveOn} label="Time until the walk moves on" />}
+
       <div aria-live="polite" data-testid="recall-feedback">
         {result && (
           <div className="reveal" data-state={result.correct ? 'right' : 'wrong'}>
-            <p className="verdict">{result.correct ? 'Correct.' : 'Not this time.'}</p>
-            {!result.correct && input === 'typed' && result.given && <p className="muted">You wrote: {result.given}</p>}
+            <p className="verdict" data-testid="recall-verdict">
+              {result.selfMarked ? 'Marked right by you.' : result.correct ? 'Correct.' : 'Not this time.'}
+            </p>
+            {input === 'typed' && result.given && (result.selfMarked || !result.correct) && <p className="muted">You wrote: {result.given}</p>}
             <p className="term term--small">{item.term}</p>
             {item.meaning && <p className="body">{item.meaning}</p>}
             <p className="scene">{item.imago.scene}</p>
@@ -153,22 +172,14 @@ export function Recall() {
         )}
       </div>
 
-      {result && judge && <ProgressBar value={moveOn} label="Time until the walk moves on" />}
-      {result && (
-        <div className="actions">
-          <button type="button" className="btn btn--primary" ref={nextRef} onClick={advanceRecall} data-testid="recall-next">
-            {last ? 'See the results' : 'Next place'}
-          </button>
-        </div>
-      )}
       <p className="hint">
         {result
           ? judge
-            ? 'It moves on by itself; Enter moves on sooner.'
-            : 'Right arrow or Enter: next.'
+            ? `It moves on by itself; ${ADVANCE_KEYS} moves on sooner.`
+            : `${ADVANCE_KEYS}: next.`
           : input === 'choice'
             ? `Keys 1 to ${Math.max(choices.length, 1)} pick an answer.`
-            : 'Type your answer and press Enter. Small typos are forgiven.'}
+            : 'Type what you left here and press Enter. Small typos, a leading "the" and anything in brackets are forgiven.'}
       </p>
     </section>
   );

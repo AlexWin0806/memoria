@@ -22,6 +22,11 @@
   outline-offset: 3px;
 }
 .ov [tabindex='-1']:focus { outline: none; }
+/* Headings take their look from their class alone; zero specificity, so every class wins. */
+:where(.ov h1, .ov h2) {
+  margin: 0;
+  font: inherit;
+}
 .ov[data-reduced-motion='true'] *,
 .ov[data-reduced-motion='true'] *::before,
 .ov[data-reduced-motion='true'] *::after {
@@ -45,6 +50,8 @@
 }
 .panel--wide { width: 480px; }
 .panel__head {
+  /* After the body in the document, so that Leave is the last Tab stop; drawn on top. */
+  order: -1;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -52,9 +59,11 @@
   border-bottom: 1px solid var(--rule);
 }
 .panel__body {
+  --pad-x: 36px;
+  --pad-bottom: 44px;
   flex: 1;
   overflow-y: auto;
-  padding: 30px 36px 44px;
+  padding: 30px var(--pad-x) var(--pad-bottom);
 }
 @media (max-width: 719px) {
   .panel,
@@ -67,7 +76,11 @@
     border-top: 1px solid var(--rule);
   }
   .panel__head { padding: 10px 20px 8px; }
-  .panel__body { padding: 16px 20px 24px; }
+  .panel__body {
+    --pad-x: 20px;
+    --pad-bottom: 24px;
+    padding-top: 16px;
+  }
 }
 
 /* ───────── Type ───────── */
@@ -89,6 +102,7 @@
   overflow-wrap: anywhere;
 }
 .term--small { font-size: 30px; margin: 6px 0 8px; }
+.term--large { font-size: 56px; margin: 10px 0 0; }
 .question {
   margin: 8px 0 16px;
   font-family: var(--type-display);
@@ -336,6 +350,41 @@ textarea.field { resize: vertical; }
 }
 .notice--danger { border-left-color: var(--ui-danger); }
 
+/*
+ * Actions that stay in reach: pinned to the bottom edge of the panel while the list above
+ * them scrolls. Results uses it only when its list is too long for the panel.
+ */
+.results {
+  display: flex;
+  flex-direction: column;
+}
+.results[data-long='true'] .results__actions,
+.dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 22px calc(-1 * var(--pad-x)) calc(-1 * var(--pad-bottom));
+  padding: 14px var(--pad-x) 18px;
+  border-top: 1px solid var(--rule-strong);
+  background: var(--ui-panel);
+}
+/* First in the document and in the Tab order; drawn last, where a pinned bar belongs. */
+.results[data-long='true'] .results__actions { order: 1; }
+.dock .actions { margin-top: 0; }
+.dock .notice { margin: 0 0 12px; }
+.dock .hint { margin: 0 0 10px; }
+.draft-tools {
+  margin: 14px 0 0;
+  font-size: 16px;
+}
+.confirm-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+}
+.confirm-inline .muted { margin: 0; }
+
 /* The Leave question: a modal over everything. A flat paper scrim, no blur. */
 .modal {
   position: absolute;
@@ -386,7 +435,20 @@ textarea.field { resize: vertical; }
   font-size: 16px;
   color: var(--ui-muted);
 }
-.prop .reason { margin: 12px 0 0; }
+.prop[data-state='incomplete'] {
+  padding-left: 14px;
+  border-left: 3px solid var(--ui-danger);
+}
+.prop p.sub { margin: 4px 0 0; }
+.notice p { margin: 0 0 8px; }
+.notice p:last-child { margin-bottom: 0; }
+.rest {
+  max-height: 9.5em;
+  margin: 0 0 8px;
+  padding-left: 34px;
+  overflow-y: auto;
+  font-size: 16px;
+}
 .prop__foot {
   display: flex;
   flex-wrap: wrap;
@@ -440,6 +502,8 @@ textarea.field { resize: vertical; }
   font-style: italic;
 }
 .title .actions { margin-top: 26px; }
+.title .resume { margin: 24px 0 0; }
+.title .resume .actions { margin-top: 12px; }
 .title__decks { margin-top: 40px; }
 .rowhead {
   display: flex;
@@ -508,5 +572,8 @@ textarea.field { resize: vertical; }
   .place > .link,
   .place > .muted { margin-left: 0; }
   .term { font-size: 36px; }
+  .term--large { font-size: 40px; }
   .score { font-size: 56px; }
+  /* A bottom sheet is too short to give up a third of its height to a pinned bar. */
+  .dock { position: static; }
 }

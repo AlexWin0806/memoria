@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { regenerateImago } from '@/ai/architect';
 import type { Imago, Locus, MemoryItem } from '@/core/types';
-import { splitGlyphs } from '@/flows/answers';
+import { emojiOnly, splitGlyphs } from '@/flows/answers';
 import { withDeadline } from '@/flows/deadline';
 import { itemAt, leave, startRecall, useFlow } from '@/flows/flow';
 import { formatDuration, formatWhen, numberWord } from '@/flows/format';
@@ -32,6 +32,37 @@ export function Results() {
   const layout = getLayout(layoutId);
   const now = useNow();
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const score = useRef<HTMLHeadingElement>(null);
+  const body = useRef<HTMLElement>(null);
+  // A list too long for the panel: the actions are then pinned to the bottom edge instead.
+  const [long, setLong] = useState(false);
+
+  // The score is the first thing a screen reader should land on, and Tab then reaches the actions.
+  useEffect(() => {
+    score.current?.focus({ preventScroll: true });
+  }, []);
+  useEffect(() => {
+    const el = body.current;
+    const scroller = el?.parentElement;
+    if (!el || !scroller) return;
+    const measure = () => {
+      const cs = getComputedStyle(scroller);
+      const room = scroller.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      // Pinning changes the height a little, so the way back needs a clear margin (no flip-flop).
+      setLong((was) => el.offsetHeight > room - (was ? 60 : 0));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    ro.observe(scroller);
+    return () => ro.disconnect();
+  }, []);
+  // An open Strengthen editor holds typing that is saved nowhere: the browser should ask before a reload.
+  const editing = Object.values(drafts).some((d) => d.status === 'draft');
+  useEffect(() => {
+    useFlow.setState({ unsavedEdits: editing });
+    return () => useFlow.setState({ unsavedEdits: false });
+  }, [editing]);
 
   if (!deck) return null;
   const rows = stops.flatMap((index) => {
@@ -89,13 +120,13 @@ export function Results() {
   };
 
   return (
-    <section className="screen" data-testid="results">
+    <section className="screen results" data-long={long ? 'true' : 'false'} ref={body} data-testid="results">
       <p className="label">
         {spot ? 'Spot check' : 'Results'} · {deck.title}
       </p>
-      <h2 className="score" data-testid="results-score">
+      <h1 className="score" tabIndex={-1} ref={score} data-testid="results-score">
         {right} of {rows.length}
-      </h2>
+      </h1>
       {spot && (
         <p className="body" data-testid="results-spot">
           A spot check: {numberWord(rows.length)} of the {numberWord(deck.items.length)} places, picked at random. The other{' '}
@@ -105,6 +136,24 @@ export function Results() {
       <p className="body" data-testid="results-time">
         Recalled from memory in {formatDuration(recallMs)}.
       </p>
+      <div className="actions results__actions" data-testid="results-actions">
+        {judge && (
+          <button type="button" className="btn btn--primary" onClick={() => useSession.getState().toCompose()} data-testid="results-build">
+            Build a palace from your own notes
+          </button>
+        )}
+        <button
+          type="button"
+          className={judge ? 'btn' : 'btn btn--primary'}
+          onClick={() => startRecall(deck.id, 'all', judge)}
+          data-testid="results-again"
+        >
+          {spot ? `Recall all ${numberWord(deck.items.length)}` : 'Recall again'}
+        </button>
+        <button type="button" className="btn" onClick={leave} data-testid="results-home">
+          Back to palaces
+        </button>
+      </div>
       <ol className="places">
         {rows.map(({ locus, item, result }) => {
           const card = cards[item.id];
@@ -118,9 +167,9 @@ export function Results() {
                 </span>
                 <span className="place__text">
                   <span className="place__term">{item.term}</span>
-                  <span className="place__meta">
-                    {locus.name} · {ok ? 'right' : 'missed'}
-                    {card ? ` · due ${formatWhen(card.dueAt, now)}` : ''}
+                  <span className="place__meta" data-testid="result-meta">
+                    {locus.name} · {ok ? (result?.selfMarked ? 'right (self-marked)' : 'right') : 'missed'}
+                    {card ? ` · ${ok ? 'next review' : 'again'} ${formatWhen(card.dueAt, now)}` : ''}
                   </span>
                 </span>
               </div>
@@ -134,13 +183,13 @@ export function Results() {
                   {d.by === 'hand' && (
                     <p className="notice" data-testid="strengthen-guide">
                       {d.late ? 'The Architect did not answer, so this one is yours to rewrite. ' : ''}
-                      Make it bigger, louder or sillier, and keep it tied to the meaning.
+                      Make it more distinct from its neighbours, and still tied to the meaning.
                     </p>
                   )}
                   {d.by === 'offline' && (
                     <p className="notice" data-testid="strengthen-guide">
-                      An offline draft, made without the Architect. Rewrite it until it is vivid to you: make it bigger,
-                      louder or sillier, and keep it tied to the meaning.
+                      An offline draft, made without the Architect. Rewrite it until it is vivid to you: more distinct from
+                      its neighbours, and still tied to the meaning.
                     </p>
                   )}
                   <label className="label" htmlFor={`sd-${item.id}`}>
@@ -165,7 +214,7 @@ export function Results() {
                   <label className="label" htmlFor={`sg-${item.id}`}>
                     Glyphs (1 to 3 emoji)
                   </label>
-                  <input id={`sg-${item.id}`} className="field" value={d.glyphs} onChange={(e) => setDraft(item.id, { ...d, glyphs: e.target.value })} />
+                  <input id={`sg-${item.id}`} className="field" value={d.glyphs} onChange={(e) => setDraft(item.id, { ...d, glyphs: emojiOnly(e.target.value).glyphs.join(' ') })} />
                   {d.imago.reason && (
                     <p className="reason">
                       <span className="label">Why</span> {d.imago.reason}
@@ -215,31 +264,13 @@ export function Results() {
           </p>
           <p>
             This score is same-session recall. Success is judged on delayed recall, so each item comes back for review at
-            expanding intervals (Leitner boxes: 10 minutes, then 1, 3, 7 and 21 days). We have not run an efficacy study of
-            Memoria.
+            expanding intervals (Leitner boxes: a miss returns in 10 minutes; a right answer waits 1 day, then 3, 7 and 21
+            days). We have not run an efficacy study of Memoria.
           </p>
           <p data-testid="judge-next">Next, try it on something of your own: build a palace from your own notes.</p>
         </div>
       )}
 
-      <div className="actions">
-        {judge && (
-          <button type="button" className="btn btn--primary" onClick={() => useSession.getState().toCompose()} data-testid="results-build">
-            Build a palace from your own notes
-          </button>
-        )}
-        <button
-          type="button"
-          className={judge ? 'btn' : 'btn btn--primary'}
-          onClick={() => startRecall(deck.id, 'all', judge)}
-          data-testid="results-again"
-        >
-          {spot ? `Recall all ${numberWord(deck.items.length)}` : 'Recall again'}
-        </button>
-        <button type="button" className="btn" onClick={leave} data-testid="results-home">
-          Back to palaces
-        </button>
-      </div>
     </section>
   );
 }

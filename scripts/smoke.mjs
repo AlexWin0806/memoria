@@ -18,6 +18,12 @@
  *   f  Typed recall with a typo, and the narrow (bottom sheet) layout
  *   g  URL parameters: ?judge starts Judge Mode; ?shot and ?rail hide the overlay
  *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of four -> "4 of 4"
+ *   r  Compose: the draft survives a reload at both steps; dropped lines, the three-fact minimum,
+ *      emoji-only glyphs, the read-to-the-end gate, validation that names the card, Discard draft
+ *   t  Typed recall on a pairs deck: the place is the cue, articles and brackets are forgiven,
+ *      "I was right" overrules a miss; results say "self-marked", and right and missed are scheduled apart
+ *   w  A recall walk survives a reload ("Resume your walk"), its answers are already recorded,
+ *      and the browser's Back button opens the Leave dialog
  *
  * Timing. Cases a and p print how long a passive run took, with THINK_MS of thought per
  * answer. Run them alone for a fair figure (software rendering slows down when cases share
@@ -74,6 +80,13 @@ const fixtureCount = readFileSync('src/ai/fixtures/index.ts', 'utf8').match(/FIX
 const JUDGE_DECK_TITLE = 'The eight carpal bones';
 /** A person reads four options and picks one in about this long. */
 const THINK_MS = 2000;
+/** The pitch run waits on its "spot check" screen until its button is pressed: time to read its 18 words. */
+const READ_MS = 4000;
+const spanishSrc = readFileSync('src/ai/fixtures/spanish-kitchen.ts', 'utf8');
+/** Spanish kitchen deck: the term at each named place. */
+const spanishAt = Object.fromEntries(
+  [...spanishSrc.matchAll(/term: '([^']+)'[^\n]*?locusId: '([^']+)'/g)].map((m) => [placeName[m[2]], m[1]]),
+);
 
 let base = flag('url');
 let server;
@@ -132,16 +145,20 @@ const choiceTexts = (page, testid) => page.locator(`[data-testid=${testid}] span
  */
 function installWalkLog() {
   if (window.__walkLog) {
-    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '' });
+    Object.assign(window.__walkLog, { encode: [], reveal: [], preview: false, spotNote: '', extra: [] });
     return;
   }
-  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '' };
+  window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '', extra: [] };
   const note = (list, entry) => {
     if (!list.some((e) => e.label === entry.label)) list.push(entry);
   };
   const look = () => {
     const log = window.__walkLog;
     if (document.querySelector('[data-testid=familiarize]')) log.preview = true;
+    // A timed run shows the place, the term, the meaning and the scene, and nothing else to read.
+    for (const id of ['encode-reason', 'place-hint']) {
+      if (document.querySelector(`[data-testid=${id}]`) && !log.extra.includes(id)) log.extra.push(id);
+    }
     const spot = document.querySelector('[data-testid=spot-note]');
     if (spot) log.spotNote = spot.textContent;
     const term = document.querySelector('[data-testid=encode] [data-testid=encode-term]');
@@ -201,9 +218,15 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     await page.getByTestId('interstitial').waitFor();
   }
   mark('encode done');
-  const { encode: shown, preview, spotNote } = await page.evaluate(() => window.__walkLog);
+  const interstitialAt = Date.now();
+  const { encode: shown, preview, spotNote, extra } = await page.evaluate(() => window.__walkLog);
   assert(preview === !pitch, pitch ? 'the pitch variant should have no route preview' : 'the route preview was not shown');
-  if (pitch) assert(spotNote.includes('four of the eight'), `the spot check is not announced: "${spotNote}"`);
+  assert(extra.length === 0, `a Judge run showed more to read than it should: ${extra}`);
+  if (pitch) {
+    assert(spotNote.includes('four of the eight'), `the spot check is not announced: "${spotNote}"`);
+    const said = `${await text(page.locator('[data-testid=interstitial] h1'))} ${spotNote}`.split(/\s+/).filter(Boolean).length;
+    assert(said <= 20, `the spot-check screen says its piece in ${said} words (20 at most)`);
+  }
   assert(shown.length === 8, `expected eight images on the encode walk, saw ${shown.length}: ${shown.map((e) => e.label)}`);
   shown.forEach((e, i) => {
     const [step, place] = e.label.split('·').map((part) => part.trim());
@@ -211,8 +234,16 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     assert(e.term.trim() === termAt[place], `encode stop ${i + 1}: wrong term at ${place}`);
   });
   await quietShot('interstitial');
-  // The pause ends by itself in Judge Mode, so the button may already be gone.
-  if (!passive) await page.getByTestId('recall-start').click({ timeout: 2500 }).catch(() => {});
+  if (pitch) {
+    // The pitch run waits here for its button, however long the judge takes to read.
+    // The reading time counts from when the screen appeared, not from when the harness finished its checks.
+    await page.waitForTimeout(Math.max(300, (passive ? READ_MS : 0) - (Date.now() - interstitialAt)));
+    await page.getByTestId('recall-start').click();
+    mark('spot check started');
+  } else if (!passive) {
+    // The pause ends by itself in the default run, so the button may already be gone.
+    await page.getByTestId('recall-start').click({ timeout: 2500 }).catch(() => {});
+  }
 
   const stops = pitch ? 4 : 8;
   const label = (i) => (pitch ? `Spot check ${i} of 4` : `Place ${i} of 8`);
@@ -328,7 +359,7 @@ const cases = {
     await page.getByTestId('results-home').click();
     await page.getByTestId('title').waitFor();
     const { meta } = await deckRows(page);
-    assert(/^8 places · next review in (9|10) minutes · 4 new$/.test(meta[JUDGE_DECK_TITLE]), `deck row after a spot check: ${meta[JUDGE_DECK_TITLE]}`);
+    assert(meta[JUDGE_DECK_TITLE] === '8 places · next review tomorrow · 4 new', `deck row after a spot check: ${meta[JUDGE_DECK_TITLE]}`);
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score} (${visited.join(', ')}); passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
@@ -354,7 +385,7 @@ const cases = {
     assert(hung < 8000, `Strengthen waited ${hung} ms for an Architect that never answers`);
     assert((await draft.getAttribute('data-by')) === 'hand', 'a silent Architect should hand the old image back for rewriting');
     const guide = await text(page.getByTestId('strengthen-guide'));
-    assert(guide.includes('did not answer') && guide.includes('bigger, louder or sillier'), `guidance after a silent Architect: ${guide}`);
+    assert(guide.includes('did not answer') && guide.includes('more distinct from its neighbours'), `guidance after a silent Architect: ${guide}`);
     assert(await page.getByTestId('strengthen-accept').isDisabled(), 'an unchanged image should not be accepted as a new one');
     await shot(page, 'results-strengthen-by-hand');
     await page.getByTestId('strengthen-cancel').click();
@@ -368,7 +399,7 @@ const cases = {
     const quick = Date.now() - t0;
     assert(quick < 6000, `Strengthen took ${quick} ms with the Architect unreachable`);
     const by = await draft.getAttribute('data-by');
-    assert((await text(draft)).includes('bigger, louder or sillier'), 'no guidance in the Strengthen editor');
+    assert(by !== 'offline' && by !== 'hand' ? true : (await text(draft)).includes('more distinct from its neighbours'), 'no guidance in the Strengthen editor');
     // The editor opens focused with the scene selected, so typing replaces it.
     const NEW_SCENE = 'A rowing boat the size of a bus crashes through the wall, oars windmilling.';
     await page.keyboard.type(NEW_SCENE);
@@ -483,7 +514,7 @@ const cases = {
 
     // Studied a moment ago: nothing is due yet. The fixtures were never studied, so they are not reviews at all.
     const afterReload = (await deckRows(page)).meta[DECK_TITLE];
-    assert(/^5 places · next review in (9|10) minutes$/.test(afterReload), `the new deck should not be due yet: ${afterReload}`);
+    assert(afterReload === '5 places · next review tomorrow', `the new deck should not be due yet: ${afterReload}`);
     assert((await text(page.getByTestId('title-review'))) === 'Reviews', 'nothing is due, so the Reviews entry should show no count');
     await page.getByTestId('title-review').click();
     await page.getByTestId('review').waitFor();
@@ -568,8 +599,8 @@ const cases = {
     await draft.waitFor();
     const took = Date.now() - t0;
     assert(took < 6000, `Strengthen took ${took} ms offline`);
-    assert((await text(draft)).includes('bigger, louder or sillier'), 'no guidance in the offline Strengthen editor');
     const by = await draft.getAttribute('data-by');
+    assert(by !== 'offline' && by !== 'hand' ? true : (await text(draft)).includes('more distinct from its neighbours'), 'no guidance in the offline Strengthen editor');
     const offered = await page.getByTestId('strengthen-scene').inputValue();
     assert(requests.length === 0, `Judge Mode made requests while offline: ${requests.join(', ')}`);
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
@@ -605,6 +636,251 @@ const cases = {
     return 'typed answer with a typo accepted, wrong answer rejected';
   },
 
+  /** Compose: nothing typed is lost to a reload, and the proposal is read before it is placed. */
+  async r() {
+    const { context, page, errors } = await open();
+    const reload = async () => {
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForFunction(() => document.querySelector('[data-testid=compose-text], [data-testid=proposal], [data-testid=title]'));
+    };
+    await page.getByTestId('title-build').click();
+    const box = page.getByTestId('compose-text');
+    await box.waitFor();
+    assert((await text(page.getByTestId('compose-limits'))).includes('It will not teach understanding'), 'Compose does not say what the method is bad at');
+    assert((await page.getByTestId('draft-restored').count()) === 0, 'a new draft should not claim to be restored');
+
+    // Punctuation-only lines and exact repeats are left out, with a count; fewer than three facts is not a palace.
+    await box.fill('Paris\n- - -\nParis\n: :\nLyon\nparis');
+    assert((await text(page.getByTestId('compose-dropped'))) === 'Left out 4 lines: 2 exact duplicates and 2 with no words.', `dropped note: ${await text(page.getByTestId('compose-dropped'))}`);
+    await page.getByTestId('compose-design').click();
+    const tooFew = await text(page.getByTestId('compose-error'));
+    assert(tooFew.includes('at least 3 facts') && tooFew.includes('gave 2'), `two facts should be refused with a reason: ${tooFew}`);
+    await box.fill('   \n - - \n');
+    assert(await page.getByTestId('compose-design').isDisabled(), 'Design should be disabled with nothing to place');
+    assert((await text(page.getByTestId('compose-empty-note'))).includes('at least 3 facts'), 'a disabled Design button should say why');
+
+    // Step one: the pasted text survives a reload, straight back on the Compose screen.
+    await box.fill(LIST.join('\n'));
+    await reload();
+    await box.waitFor();
+    assert((await box.inputValue()) === LIST.join('\n'), 'the pasted text did not survive a reload');
+    assert((await text(page.getByTestId('draft-restored'))) === 'Draft restored.', 'no "Draft restored" line after a reload');
+    await shot(page, 'compose-restored-text');
+
+    // Step two: the proposal and every edit to it survive a reload.
+    await page.getByTestId('compose-design').click();
+    await page.getByTestId('proposal').waitFor();
+    assert((await text(page.getByTestId('compose-steps-head'))) === 'What the offline planner did', 'offline, the trace should be headed as the offline planner');
+    const SCENE = 'Mercury the messenger sprints round the lamp with winged sandals on fire.';
+    const WHY = 'Mercury is the fastest planet, so he runs.';
+    await page.getByTestId('prop-scene').first().fill(SCENE);
+    await page.getByTestId('prop-reason').first().fill(WHY);
+    await page.getByTestId('prop-term').nth(1).fill('Venus (edited)');
+    await page.getByTestId('compose-title').fill(DECK_TITLE);
+    // Glyphs keep only emoji, and say so once.
+    const glyphs = page.getByTestId('prop-glyphs').first();
+    await glyphs.fill('hello <b>world</b> 🥄🥄🥄🥄🥄');
+    assert((await glyphs.inputValue()) === '🥄 🥄 🥄', `glyph field kept "${await glyphs.inputValue()}"`);
+    await page.getByTestId('prop-glyphs').nth(1).fill('abc 🔥');
+    assert((await page.getByTestId('glyph-note').count()) === 1, 'the "emoji only" note should appear once');
+    assert((await text(page.getByTestId('glyph-note'))).startsWith('Emoji only'), 'no "emoji only" note');
+    await reload();
+    await page.getByTestId('proposal').waitFor();
+    assert((await text(page.getByTestId('draft-restored'))) === 'Draft restored.', 'no "Draft restored" line on the proposal after a reload');
+    assert((await page.getByTestId('prop-scene').first().inputValue()) === SCENE, 'the rewritten image did not survive a reload');
+    assert((await page.getByTestId('prop-reason').first().inputValue()) === WHY, 'the rewritten "why" did not survive a reload');
+    assert((await page.getByTestId('prop-term').nth(1).inputValue()) === 'Venus (edited)', 'the edited term did not survive a reload');
+    assert((await page.getByTestId('compose-title').inputValue()) === DECK_TITLE, 'the palace name did not survive a reload');
+    assert((await glyphs.inputValue()) === '🥄 🥄 🥄', 'the glyphs did not survive a reload');
+    assert((await page.getByTestId('proposal-row').count()) === 5, 'expected the five proposal rows after a reload');
+    await shot(page, 'compose-restored-proposal');
+
+    // Leaving keeps the draft too, and the title offers it.
+    await page.keyboard.press('Escape');
+    await page.getByTestId('title').waitFor();
+    assert((await page.getByTestId('leave-confirm').count()) === 0, 'leaving Compose should not need a confirmation: the draft is kept');
+    assert((await text(page.getByTestId('title-build'))) === 'Continue your draft', 'the title does not offer the draft');
+    await page.getByTestId('title-build').click();
+    await page.getByTestId('proposal').waitFor();
+
+    // Reading before placing: the button wakes up only at the end of the list.
+    const placeButton = page.getByTestId('compose-place');
+    assert((await text(placeButton)) === 'I have read these: place them in the palace', 'wrong label on the place button');
+    assert(await placeButton.isDisabled(), 'the place button should wait until the list has been read to the end');
+    await shot(page, 'compose-unread');
+    await page.getByTestId('proposal-end').scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => !document.querySelector('[data-testid=compose-place]').disabled);
+
+    // Validation names the incomplete card and goes to it.
+    await page.getByTestId('prop-scene').nth(2).fill('');
+    await placeButton.click();
+    const problems = await text(page.getByTestId('compose-problems'));
+    assert(/This card is incomplete: 3 · .+ \(needs an image\)\./.test(problems), `validation should name the card: ${problems}`);
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'prop-scene');
+    await shot(page, 'compose-validation');
+
+    // Regenerate offline runs out of alternatives and says so instead of cycling.
+    const spent = page.getByTestId('regenerate-spent');
+    for (let i = 0; i < 6 && (await spent.count()) === 0; i++) {
+      await page.getByTestId('regenerate').nth(3).click();
+      await page.waitForFunction(() => !document.querySelector('[data-testid=regenerate]').disabled);
+    }
+    assert((await text(spent)).includes('No more offline alternatives. Rewrite it in your own words.'), 'Regenerate never said it had run out');
+
+    // Discard draft is explicit and final.
+    await page.getByTestId('draft-discard').click();
+    await page.getByTestId('draft-discard-yes').click();
+    await box.waitFor();
+    assert((await box.inputValue()) === '', 'Discard draft left the text behind');
+    // With no draft left, a reload goes to the title, which offers a fresh start.
+    await reload();
+    await page.getByTestId('title').waitFor();
+    assert((await text(page.getByTestId('title-build'))) === 'Build a palace', 'a discarded draft came back after a reload');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'text and edited proposal restored after reloads; dropped lines, minimum of three, emoji-only glyphs, read gate, named validation, discard';
+  },
+
+  /** Typed recall: the place is the cue, grading is fair, and the learner can overrule it. */
+  async t() {
+    const { context, page, errors } = await open();
+    await page.getByTestId('settings').locator('summary').click();
+    await page.locator('#set-recall').selectOption('typed');
+    await page.locator('#set-motion').selectOption('on');
+    await page.getByRole('button', { name: 'Recall Spanish in the kitchen' }).click();
+    const places = Object.keys(spanishAt).length;
+    const question = page.getByTestId('recall-question');
+    const verdict = page.getByTestId('recall-verdict');
+    // What to type at each stop, and whether the grader should accept it.
+    const plan = [
+      (term) => ({ give: `la ${term}`, ok: true, why: 'a leading article' }),
+      (term) => ({ give: `${term} (the fork)`, ok: true, why: 'a bracketed gloss' }),
+      (term) => ({ give: `  ¡${term.toUpperCase()}!  `, ok: true, why: 'case and punctuation' }),
+      (term) => ({ give: `${term.slice(0, 2)}${term.slice(3)}`, ok: true, why: 'a dropped letter' }),
+      () => ({ give: 'something else entirely', ok: false, overrule: true }),
+      () => ({ give: null, ok: false }),
+    ];
+    const expectRows = [];
+    for (let i = 1; i <= places; i++) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of ${places}")`).waitFor();
+      await question.waitFor();
+      const place = await question.getAttribute('data-place');
+      const term = spanishAt[place];
+      assert(term, `no fixture term for ${place}`);
+      // The place is the only cue: neither the term nor its meaning is on screen before the answer.
+      const before = await text(page.getByTestId('recall'));
+      assert(!before.toLowerCase().includes(term.toLowerCase()), `recall stop ${i}: the term is shown before answering`);
+      assert((await page.getByTestId('recall-cue').count()) === 0, `recall stop ${i}: a cue is shown before answering`);
+      assert((await text(question)) === `What did you leave at ${place}?`, `recall stop ${i}: wrong question`);
+      const step = (plan[i - 1] ?? ((t) => ({ give: t, ok: true })))(term);
+      if (i === 1) await shot(page, 'typed-question');
+      if (step.give === null) await page.getByTestId('recall-pass').click();
+      else {
+        await page.getByTestId('recall-input').fill(step.give);
+        await page.keyboard.press('Enter');
+      }
+      await verdict.waitFor();
+      const said = await text(verdict);
+      assert(said === (step.ok ? 'Correct.' : 'Not this time.'), `recall stop ${i}: "${step.give}" for "${term}" (${step.why ?? 'expected a miss'}) was marked "${said}"`);
+      // After the answer: the term, its meaning and the scene.
+      const reveal = await text(page.locator('[data-testid=recall-feedback] .reveal'));
+      assert(reveal.includes(term), `recall stop ${i}: the term is not shown after answering`);
+      assert((await page.locator('[data-testid=recall-feedback] .reveal .scene').count()) === 1, `recall stop ${i}: the scene is not shown after answering`);
+      const overrule = page.getByTestId('recall-overrule');
+      if (step.ok || step.give === null) assert((await overrule.count()) === 0, `recall stop ${i}: "I was right" offered where it should not be`);
+      if (step.overrule) {
+        await shot(page, 'typed-miss');
+        await overrule.click();
+        await page.locator('[data-testid=recall-feedback] .reveal[data-state=right]').waitFor();
+        assert((await text(verdict)) === 'Marked right by you.', 'the overruled verdict does not say who marked it');
+        assert((await overrule.count()) === 0, '"I was right" should go away once used');
+        await shot(page, 'typed-overruled');
+      }
+      expectRows.push(step.overrule ? 'self' : step.ok ? 'right' : 'missed');
+      await page.getByTestId('recall-next').click();
+    }
+    await page.getByTestId('results').waitFor();
+    const score = await text(page.getByTestId('results-score'));
+    assert(score === `${places - 1} of ${places}`, `expected ${places - 1} of ${places}, got "${score}"`);
+    // Results: focus on the score, the actions in view without scrolling, and a schedule that depends on the answer.
+    assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'results-score'), 'focus is not on the score heading');
+    const actions = await page.getByTestId('results-again').boundingBox();
+    assert(actions && actions.y >= 0 && actions.y + actions.height <= 900, `the results actions are out of view (y = ${actions?.y})`);
+    const metas = await page.getByTestId('result-meta').allTextContents();
+    metas.forEach((meta, i) => {
+      const want =
+        expectRows[i] === 'self'
+          ? /· right \(self-marked\) · next review tomorrow$/
+          : expectRows[i] === 'right'
+            ? /· right · next review tomorrow$/
+            : /· missed · again in (9|10) minutes$/;
+      assert(want.test(meta), `result row ${i + 1} (${expectRows[i]}) reads "${meta}"`);
+    });
+    await shot(page, 'results-typed');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `${score} typed on a pairs deck: article, brackets, case and a typo accepted; one miss overruled ("self-marked"); right -> tomorrow, missed -> 10 minutes`;
+  },
+
+  /** A walk is not lost to a reload or to the Back button. */
+  async w() {
+    const { context, page, errors } = await open();
+    const deckTitle = Object.keys((await deckRows(page)).meta).find((t) => t.toLowerCase().includes('mohs'));
+    assert(deckTitle, 'the Mohs deck is not listed');
+    await page.getByRole('button', { name: `Recall ${deckTitle}` }).click();
+    const question = page.getByTestId('recall-question');
+    // Two answers ("I cannot recall it" is a miss), then on to the third place.
+    for (let i = 1; i <= 2; i++) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of")`).waitFor();
+      await question.waitFor();
+      await page.getByTestId('recall-pass').click();
+      await page.getByTestId('recall-next').click();
+    }
+    await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 3 of")').waitFor();
+    await question.waitFor();
+    const thirdPlace = await question.getAttribute('data-place');
+
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    // The two answers were recorded when they were given, not at the end of the walk.
+    const meta = (await deckRows(page)).meta[deckTitle];
+    assert(/· next review in (9|10) minutes · \d+ new$/.test(meta), `answers given before the reload are not recorded: ${meta}`);
+    const offer = page.getByTestId('resume');
+    assert((await text(offer)).includes(`${deckTitle}, recall, place 3 of`), `resume offer reads "${await text(offer)}"`);
+    await shot(page, 'title-resume');
+    await page.getByTestId('resume-walk').click();
+    await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 3 of")').waitFor();
+    await question.waitFor();
+    assert((await question.getAttribute('data-place')) === thirdPlace, 'Resume did not return to the same stop');
+    assert((await text(page.getByTestId('recall-feedback'))) === '', 'the resumed stop shows an answer that was never given');
+
+    // The browser's Back button asks instead of leaving the site.
+    const url = page.url();
+    await page.evaluate(() => history.back());
+    await page.getByTestId('leave-confirm').waitFor();
+    assert(page.url() === url && (await page.getByTestId('recall').count()) === 1, 'Back left the walk');
+    await page.getByTestId('leave-stay').click();
+    await page.getByTestId('leave-confirm').waitFor({ state: 'detached' });
+    await page.evaluate(() => history.back());
+    await page.getByTestId('leave-confirm').waitFor();
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    assert((await page.getByTestId('resume').count()) === 0, 'a walk that was left on purpose should not be offered again');
+
+    // "Start over" forgets the walk.
+    await page.getByRole('button', { name: `Recall ${deckTitle}` }).click();
+    await question.waitFor();
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('resume-discard').click();
+    await page.getByTestId('resume').waitFor({ state: 'detached' });
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert((await page.getByTestId('resume').count()) === 0, '"Start over" did not forget the walk');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `reload mid-recall: 2 answers already recorded, resumed at place 3 (${thirdPlace}); Back opens the Leave dialog; Start over forgets the walk`;
+  },
+
   async g() {
     const { context, page, errors } = await open();
     await page.goto(`${base}/?judge&${FAST}`, { waitUntil: 'load' });
@@ -629,7 +905,9 @@ const run = async (name) => {
     const detail = await cases[name]();
     outcomes[name] = `ok   ${name}  ${detail}  (${Math.round((Date.now() - started) / 1000)} s)`;
   } catch (e) {
-    outcomes[name] = `FAIL ${name}  ${String(e.message ?? e).split('\n')[0]}`;
+    // The line of the case that failed, so that a bare timeout can be traced.
+    const where = String(e.stack ?? '').match(/smoke\.mjs:(\d+)/)?.[1];
+    outcomes[name] = `FAIL ${name}  ${String(e.message ?? e).split('\n')[0]}${where ? `  (smoke.mjs:${where})` : ''}`;
   }
 };
 try {
