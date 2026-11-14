@@ -103,7 +103,7 @@ export interface PalaceOptions {
   /** The plan so far: first when the outline is in, then as each room's images arrive. */
   onProgress?: (plan: PalacePlan) => void;
   /**
-   * The places of a generated layout (`getLayout(layoutId).meta.loci`, by id), so that each
+   * The places of a generated layout (`getLayout(layoutId).loci`: id, name, hint), so that each
    * image acts on the feature of its place. Without it, images stand on their own.
    */
   places?: (layoutId: string) => readonly PlaceInfo[];
