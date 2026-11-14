@@ -350,3 +350,210 @@ F. Competitors (accessed via search, 14 November 2026)
 - Mnemorium: https://www.mnemorium.com/ ; repository copy (a fork of Alekkk777/Mnemorium): https://github.com/wjdalsdl3015-ship-it/Mnemorium ; vendor comparison by the operator of a competing product: https://www.thememorypalace.ai/blog/memory-palace-apps-compared
 - memoryOS: https://memoryos.com/ ; https://apps.apple.com/us/app/memoryos-improve-memory-skills/id1553283646 ; https://play.google.com/store/apps/details?id=com.memoryos.app ; https://www.crunchbase.com/organization/encoder-inc ; https://techcrunch.com/2021/07/23/pro-tips-from-the-team-behind-kickstarters-most-funded-app/ ; company release: https://memoryos.com/news/ed-tech-startup-memoryos-raised-350-000-on-kickstarter ; third-party review: https://makeheadway.com/blog/memoryos-review/ ; deal coverage (sponsored): https://boingboing.net/2025/09/17/train-your-brain-with-the-app-that-helps-you-actually-remember-names-dates-and-passwords.html
 - Other projects seen by title only: https://github.com/a-ghanim/MemoryPalace ; https://github.com/DavidTbilisi/memory-palace-lab ; https://apps.apple.com/sl/app/id6749877076 (MnemoPal) ; https://apps.apple.com/app/id6800037106 (Lociform)
+
+## 9. Fact-check of the two showcase decks
+
+Added late on 14 November 2026. Scope: every statement a judge can read in `src/ai/fixtures/krebs-cycle.ts` ("The citric acid cycle, as a cycle") and `src/ai/fixtures/spanish-tenses.ts` ("Comer: one verb, three tenses"), and the same text where `src/ai/fixtures/krebs.ts` holds it. Sections 1 to 8 are unchanged.
+
+### 9.1 Bottom line
+
+Nothing in either deck is wrong. The citric acid cycle deck is correct throughout: the order, the eight steps and their labels, the eight glosses and the five word origins all agree with the sources below, and the feedback link is standard textbook regulation. The one thing to watch is how that link is put into words on screen (row K11). The Spanish deck has all fifteen forms and every accent right. Its weakness is the English: nine of the fifteen glosses are underspecified in a way a Spanish teacher will notice ("you" without saying it is tú; "he or she" and "they" for forms that also serve usted and ustedes). This matters in use, because the survey and recall walks show the gloss and ask for the form (`surveyQuestion` in `src/flows/answers.ts`): "you ate" has three correct answers in this deck (comiste; comió with usted; comieron with ustedes) and only one is accepted. Replacement wording is in 9.4.
+
+Count: 122 statements in 57 rows (49 statements for the cycle, 73 for the verb). Wrong: 0. Imprecise: 15, all in the Spanish deck (nine glosses, two link labels, three scenes, one room name). One further row (K11) is correct as written and imprecise only if the link kind is shown as a verb.
+
+**How this was verified.** Page fetching was blocked again: `www.ncbi.nlm.nih.gov` (the Berg and Stryer text on the NCBI Bookshelf) and `dle.rae.es` (the Real Academia's dictionary) did not resolve, and no further hosts were tried. Every source was therefore checked through web-search extracts of the named page, as in sections 1 and 8, and no page was read in full. Words in quotation marks are as they appeared in an extract. ‡ marks a source that is a reproduction or adaptation of a textbook, or a secondary page, and not the textbook itself. What could not be verified is listed in 9.6. Source keys (B8, T3, OS, EC and so on) are expanded in 9.8.
+
+### 9.2 The citric acid cycle deck
+
+Glosses (K12 to K19) and word origins (K20 to K24) are shared with `krebs.ts`, which is therefore also free of errors. The labels checked are the ones in the file: "rearranged", "loses CO2", "loses CO2, gains CoA", "releases CoA", "oxidised", "adds water", "oxidised", "joins acetyl-CoA".
+
+| # | Deck text | Verdict | Source | Note or replacement |
+|---|-----------|---------|--------|---------------------|
+| K1 | Order: citrate, isocitrate, alpha-ketoglutarate, succinyl-CoA, succinate, fumarate, malate, oxaloacetate, and back to citrate | Correct | B8 §17.2 and chapter summary | Each `becomes` link is one enzyme-catalysed reaction of the standard eight. Enzyme-bound cis-aconitate is left out, as `krebs.ts` says. |
+| K2 | citrate → isocitrate: "rearranged" | Correct | B8 §17.2: the isomerisation is a dehydration followed by a hydration, both catalysed by aconitase | |
+| K3 | isocitrate → alpha-ketoglutarate: "loses CO2" | Correct | B8 §17.2: oxidative decarboxylation by isocitrate dehydrogenase; OS‡: "a five-carbon molecule, α-ketoglutarate, together with a molecule of CO2" | NADH is also made; leaving it unsaid is fine. |
+| K4 | alpha-ketoglutarate → succinyl-CoA: "loses CO2, gains CoA" | Correct | B8 §17.2: "a second oxidative decarboxylation reaction, the formation of succinyl CoA from α-ketoglutarate" | NADH unsaid. |
+| K5 | succinyl-CoA → succinate: "releases CoA" | Correct | B8 §17.2 (succinyl CoA synthetase); OS‡: a phosphate group replaces the CoA group and is passed to ADP or GDP | ATP or GTP unsaid. |
+| K6 | succinate → fumarate: "oxidised" | Correct | B8 summary: "succinate is oxidized to fumarate"; OS‡: "Two hydrogen atoms are transferred to FAD" | |
+| K7 | fumarate → malate: "adds water" | Correct | EC 4.2.1.2: (S)-malate = fumarate + H2O; B8 summary: fumarate "is then hydrated to form malate" | |
+| K8 | malate → oxaloacetate: "oxidised" | Correct | B8 summary: "malate is oxidized to regenerate oxaloacetate" | NADH unsaid. |
+| K9 | oxaloacetate → citrate: "joins acetyl-CoA" | Correct | B8 ch. 17: oxaloacetate "condenses with a two-carbon acetyl unit to yield a six-carbon tricarboxylic acid"; T3 §19.2 (citrate synthase) | What stays is the acetyl group; the label is the usual shorthand. Optional, so that the enzyme named in K11 has been met: `'joins acetyl-CoA (citrate synthase)'`. |
+| K10 | Feedback link, the claim: succinyl-CoA inhibits citrate synthase | Correct | L‡: product accumulation inhibits the limiting steps, succinyl-CoA acting on alpha-ketoglutarate dehydrogenase and on citrate synthase; JF §16.3: citrate synthase is inhibited by ATP, NADH, citrate and succinyl-CoA; LN: the inhibition is competitive with acetyl-CoA | Standard textbook regulation. B8 §17.3 and T3 §19.4 give isocitrate dehydrogenase and alpha-ketoglutarate dehydrogenase as the main control points and name succinyl-CoA as an inhibitor of the second, so a judge taught from Stryer may expect that target. Both are true (sentence 3 in 9.5). |
+| K11 | Feedback link, the wording: kind `blocks`, label "inhibits citrate synthase", drawn from succinyl-CoA to citrate | Label correct. The kind word is imprecise if it reaches the screen | As K10; `src/core/types.ts` defines `blocks` as "inhibits or prevents" | The label names the enzyme of the oxaloacetate-to-citrate step, so it does not say that succinyl-CoA destroys citrate or blocks its own step. "Succinyl-CoA blocks citrate" would be wrong twice: the target is the enzyme, and the inhibition slows the step and does not stop it. No code that draws or words a link was found in `src/ui`, `src/scene` or `src/flows` on this checkout, so the sentence a judge will read was not seen. Wherever the link becomes a sentence or a question, use 9.4. |
+| K12 | Citrate: "Six carbons; named after citrus." | Correct | T3 §19.2 (six-carbon citrate); EO citric | |
+| K13 | Isocitrate: "Citrate's atoms, rearranged." | Correct | B8 §17.2 (isomerisation) | |
+| K14 | Alpha-ketoglutarate: "Five carbons." | Correct | OS‡ (five-carbon molecule) | Textbook name; no change. |
+| K15 | Succinyl-CoA: "Four carbons on coenzyme A." | Correct | B8 §17.2 (formed from the five-carbon acid with loss of CO2); OS‡ (succinate, 4-carbon, once the CoA group is replaced) | The four carbons are the succinyl group. |
+| K16 | Succinate: "Four carbons; named after amber." | Correct | MW succinic acid (C4H6O4; Latin *succinum*, amber) | |
+| K17 | Fumarate: "Oxidised succinate." | Correct | B8 summary | |
+| K18 | Malate: "Named after apples." | Correct | MW malic acid | |
+| K19 | Oxaloacetate: "Joins the next acetyl-CoA." | Correct | B8 ch. 17; T3 §19.2 | |
+| K20 | Origin: "Citrate is named after citrus fruit, where citric acid is found" (two reasons) | Correct | EO citric: from Modern Latin *acidum citricum*, the acid isolated by Scheele in 1784; citrus + -ic | |
+| K21 | Origin: "Succinyl is the amber (Latin succinum)"; "Succinate is named after amber (Latin succinum)" (four reasons) | Correct | MW succinic acid: French *succinique*, from Latin *succinum*, amber; LS: *sucinum* (also *succ-*), amber | Latin dictionaries head the word *sucinum*; *succinum* is the spelling Merriam-Webster gives. No change. |
+| K22 | Origin: "Fumarate comes from Latin fumus, smoke (via the fumitory plant)"; alternate, "like the word fume" | Correct | MW fumaric acid: from New Latin *Fumaria*, from the Late Latin for fumitory, from Latin *fumus*; Dictionary.com fume: through Old French from Latin *fumus* | |
+| K23 | Origin: "Malate is named after apples (Latin malum)" (two reasons) | Correct | MW malic acid: French *acide malique*, ultimately from Latin *malum*, apple | |
+| K24 | Origin: "acetate comes from Latin acetum, vinegar" (two reasons) | Correct | MW acet-, aceto-: from Latin *acetum*, vinegar; Wiktionary‡ acetic | The entry for "acetate" itself was not seen. |
+| K25 | By sound: "alpha wolf, kettle for keto, glue for glutarate"; alternate, "the alpha key to glue" | Mnemonic, labelled as such; not failed | For the record: ketone from German *Keton*, from *Aketon*, acetone (Wiktionary‡); glutaric "probably" from gluten + -aric (MW), or from glutamic + tartaric (Webster 1913) | Keep "by sound": the dictionaries disagree about glutaric. |
+| K26 | By sound: "CoA, by sound, is the Ko-A-la"; alternate, "CoA, by sound, is the coat" | Mnemonic, labelled as such; not failed | None needed | |
+| K27 | By sound: "Ox for oxalo-, by sound" (two reasons) | Mnemonic, labelled as such; not failed | For the record: oxalic from Latin *oxalis*, sorrel, from Greek *oxys*, sharp (EO) | |
+| K28 | "Melon is lemon with its letters rearranged, as isocitrate is citrate with its atoms rearranged"; alternate, "Isocitrate is an isomer of citrate" | Correct | The anagram was checked by hand; isomerisation, B8 §17.2 | An anagram, not a claim about the word. |
+| K29 | "coenzyme A has been removed, which is what separates it from succinyl-CoA" | Correct | B8 §17.2; OS‡ | |
+| K30 | "succinate being oxidised: in the cell by losing two hydrogens, not by fire" | Correct | OS‡: "Two hydrogen atoms are transferred to FAD" | |
+| K31 | "malate is made by adding water to fumarate" | Correct | EC 4.2.1.2 | |
+| K32 | "oxaloacetate joins the next acetyl-CoA to make citrate again" | Correct | B8 ch. 17; T3 §19.2 | |
+| K33 | Room names "Citrate to succinyl-CoA" and "Succinate to oxaloacetate" | Correct | K1 | Each names the first and last intermediate in its hall and says nothing else. |
+| K34 | Title "The citric acid cycle, as a cycle" | Correct | B8 ch. 17 | |
+| K35 | Enzymes named in the file's header comment, not on screen: aconitase, succinate dehydrogenase, fumarase, malate dehydrogenase, citrate synthase | Correct | B8 §17.2 (aconitase); T3 §19.2 (citrate synthase); EC 4.2.1.2 (fumarate hydratase, commonly fumarase); succinate and malate dehydrogenase from secondary pages‡ | |
+
+### 9.3 The Spanish deck
+
+All fifteen forms, with their accents, agree with the Real Academia's model for regular -er verbs (DPD: temí, temiste, temió, temimos, temisteis, temieron; temeré, temerás, temerá, temeremos, temeréis, temerán), with the DLE's table for the compound concomer (concomiste, concomió, concomieron; concomerás, concomerá, concomeremos, concomerán) and with third-party tables for comer itself (3P). The DLE's own table for comer was seen only in fragments. The gloss verdicts rest on DPD "usted" (as subject it takes a third-person verb; it is the formal form), DPD "tú" (second person singular) and GTG "persona" (ustedes is the only second-person plural pronoun in American, Canarian and part of Andalusian Spanish, with third-person agreement).
+
+| # | Form | Form and accents | Gloss in the deck | Gloss verdict | Replacement gloss |
+|---|------|------------------|-------------------|---------------|-------------------|
+| S1 | comí | Correct | I ate | Correct | |
+| S2 | comiste | Correct | you ate | Imprecise: which "you" | `'you ate (tú: one person, informal)'` |
+| S3 | comió | Correct | he or she ate | Imprecise: also usted | `'he or she ate (also usted, formal you)'` |
+| S4 | comimos | Correct | we ate | Correct | |
+| S5 | comieron | Correct | they ate | Imprecise: also ustedes | `'they ate (also ustedes, you plural)'` |
+| S6 | como | Correct | I eat | Correct | |
+| S7 | comes | Correct | you eat | Imprecise: which "you" | `'you eat (tú: one person, informal)'` |
+| S8 | come | Correct | he or she eats | Imprecise: also usted | `'he or she eats (also usted, formal you)'` |
+| S9 | comemos | Correct | we eat | Correct | |
+| S10 | comen | Correct | they eat | Imprecise: also ustedes | `'they eat (also ustedes, you plural)'` |
+| S11 | comeré | Correct | I will eat | Correct | |
+| S12 | comerás | Correct | you will eat | Imprecise: which "you" | `'you will eat (tú: one person, informal)'` |
+| S13 | comerá | Correct | he or she will eat | Imprecise: also usted | `'he or she will eat (also usted, formal you)'` |
+| S14 | comeremos | Correct | we will eat | Correct | |
+| S15 | comerán | Correct | they will eat | Imprecise: also ustedes | `'they will eat (also ustedes, you plural)'` |
+
+| # | Deck text | Verdict | Source | Note or replacement |
+|---|-----------|---------|--------|---------------------|
+| S16 | Link labels "yo", "tú", "él, ella", "nosotros", "ellos, ellas" | "yo", "tú", "nosotros" correct; "él, ella" and "ellos, ellas" imprecise | DLE tables give usted and ustedes rows of their own carrying these forms (seen for temer and concomer); DPD usted | `'él, ella, usted'` and `'ellos, ellas, ustedes'` |
+| S17 | Room names "Past", "Present", "Future" | "Present" and "Future" correct; "Past" is loose, not untrue | GTG pretérito perfecto simple: the tense of comí; Spanish has other past tenses, among them the imperfect | Optional: `'Preterite (past)'`. See the cost in 9.4. If the name stays, say "preterite" aloud. |
+| S18 | Title "Comer: one verb, three tenses"; "comer (to eat)" in the header comment | Correct | 3P; DLE comer | The three are the preterite, present and future of the indicative. |
+| S19 | Header comment: the vosotros forms left out are "comisteis, coméis, comeréis" | Correct | DPD model; 3P | Not on screen. Leaving vosotros out is defensible if it is said (sentence 4 in 9.5). |
+| S20 | The 30 scenes and their reasons: each quotes its own form with the right accents, and each reason repeats the gloss | Correct | As S1 to S15 | "¡comiste!" has its opening mark. The reasons stay true after the glosses in 9.4 are pasted. |
+| S21 | Who says the word, in three scenes: the king "mumbling "comió"", the king "mumbling "come"", ants "chanting "comieron"" | Imprecise (minor) | A speaker uses the first person of himself (comí, como, comimos); the third person is said of someone else. General grammar; the Real Academia's wording was not seen | Have the learner say the word about them. Replacement scenes in 9.4. |
+| S22 | Present-tense reasons: "Como means I eat: you are eating the apple right now" (ten reasons) | Correct | RAE *Libro de estilo*, tiempos verbales: the present describes a process that coincides with the moment of speaking; GTG presente: it alternates with estar + gerund | English would say "I am eating" for the scene. No change needed; `'I eat, I am eating'` is an optional fuller gloss. |
+
+### 9.4 Replacement wording, ready to paste
+
+In order of importance. Items 1 and 2 are what a Spanish teacher will notice; the rest are optional.
+
+1. **Glosses, `spanish-tenses.ts`** (the second element of each entry in `FORMS`). The meaning is the question on the survey and recall walks, so each must fit one form only.
+
+```
+'comiste',  'you ate (tú: one person, informal)'
+'comió',    'he or she ate (also usted, formal you)'
+'comieron', 'they ate (also ustedes, you plural)'
+'comes',    'you eat (tú: one person, informal)'
+'come',     'he or she eats (also usted, formal you)'
+'comen',    'they eat (also ustedes, you plural)'
+'comerás',  'you will eat (tú: one person, informal)'
+'comerá',   'he or she will eat (also usted, formal you)'
+'comerán',  'they will eat (also ustedes, you plural)'
+```
+
+2. **Link labels, `spanish-tenses.ts`.**
+
+```
+const PERSONS = ['yo', 'tú', 'él, ella, usted', 'nosotros', 'ellos, ellas, ustedes'];
+```
+
+3. **The feedback link, `krebs-cycle.ts`.** Keep `label: 'inhibits citrate synthase'`. Wherever the link is turned into a sentence, a tooltip or a question, do not build it from the kind ("blocks"); use:
+
+```
+Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate.
+Which intermediate inhibits citrate synthase, the enzyme that makes citrate?
+```
+
+4. **Three scenes, `spanish-tenses.ts`** (minor).
+
+```
+'The king snores over his scraped-out soup bowl; you whisper "comió".'
+'The king gnaws a drumstick on his throne; you whisper "come".'
+'Ants parade around an emptied picnic basket; you sigh "comieron".'
+```
+
+5. **Room name, `spanish-tenses.ts`** (optional): `{ name: 'Preterite (past)', count: 5 }`. Cost: the room name is part of the layout id (`palaceLayoutId` in `src/layouts/spec.ts`), so the deck's `layoutId` changes, and `scripts/architect-smoke.mjs` line 247 expects `'Past:5,Present:5,Future:5'` and must be changed to match. If that is too much for tonight, leave the name and say "preterite" when presenting.
+
+6. **Step eight label, `krebs-cycle.ts`** (optional): `'joins acetyl-CoA (citrate synthase)'`, so that the enzyme named on the feedback link has already been met on the step it catalyses. Four words, within the label rule.
+
+No change is needed to any gloss, reason, label or room name in `krebs-cycle.ts` or `krebs.ts`.
+
+### 9.5 Principles and sentences
+
+**Principles for built-in decks** (proposed wording for the Lead; CLAUDE.md is not ours to edit)
+
+- **9a.** "A gloss that is used as a question fits exactly one item in its deck: where a language has several words for 'you', the gloss names the one meant." (Rows S2 to S15)
+- **9b.** "A reason states a word origin only when a dictionary gives it; every other link to a name is labelled 'by sound'." (Rows K20 to K27. The decks already do this.)
+- **9c.** "A link that describes regulation names the enzyme acted on, not the product, and says 'inhibits', not 'blocks'." (Rows K10, K11)
+
+**Sentences we may say**
+
+1. "Every statement in the two showcase decks was checked against standard references: Berg and colleagues' *Biochemistry* (8th edition) and the IUBMB enzyme list for the cycle, the Real Academia Española's model conjugation for the verb, and Merriam-Webster and Etymonline for word origins. We checked search extracts of those sources, not the full texts."
+2. "Where a memory image uses a real word origin (citrus, amber, smoke, apple, vinegar), a dictionary gives that origin; where it only sounds like the name (the ox in oxaloacetate, the koala in CoA), the deck says 'by sound'."
+3. If asked about the feedback link: "Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate. It also inhibits alpha-ketoglutarate dehydrogenase, the enzyme that makes succinyl-CoA itself, which Berg and Tymoczko give as one of the cycle's two main control points."
+4. If asked about vosotros: "The deck leaves out vosotros, the informal plural 'you' of most of Spain. In American Spanish ustedes is the only plural 'you', and it takes the same verb form as ellos."
+
+**Sentences we must not say**
+
+- "Succinyl-CoA blocks citrate", "destroys citrate" or "switches the cycle off". It inhibits an enzyme.
+- Any mechanism for that inhibition as our own statement. One 1972 study of rat heart mitochondria reports it as competitive with acetyl-CoA; we read only an abstract record, and one web page describes it differently.
+- "ATP inhibits citrate synthase." The deck does not say it; sources conflict (9.7).
+- "Glue is where the word glutarate comes from." Dictionaries disagree; the deck says "by sound" and should keep saying it.
+- "Checked against the textbook" without "search extracts".
+- "The Spanish past tense" for the first room in front of a Spanish teacher. It is the preterite, one of several past tenses.
+
+### 9.6 Honest caveats: what could not be verified
+
+- No page was opened in full. `www.ncbi.nlm.nih.gov` and `dle.rae.es` have to be allowed in the session's network settings before the two primary sources named in the brief can be read.
+- The Berg and Stryer fifth edition on the NCBI Bookshelf was not reached. The eighth edition's pages on the publisher's site were used instead, through extracts.
+- Lehninger and Voet were not seen. The Lehninger sentence on succinyl-CoA and citrate synthase was seen only on a study blog that reproduces the passage; Voet's treatment was not found at all. The claim in K10 does not rest on them alone (JF, LN).
+- OpenStax's step-by-step wording was seen on Lumen Learning's adaptation of the book, not on the OpenStax page.
+- The DLE's table for comer itself was seen only in fragments. All fifteen forms agree with the Real Academia's model verb and with third-party tables; `tememos`, the model's present for nosotros, was not in any extract, so `comemos` rests on the third-party tables. Anyone with a phone can settle this in half a minute at dle.rae.es/comer, under Conjugación.
+- Etymonline's entry for citric was seen through its translated pages; Merriam-Webster's entry for "acetate" was not seen, only the combining form acet-.
+- The enzyme-bound intermediates oxalosuccinate and citryl-CoA were not in any extract (cis-aconitate was). Nothing in the decks depends on them.
+- How a link is drawn or worded on screen was not seen: no code that reads a deck's links was found in `src/ui`, `src/scene` or `src/flows` on this checkout.
+- The title and edition of the Tymoczko text are inferred from the publisher's address (`tymoczko3e`), and the full citation of LaNoue 1972 was not re-checked.
+
+### 9.7 Leads that did not check out
+
+- **"Succinyl-CoA blocks citrate."** No source says this. They say it inhibits citrate synthase.
+- **How succinyl-CoA inhibits citrate synthase.** LaNoue 1972 reports inhibition competitive with acetyl-CoA; one web page says it works by blocking the release of CoA. Do not state a mechanism.
+- **"ATP inhibits citrate synthase."** Listed in several study guides and in the Lehninger passage; LaNoue 1972 concluded that the energy-linked inhibition was not a direct effect of ATP on the enzyme. Not in the deck; do not add it.
+- **Voet's phrase "competitive feedback inhibition".** Not found.
+- **Glutarate from "glue".** Merriam-Webster says "probably" from gluten; Webster 1913 says glutamic + tartaric. That the Latin word gluten means glue was not checked in this pass. Leave the image as "by sound".
+- **Fumitory as "smoke of the earth" (fumus terrae).** Not seen. Merriam-Webster gives only *Fumaria*, from the Late Latin for fumitory, from *fumus*. The deck does not use the phrase.
+- **OpenStax on step six.** The adapted text calls the oxidation of succinate "a dehydration process". It is a dehydrogenation (two hydrogens to FAD), as the same passage goes on to say. Do not copy that word.
+- **Which page of Berg's eighth edition holds the summary sentence** (succinate oxidised, fumarate hydrated, malate oxidised). The extract did not say; it is cited as "B8 summary".
+
+### 9.8 Sources (section 9)
+
+All accessed through search extracts on 14 November 2026. Editions and section numbers are as shown in the extracts or the page addresses.
+
+Biochemistry
+- B8. Berg, J. M., Tymoczko, J. L., Gatto, G. J., and Stryer, L. *Biochemistry*, 8th ed., chapter 17, publisher's online pages. §17.2 "The Citric Acid Cycle Oxidizes Two-Carbon Units": https://digfir-published.macmillanusa.com/berg8e/berg8e_ch17_3.html ; §17.3 "Entry to the Citric Acid Cycle and Metabolism Through It Are Controlled": https://digfir-published.macmillanusa.com/berg8e/berg8e_ch17_4.html ; chapter introduction and summary: https://digfir-published.macmillanusa.com/berg8e/berg8e_ch17_1.html ; https://digfir-published.macmillanusa.com/berg8e/berg8e_ch17_7.html
+- T3. Tymoczko, J. L., Berg, J. M., and Stryer, L. *Biochemistry: A Short Course*, 3rd ed. (title inferred), chapter 19. §19.2: https://digfir-published.macmillanusa.com/tymoczko3e/tymoczko3e_ch19_3.html ; §19.4 "The Citric Acid Cycle Is Regulated": https://digfir-published.macmillanusa.com/tymoczko3e/tymoczko3e_ch19_5.html
+- OS‡. OpenStax *Biology*, §7.3 "Oxidation of Pyruvate and the Citric Acid Cycle", as adapted by Lumen Learning, *Biology for Majors I*: https://courses.lumenlearning.com/wm-biology1/chapter/reading-citric-acid-cycle/ ; original: https://openstax.org/books/biology-2e/pages/7-3-oxidation-of-pyruvate-and-the-citric-acid-cycle
+- EC. IUBMB Enzyme Nomenclature, EC 4.2.1.2, fumarate hydratase: https://iubmb.qmul.ac.uk/enzyme/EC4/0201a.html ; https://www.enzyme-database.org/query.php?ec=4.2.1.2
+- L‡. Passage on regulation of the cycle reproduced on a study blog and attributed there to Lehninger's *Principles of Biochemistry*; not checked against the book: https://biochemistrystudy.blogspot.com/2012/10/regulation-of-citric-acid-cycle.html
+- JF. Jakubowski, H., and Flatt, P. *Fundamentals of Biochemistry*, §16.3 "Regulation of the Citric Acid Cycle" (LibreTexts): https://bio.libretexts.org/Bookshelves/Biochemistry/Fundamentals_of_Biochemistry_(Jakubowski_and_Flatt)/02%3A_Unit_II-_Bioenergetics_and_Metabolism/16%3A_The_Citric_Acid_Cycle/16.03%3A_Regulation_of_the_Citric_Acid_Cycle
+- LN. LaNoue and colleagues (1972), *Journal of Biological Chemistry*, on feedback control of the cycle in rat heart mitochondria; abstract record: https://wiki.oroboros.at/index.php/LaNoue_1972_JBC
+- Secondary‡, agreeing on the inhibitors of citrate synthase and on the enzymes of steps six to eight: https://www.pearson.com/channels/biochemistry/study-guides/the-citric-acid-cycle-tca-cycle-structure
+
+Word origins
+- MW. Merriam-Webster: succinic acid https://www.merriam-webster.com/dictionary/succinic+acid ; fumaric acid https://www.merriam-webster.com/dictionary/fumaric%20acid ; malic acid https://www.merriam-webster.com/dictionary/malic+acid ; acet-, aceto- https://www.merriam-webster.com/dictionary/ACET ; glutaric acid https://www.merriam-webster.com/dictionary/glutaric%20acid
+- EO. Online Etymology Dictionary: citric https://www.etymonline.com/fr/word/citric ; oxalic https://www.etymonline.com/it/word/oxalic (translated pages of the English entries)
+- LS. Lewis and Short, *A Latin Dictionary*, sucinum: https://alatius.com/ls/index.php?l=sucina
+- Dictionary.com, fume: https://www.dictionary.com/browse/fume
+- Wiktionary‡: ketone https://en.wiktionary.com/wiki/ketone ; acetic https://www.wiktionary.com/wiki/acetic
+- Webster's Revised Unabridged Dictionary (1913), glutaric: https://websters1913.timcieplowski.com/word/glutaric/
+
+Spanish
+- DPD. Real Academia Española and ASALE, *Diccionario panhispánico de dudas*: modelos de conjugación verbal https://www.rae.es/dpd/ayuda/modelos-de-conjugacion-verbal ; usted https://www.rae.es/dpd/usted ; tú https://www.rae.es/dpd/tú ; vosotros https://www.rae.es/dpd/vosotros
+- DLE. Real Academia Española, *Diccionario de la lengua española*, conjugation tables: temer https://dle.rae.es/temer ; concomer https://dle.rae.es/concomer ; comer https://dle.rae.es/comer (fragments only)
+- GTG. Real Academia Española, *Glosario de términos gramaticales*: persona https://www.rae.es/gtg/persona ; pretérito perfecto simple https://www.rae.es/gtg/pret%C3%A9rito-perfecto-simple ; presente https://www.rae.es/gtg/presente
+- Real Academia Española, *Libro de estilo de la lengua española*, tiempos verbales: https://www.rae.es/libro-estilo-lengua-española/tiempos-verbales
+- 3P. Third-party conjugation tables for comer: https://ellaverbs.com/spanish-verbs/comer-conjugation/ ; https://www.inklingo.app/spanish/conjugations/comer ; https://www.tellmeinspanish.com/verbs/comer-conjugation/ ; future endings: https://sublearn.com/learn/es/grammar/es-simple-future-regular-verbs

@@ -60,7 +60,7 @@ const ALTERNATES: readonly Imago[] = [
 ];
 
 /** What happens at each step, in four words or fewer. The eighth closes the loop. */
-const STEPS = ['rearranged', 'loses CO2', 'loses CO2, gains CoA', 'releases CoA', 'oxidised', 'adds water', 'oxidised', 'joins acetyl-CoA'];
+const STEPS = ['rearranged', 'loses CO2', 'loses CO2, gains CoA', 'releases CoA', 'oxidised', 'adds water', 'oxidised', 'joins acetyl-CoA (citrate synthase)'];
 
 /** Two halls of four stations. The names only say which intermediates stand in each. */
 const HALLS = [
