@@ -7,6 +7,8 @@
  *   npm run shots -- --only ink         # bookmarks whose name contains "ink"
  *   npm run shots -- --url http://localhost:5173   # use a server that is already running
  *   npm run shots -- --out qa/shots/proto          # fixed output directory
+ *   npm run shots -- --bookmarks qa/bookmarks.gen.json --after qa/place-images.js
+ *                                                  # generated palaces, a memory image at every place
  *
  * Each bookmark is { name, query, width?, height?, waitMs?, timeoutMs? }. `timeoutMs` (default
  * 90 s) bounds the wait for readiness and the screenshot call: software GL draws the ink theme
@@ -38,6 +40,8 @@ const flag = (name) => {
 };
 const only = flag('only');
 const theme = flag('theme');
+// `--after <file>`: JavaScript evaluated in each page once it is ready, before the still is taken.
+const after = flag('after') ? readFileSync(path.resolve(flag('after')), 'utf8') : null;
 const log = args.includes('--log');
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const outDir = path.resolve(flag('out') ?? path.join('qa', 'shots', stamp));
@@ -99,6 +103,11 @@ try {
     try {
       await page.goto(url, { waitUntil: 'load' });
       await page.waitForFunction('window.__MEMORIA_READY__ === true', null, { timeout });
+      if (after) {
+        await page.evaluate(after);
+        // What the script changed has to reach the picture: a few frames, slow ones in software.
+        await page.waitForTimeout(2500);
+      }
       await page.waitForTimeout(b.waitMs ?? 600);
       const file = path.join(outDir, `${b.name}.png`);
       await page.screenshot({ path: file, timeout });

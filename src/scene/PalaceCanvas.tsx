@@ -9,9 +9,13 @@ import { STYLES, StyleEnvironment, StylePost, StyleProvider } from '@/styles';
 import { useActiveTheme } from '@/themes/active';
 import { PalaceScene } from './PalaceScene';
 import { PerfLog } from './PerfLog';
-import { readQa } from './qa';
+import { qaLayoutId, readQa } from './qa';
 import { Ready } from './shot';
 import { VeilPainter, VeilSheet, createVeil, finishRule } from './veil';
+
+// `?layout=`: the session starts in that palace, so the overlay and the engine agree on it.
+const qaLayout = qaLayoutId();
+if (qaLayout) useSession.setState({ layoutId: qaLayout });
 
 // Dev dependency, loaded only for `?perf`, so it never reaches the main bundle.
 const Perf = lazy(() => import('r3f-perf').then((m) => ({ default: m.Perf })));
