@@ -1,7 +1,7 @@
 import type { DeckKind, Imago, Locus, MemoryItem, Room } from '@/core/types';
 import { cleanGlyphs, isImagoAction } from './glyphs';
 import { NO_STRONGER, newId, nextAlternate, planLocally, regenerateLocally } from './local';
-import { cacheKey, callArchitect, readCache, writeCache } from './remote';
+import { cacheKey, callArchitect, networkLooksUsable, readCache, writeCache } from './remote';
 
 export { parseLine } from './parse';
 
@@ -122,11 +122,38 @@ function toPlan(raw: unknown, req: ArchitectRequest): ArchitectPlan | null {
 
 const slimLocus = (l: Locus) => ({ id: l.id, index: l.index, roomId: l.roomId, name: l.name, hint: l.hint });
 
+export interface PlanOptions {
+  /**
+   * Called as the work moves on, so the UI can show progress while it waits. On the
+   * network path the server answers once, so these are the stages of the request in
+   * order, paced by a clock, not reports from the server; the plan's own `steps` say
+   * what was actually done. On the local path they are the planner's real steps.
+   */
+  onStep?: (step: ArchitectStep) => void;
+}
+
+/** Stages of the network path and roughly when each begins (the server budget is 22 s). */
+const NETWORK_STAGES: ReadonlyArray<readonly [number, ArchitectStep]> = [
+  [0, { kind: 'plan', label: 'Reading your notes' }],
+  [1_200, { kind: 'plan', label: 'Planning rooms' }],
+  [3_000, { kind: 'generate', label: 'Drawing images' }],
+  [8_000, { kind: 'check', label: 'Checking each image' }],
+  [12_000, { kind: 'revise', label: 'Rewriting weak ones' }],
+];
+
 /**
  * Plans a palace. Tries the cached answer, then the Architect API, then the local
  * planner, in that order, and always resolves: `source` says which one answered.
  */
-export async function planPalace(req: ArchitectRequest): Promise<ArchitectPlan> {
+export async function planPalace(req: ArchitectRequest, opts?: PlanOptions): Promise<ArchitectPlan> {
+  const report = (step: ArchitectStep): void => {
+    try {
+      opts?.onStep?.(step);
+    } catch {
+      // A listener must never break planning.
+    }
+  };
+  const timers: ReturnType<typeof setTimeout>[] = [];
   try {
     const trimmed = req.text.trim();
     if (trimmed && trimmed.length <= MAX_TEXT && req.loci.length > 0 && req.maxItems > 0) {
@@ -142,34 +169,47 @@ export async function planPalace(req: ArchitectRequest): Promise<ArchitectPlan> 
       // Re-validating the cached copy also mints fresh item ids, so two decks made
       // from the same text never share ids.
       const cached = toPlan(readCache(key), req);
-      if (cached) return cached;
+      if (cached) {
+        report({ kind: 'plan', label: 'Found the plan the Architect made for this text earlier' });
+        return cached;
+      }
 
+      if (networkLooksUsable()) {
+        for (const [at, stage] of NETWORK_STAGES) {
+          if (at === 0) report(stage);
+          else timers.push(setTimeout(() => report(stage), at));
+        }
+      }
       const answer = await callArchitect(body, PLAN_TIMEOUT_MS);
+      timers.forEach(clearTimeout);
       const plan = isRecord(answer) ? toPlan(answer.plan, req) : null;
       if (plan && isRecord(answer)) {
         writeCache(key, answer.plan);
+        // What the server says it did, now that it has answered.
+        plan.steps.forEach(report);
         return plan;
       }
     }
   } catch {
     // Fall through: the caller must always get a plan.
+  } finally {
+    timers.forEach(clearTimeout);
   }
-  return planPalaceLocal(req);
+  return planPalaceLocal(req, opts);
 }
 
 /** The offline planner on its own: deterministic, no network. Also the fallback of `planPalace`. */
-export function planPalaceLocal(req: ArchitectRequest): ArchitectPlan {
+export function planPalaceLocal(req: ArchitectRequest, opts?: PlanOptions): ArchitectPlan {
   try {
-    return planLocally(req);
+    return planLocally(req, opts?.onStep);
   } catch {
-    return {
-      title: 'Untitled palace',
-      kind: req.kind ?? 'list',
-      items: [],
-      steps: [{ kind: 'fallback', label: 'Could not read that text. Try one fact per line.' }],
-      source: 'local',
-      overflow: [],
-    };
+    const step: ArchitectStep = { kind: 'fallback', label: 'Could not read that text. Try one fact per line.' };
+    try {
+      opts?.onStep?.(step);
+    } catch {
+      // A listener must never break planning.
+    }
+    return { title: 'Untitled palace', kind: req.kind ?? 'list', items: [], steps: [step], source: 'local', overflow: [] };
   }
 }
 

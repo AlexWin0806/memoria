@@ -179,6 +179,105 @@ try {
     if (!same) fail(`local planner (${name}): not deterministic`);
   }
 
+  // ── 2b. The four inputs from QA review 1, issue 8 ──────────────────────────
+  // (a) a bare list, (b) vocabulary pairs, (c) prose notes, (d) numbered generic heads.
+  section('Local planner: the reviewer\'s four inputs (QA review 1, issue 8)');
+  const krebs = [
+    'The Krebs cycle is a series of reactions that releases stored energy from acetyl-CoA. It is also called the citric acid cycle. It takes place in the matrix of the mitochondria.',
+    'The cycle starts when acetyl-CoA joins oxaloacetate to form citrate. Citrate is then rearranged into isocitrate. Two carbons leave as carbon dioxide along the way.',
+    'Each turn of the cycle therefore yields three NADH, one FADH2 and one GTP, which together carry most of the energy on to the electron transport chain. The cycle was discovered by Hans Krebs in 1937. And so on.',
+  ].join('\n\n');
+  const elements = ['Hydrogen', 'Helium', 'Lithium', 'Beryllium', 'Boron', 'Carbon', 'Nitrogen', 'Oxygen', 'Fluorine', 'Neon', 'Sodium', 'Magnesium', 'Aluminium', 'Silicon', 'Phosphorus', 'Sulfur', 'Chlorine', 'Argon', 'Potassium', 'Calcium', 'Scandium', 'Titanium', 'Vanadium', 'Chromium', 'Manganese', 'Iron', 'Cobalt', 'Nickel', 'Copper', 'Zinc'];
+  const reviewer = {
+    a: { name: '(a) ten planets, bare list', maxWeak: 4, text: 'Mercury\nVenus\nEarth\nMars\nCeres\nJupiter\nSaturn\nUranus\nNeptune\nPluto' },
+    b: { name: '(b) ten Spanish kitchen words with meanings', maxWeak: 4, text: 'cuchara - spoon\ntenedor - fork\ncuchillo - knife\nplato - plate\nvaso - glass\ntaza - cup\nolla - pot\nsartén - frying pan\nhorno - oven\nnevera - fridge' },
+    c: { name: '(c) three paragraphs on the Krebs cycle', maxWeak: Infinity, text: krebs },
+    d: { name: '(d) thirty "Element n - name" lines', maxWeak: 5, text: elements.map((e, i) => `Element ${i + 1} - ${e}`).join('\n') },
+  };
+  const isWeak = (imago) => /^(Weak link|No picture)/.test(imago.reason ?? '');
+  const plans = {};
+  for (const [id, input] of Object.entries(reviewer)) {
+    const heard = [];
+    const plan = await planPalace({ ...base, text: input.text }, { onStep: (s) => heard.push(s) });
+    plans[id] = plan;
+    const heroes = plan.items.map((it) => it.imago.glyphs[0]);
+    const dupes = heroes.filter((g, i) => heroes.indexOf(g) !== i);
+    const weak = plan.items.filter((it) => isWeak(it.imago)).length;
+    const cut = plan.items.filter((it) => /…|\.\.\.$/.test(it.term) || /…$/.test(it.meaning ?? ''));
+    console.log(`\n[${input.name}]  "${plan.title}"  kind=${plan.kind}  ${plan.items.length} items, ${weak} weak, ${dupes.length} duplicate heroes, ${cut.length} truncated, overflow ${plan.overflow.length}`);
+    for (const s of plan.steps) console.log(`  · (${s.kind}) ${s.label}`);
+    plan.items.forEach((item, i) => {
+      console.log(`  ${String(i + 1).padStart(2)} ${item.imago.glyphs.join('')} ${item.term}${item.meaning ? ` = ${item.meaning}` : ''}`);
+      console.log(`     ${item.imago.action.padEnd(5)} ${item.imago.scene}  [${item.imago.reason}]`);
+      if (wordCount(item.imago.scene) > 22) fail(`reviewer ${id}: scene too long: ${item.imago.scene}`);
+      if (!item.imago.glyphs.every(isSafeGlyph)) fail(`reviewer ${id}: unsafe glyph in ${item.term}`);
+      if (wordCount(item.term) > 5 && id !== 'd') fail(`reviewer ${id}: term longer than five words: ${item.term}`);
+      const next = plan.items[i + 1];
+      if (next && next.imago.action === item.imago.action) fail(`reviewer ${id}: neighbours share an action`);
+    });
+    if (plan.source !== 'local') fail(`reviewer ${id}: not the local planner`);
+    if (dupes.length) fail(`reviewer ${id}: duplicated hero glyphs ${dupes.join(' ')}`);
+    if (cut.length) fail(`reviewer ${id}: truncated ${cut.map((it) => it.term).join(' | ')}`);
+    if (weak > input.maxWeak) fail(`reviewer ${id}: ${weak} of ${plan.items.length} images are self-rated weak (limit ${input.maxWeak})`);
+    if (new Set(plan.items.map((it) => it.term.toLowerCase())).size !== plan.items.length) fail(`reviewer ${id}: two items share a term`);
+    if (JSON.stringify(heard) !== JSON.stringify(plan.steps)) fail(`reviewer ${id}: onStep did not report the planner's steps`);
+  }
+  // (a) a category picture, not a two-letter sound-alike.
+  if (plans.a.items.length !== 10 || plans.a.items.some((it) => /Sound-alike|Weak link/.test(it.imago.reason))) fail('reviewer a: a planet still gets a sound-alike');
+  // (b) the picture is the meaning and the scene carries the word; no horn for horno.
+  for (const item of plans.b.items) {
+    if (!item.imago.scene.includes(`"${item.term}"`)) fail(`reviewer b: the scene for ${item.term} does not carry the word`);
+    if (!item.imago.reason.startsWith(`${item.term} means ${item.meaning}`)) fail(`reviewer b: the reason for ${item.term} does not state the link`);
+    if (/Sound-alike/.test(item.imago.reason)) fail(`reviewer b: ${item.term} got a sound-alike`);
+  }
+  if (plans.b.kind !== 'pairs') fail('reviewer b: vocabulary should be a pairs deck');
+  if (plans.b.items.find((it) => it.term === 'horno')?.imago.glyphs.includes('📯')) fail('reviewer b: horno (oven) still gets a horn');
+  if (plans.b.items.find((it) => it.term === 'nevera')?.imago.glyphs.includes('🪡')) fail('reviewer b: nevera (fridge) still gets a needle');
+  // (c) whole sentences kept as the meaning; nothing cut; the empty sentence skipped.
+  const sentences = krebs.split(/\n\n/).flatMap((p) => p.split(/(?<=[.])\s+/));
+  for (const item of plans.c.items) {
+    if (!sentences.includes(item.meaning)) fail(`reviewer c: meaning is not a whole sentence of the notes: ${item.meaning}`);
+  }
+  if (plans.c.items.length !== 8) fail(`reviewer c: expected 8 sentences kept, got ${plans.c.items.length}`);
+  if (plans.c.items.some((it) => /so on/i.test(it.meaning))) fail('reviewer c: kept a sentence with no content');
+  if (!plans.c.steps.some((s) => /8 sentences/.test(s.label) && /mechanical/.test(s.label))) fail('reviewer c: steps do not say how many sentences were kept and that the choice was mechanical');
+  if (!plans.c.items.some((it) => it.term === 'Hans Krebs')) fail('reviewer c: "The cycle was discovered by Hans Krebs" is not named after Hans Krebs');
+  // (d) the picture comes from the specific part, never from the word "Element".
+  if (plans.d.items.length !== 12 || plans.d.overflow.length !== 18) fail('reviewer d: expected 12 kept and 18 overflow');
+  plans.d.items.forEach((item, i) => {
+    if (item.term !== elements[i]) fail(`reviewer d: item ${i + 1} should be ${elements[i]}, got ${item.term}`);
+    if (/element/i.test(item.imago.reason)) fail(`reviewer d: ${item.term} is keyed on the word "Element"`);
+  });
+  // More sentences than places: the choice is by fact-likeness and is announced.
+  const many = planPalaceLocal({ ...base, maxItems: 4, text: krebs });
+  if (many.items.length !== 4 || many.overflow.length !== 4 || !many.steps.some((s) => /Kept 4 of 8 sentences/.test(s.label) && /mechanical/.test(s.label))) fail('notes with more sentences than places: selection not announced');
+  if (!many.items.some((it) => /1937/.test(it.meaning))) fail('notes with more sentences than places: the sentence with a name and a date was dropped');
+  // Other numbered heads.
+  const steps3 = planPalaceLocal({ ...base, text: 'Step 1 - whisk the eggs\nStep 2 - chop an onion\nStep 3 - fry the bacon\nStep 4 - pour the wine' });
+  if (steps3.items.map((it) => it.term).join('|') !== 'whisk the eggs|chop an onion|fry the bacon|pour the wine') fail(`numbered steps: wrong terms ${steps3.items.map((it) => it.term).join('|')}`);
+  if (new Set(steps3.items.map((it) => it.imago.glyphs[0])).size !== 4) fail('numbered steps: duplicated hero glyphs');
+  // Regenerate offline never loops (issue 18): a finite number of new images, then the flag.
+  {
+    let item = plans.b.items.find((it) => it.term === 'horno');
+    const locus = lociById.get(item.locusId);
+    const others = plans.b.items.filter((o) => o.id !== item.id).map((o) => o.imago);
+    const shown = [item.imago.scene];
+    let flagged = false;
+    for (let press = 0; press < 8 && !flagged; press++) {
+      const next = await regenerateImago({ item, locus, others });
+      if (isNoStrongerSuggestion(next)) flagged = true;
+      else {
+        if (shown.includes(next.scene)) fail(`regenerate horno: press ${press + 1} repeated an image`);
+        if (/Sound-alike/.test(next.reason) || next.glyphs.includes('📯')) fail('regenerate horno: offered a sound-alike that drops the meaning');
+        shown.push(next.scene);
+        item = { ...item, imago: next };
+      }
+    }
+    console.log(`\n[regenerate offline, horno]  ${shown.length - 1} new image(s), then ${flagged ? '"No stronger offline suggestion:"' : 'NO FLAG'}`);
+    for (const s of shown.slice(1)) console.log(`     ${s}`);
+    if (!flagged) fail('regenerate horno: never said there is nothing stronger');
+  }
+
   // The public entry points must resolve with no network (Node has no window, so no fetch is attempted).
   const viaClient = await planPalace({ ...base, text: samples['term - meaning list'] });
   if (viaClient.source !== 'local' || viaClient.items.length !== 8) fail('planPalace did not fall back to the local planner');
