@@ -1,0 +1,27 @@
+# Node
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+
+# Organizers' documents: not ours to republish
+docs/hackprinceton/
+
+# Deploy / tooling
+.vercel/
+.DS_Store
+*.local
+
+# QA output (screenshots are regenerated; curated ones live in docs/media/)
+qa/shots/
+qa/video/
+
+# Agent worktrees and local settings
+.claude/worktrees/
+.claude/settings.local.json

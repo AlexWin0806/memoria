@@ -1,0 +1,5 @@
+[
+  { "name": "greybox-wide", "query": "proto=1&theme=greybox&shot=wide" },
+  { "name": "greybox-fountain", "query": "proto=1&theme=greybox&shot=fountain" },
+  { "name": "greybox-door", "query": "proto=1&theme=greybox&shot=door" }
+]

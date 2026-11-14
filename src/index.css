@@ -1,0 +1,13 @@
+:root {
+  color-scheme: light;
+  --paper: #efe6d2;
+  --ink: #2a2118;
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Georgia, 'Times New Roman', serif;
+  overflow: hidden;
+}

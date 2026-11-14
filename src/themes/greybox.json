@@ -1,0 +1,55 @@
+{
+  "id": "greybox",
+  "name": "Greybox",
+  "style": "greybox",
+  "palette": {
+    "paper": "#e9e6e0",
+    "ink": "#24221f",
+    "inkSoft": "#6b6760",
+    "surfaces": {
+      "floor": "#bdb8ae",
+      "wall": "#d8d4cc",
+      "ceiling": "#cfcac1",
+      "trim": "#a8a297",
+      "stone": "#c9c4ba",
+      "wood": "#9a8a73",
+      "metal": "#8c8a86",
+      "water": "#9fb4bd",
+      "foliage": "#8fa089",
+      "cloth": "#b7aaa0",
+      "glow": "#fff4d6"
+    },
+    "accents": {
+      "red": "#b5533f",
+      "amber": "#c58f3a",
+      "green": "#6f8f5a",
+      "teal": "#4f8f92",
+      "blue": "#4f6fa3",
+      "plum": "#7d5a86"
+    },
+    "sky": ["#e9e6e0", "#cfd6dc"],
+    "fog": "#e9e6e0"
+  },
+  "light": {
+    "ambient": 0.9,
+    "keyColor": "#fff3dd",
+    "keyIntensity": 2.2,
+    "keyDirection": [0.45, -0.8, -0.35],
+    "fillColor": "#cfe0ff",
+    "fillIntensity": 0.35,
+    "locusGlow": 1
+  },
+  "fog": { "near": 18, "far": 60 },
+  "post": {},
+  "type": { "display": "Georgia", "text": "Georgia" },
+  "ui": {
+    "bg": "#e9e6e0",
+    "panel": "#f6f4ef",
+    "fg": "#24221f",
+    "muted": "#6b6760",
+    "accent": "#b5533f",
+    "success": "#4f7a4a",
+    "danger": "#a13c2c",
+    "radius": 4
+  }
+}
