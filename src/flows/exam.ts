@@ -443,9 +443,23 @@ export function requestLeaveExam(): void {
   else backToReviews();
 }
 
-/** The reviews screen has said that a reload ended an exam: once is enough. */
-export function forgetCutShort(): void {
-  if (useExam.getState().cutShort) useExam.setState({ cutShort: false });
+/**
+ * A reload ended an exam in progress: the learner lands on the reviews screen, which says so.
+ * Only from the title, and never over a walk that the same reload cut short or a run that the
+ * URL starts: the line then waits for the next visit to the reviews. Safe to call twice.
+ */
+export function showCutShort(): void {
+  if (!useExam.getState().cutShort || typeof location === 'undefined') return;
+  const q = new URLSearchParams(location.search);
+  const idle = useSession.getState().mode === 'attract' && !useFlow.getState().savedWalk && !q.has('judge') && !q.has('compare');
+  if (idle) useSession.getState().toReview();
+}
+
+if (typeof window !== 'undefined') {
+  // The reviews screen says once that a reload ended an exam: leaving that screen is the end of it.
+  useSession.subscribe((s, was) => {
+    if (was.mode === 'review' && s.mode !== 'review' && useExam.getState().cutShort) useExam.setState({ cutShort: false });
+  });
 }
 
 /** "3rd in The Mohs hardness scale": a position question as the results name it. */

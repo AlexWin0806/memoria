@@ -8,7 +8,6 @@ import {
   examRows,
   examShape,
   finishMarking,
-  forgetCutShort,
   handIn,
   isAnswered,
   leaveExam,
@@ -19,17 +18,16 @@ import {
   requestLeaveExam,
   setExamDirection,
   setExamInput,
+  showCutShort,
   toMark,
   useExam,
   walkBack,
   type ExamRow,
 } from '@/flows/exam';
-import { useFlow } from '@/flows/flow';
 import { formatDuration, plural, termLength } from '@/flows/format';
 import { useWalkKeys } from '@/flows/hooks';
 import { useDeck } from '@/state/decks';
 import { useReview } from '@/state/review';
-import { useSession } from '@/state/session';
 import { ADVANCE_KEYS } from './Walk';
 import './exam.css';
 
@@ -48,13 +46,7 @@ export function Exam() {
   const open = stage !== 'off' && deck !== undefined;
 
   // A reload ended an exam in progress: the learner lands on the reviews screen, which says so.
-  useEffect(() => {
-    if (!useExam.getState().cutShort) return;
-    const q = new URLSearchParams(location.search);
-    const idle = useSession.getState().mode === 'attract' && !useFlow.getState().savedWalk && !q.has('judge') && !q.has('compare');
-    if (idle) useSession.getState().toReview();
-    else forgetCutShort();
-  }, []);
+  useEffect(() => showCutShort(), []);
 
   useEffect(() => {
     if (!open) return;

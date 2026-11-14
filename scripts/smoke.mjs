@@ -56,6 +56,18 @@
  *      recorded as walks of new places and kept off the Progress line
  *   k  "Recall" on a palace in which nothing has been studied: a new one opens on its survey, a
  *      surveyed one on its study walk, a studied one on the recall walk
+ *   h  Exam Mode, multiple choice, keyboard only and with reduced motion: offered on Reviews and in
+ *      Progress for a studied palace; the setup; meaning to term, then term to meaning; during the
+ *      paper no place, room, image or verdict is on screen, the questions are not in route order and
+ *      "I don't know" is never focused; an answer is changed before handing in; the results name the
+ *      place and show the image of each miss; the walk back covers exactly the missed places; the
+ *      record of kind `exam` survives a reload and stays off the Progress line; the stored review
+ *      cards are byte-identical before and after
+ *   j  Exam Mode, typed: terms are graded as on the recall walk; typed meanings are marked by the
+ *      learner (self-marked, and the cards still do not change); a list with no meanings is asked by
+ *      position; leaving midway (Escape, the browser's Back button) asks first and records nothing; a
+ *      reload mid-exam returns to Reviews with nothing recorded; a palace that still needs its survey,
+ *      and one that was never studied, offer no exam
  *
  * Cases f, t and w start from a deck whose images have been placed (seedStudied): they test the
  * recall walk, and a palace nobody has studied no longer has one.
@@ -612,6 +624,68 @@ async function tabTo(page, testid) {
     if (await page.evaluate((id) => document.activeElement?.getAttribute('data-testid') === id, testid)) return;
   }
   throw new Error(`could not reach ${testid} with Tab`);
+}
+
+/** The rooms of the handcrafted palace, by name, and the room each place is in. */
+const roomName = Object.fromEntries([...layoutSrc.matchAll(/\{ id: '([a-z-]+)', name: '([^']+)', mood:/g)].map((m) => [m[1], m[2]]));
+const roomOf = Object.fromEntries([...layoutSrc.matchAll(/\{ id: '(domus-\d+)', index: \d+, roomId: '([a-z-]+)'/g)].map((m) => [m[1], roomName[m[2]]]));
+
+/** The exam cases' palace: five minerals on the first five places, surveyed, studied and recalled once; nothing is due. */
+const EXAM_DECK = 'deck-exam';
+const EXAM_TITLE = 'Five minerals';
+const EXAM_TERMS = ['Quartz', 'Feldspar', 'Mica', 'Olivine', 'Pyrite'];
+const EXAM_MEANINGS = ['Hard and glassy', 'Pink and blocky', 'Peels in sheets', 'Green and grainy', 'Brassy cubes'];
+const examScene = (n) => `An exam scene for place ${n}.`;
+function examSeed(now = Date.now()) {
+  const day = 24 * 3600 * 1000;
+  const item = (n) => ({ id: `x-${n}`, term: EXAM_TERMS[n - 1], meaning: EXAM_MEANINGS[n - 1], locusId: `domus-0${n}`, imago: { scene: examScene(n), glyphs: ['⭐'], action: 'bob', source: 'learner' } });
+  const deck = { id: EXAM_DECK, title: EXAM_TITLE, kind: 'pairs', layoutId: 'domus', createdAt: 9, surveyedAt: now - 2 * day, items: [1, 2, 3, 4, 5].map(item) };
+  const card = (n) => [`x-${n}`, { itemId: `x-${n}`, deckId: EXAM_DECK, box: 2, dueAt: now + day, lastReviewedAt: now - day, reps: 1, lapses: 0, survey: 'unknown', surveyGiven: '', studiedAt: now - 2 * day }];
+  const rec = (id, kind, at, right) => ({ id, deckId: EXAM_DECK, kind, at, total: 5, correct: right, unknown: 0, ms: 9000, items: [1, 2, 3, 4, 5].map((n) => ({ itemId: `x-${n}`, correct: n <= right })) });
+  return {
+    deck,
+    cards: Object.fromEntries([1, 2, 3, 4, 5].map(card)),
+    records: [rec('walk-s', 'survey', now - 2 * day, 1), rec('walk-r', 'recall', now - 2 * day + 60_000, 5)],
+  };
+}
+
+/** The review store exactly as it is stored: the cards and the ledger of the last walk, byte for byte. */
+const storedReview = (page) => page.evaluate(() => localStorage.getItem('memoria.review.v1'));
+const examRecords = async (page) => (await storedProgress(page)).records.filter((r) => r.kind === 'exam');
+const focusedId = (page) => page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? '');
+
+/**
+ * During an exam nothing of the palace is on screen: the sheet covers the whole window and is
+ * opaque, the title and the docked panel are not rendered, no place or room is named, no
+ * image is shown, and nothing says right or wrong.
+ */
+async function assertPalaceHidden(page, when) {
+  const seen = await page.evaluate(() => {
+    const sheet = document.querySelector('[data-testid=exam]');
+    const points = [[4, 4], [innerWidth - 4, 4], [4, innerHeight - 4], [innerWidth - 4, innerHeight - 4], [innerWidth / 2, innerHeight / 2], [innerWidth / 4, innerHeight / 2]];
+    return {
+      text: document.body.innerText,
+      covered: points.every(([x, y]) => sheet.contains(document.elementFromPoint(x, y))),
+      background: getComputedStyle(sheet).backgroundColor,
+      under: ['.title', '.panel'].filter((sel) => [...document.querySelectorAll(sel)].some((el) => el.getClientRects().length > 0)),
+      verdicts: sheet.querySelectorAll('[data-state=right], [data-state=wrong], .verdict, .reveal, .place__mark').length,
+    };
+  });
+  const named = [...Object.values(placeName), ...Object.values(roomName)].filter((name) => seen.text.includes(name));
+  assert(named.length === 0, `${when}: a place or a room is named on screen: ${named}`);
+  assert(!seen.text.includes('exam scene') && !seen.text.includes('⭐'), `${when}: a memory image is on screen`);
+  assert(seen.covered && /^rgb\(/.test(seen.background), `${when}: the sheet does not cover the scene (covered ${seen.covered}, background ${seen.background})`);
+  assert(seen.under.length === 0, `${when}: still rendered under the sheet: ${seen.under}`);
+  assert(seen.verdicts === 0, `${when}: a verdict is shown before the paper is handed in`);
+}
+
+/** The question on screen: what it shows, what it asks, and which item of the exam palace it is about (n = 1..5). */
+async function examQuestion(page, i, total) {
+  await page.locator(`[data-testid=exam-count]:has-text("Question ${i} of ${total}")`).waitFor();
+  const cue = (await page.getByTestId('exam-cue').count()) ? await text(page.getByTestId('exam-cue')) : '';
+  const prompt = await text(page.getByTestId('exam-question'));
+  const n = EXAM_MEANINGS.indexOf(cue) + 1 || EXAM_TERMS.indexOf(cue) + 1;
+  return { cue, prompt, n };
 }
 
 const LIST = [
@@ -2383,6 +2457,432 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return '"Recall" on a new palace opens its survey; on a surveyed one, its study walk; on a studied one, the recall walk';
+  },
+
+  /** Exam Mode, multiple choice, with the keyboard only. */
+  async h() {
+    const { context, page, errors } = await open();
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    const seed = examSeed();
+    await seedState(page, { decks: { [EXAM_DECK]: seed.deck }, cards: seed.cards, records: seed.records, settings: { familiarized: { domus: true }, reducedMotion: true } });
+    const before = await storedReview(page);
+    const place = (n) => placeName[`domus-0${n}`];
+
+    // Reviews: nothing is due, and the studied palace offers an exam. No other palace does.
+    await tabTo(page, 'title-review');
+    await page.keyboard.press('Enter');
+    await page.getByTestId('review').waitFor();
+    assert((await page.getByTestId('review-exam').count()) === 1 && (await page.getByTestId('review-now').count()) === 0, 'Reviews: expected one Exam button and nothing due');
+    assert((await page.getByTestId('review-exam').getAttribute('aria-label')) === `Exam on ${EXAM_TITLE}`, 'the Exam button does not name its palace');
+    await shot(page, 'exam-reviews');
+    await tabTo(page, 'review-exam');
+    await page.keyboard.press('Enter');
+
+    // The setup: what an exam is, the direction (meaning to term first) and the answer mode (the recall setting).
+    await page.getByTestId('exam-setup').waitFor();
+    const setup = await text(page.getByTestId('exam-setup'));
+    assert(setup.includes('An exam has no palace.') && setup.includes('Answer from memory, in shuffled order; afterwards, walk back to the places you missed.'), `the setup does not say what an exam is: ${setup}`);
+    assert((await text(page.getByTestId('exam-setup-count'))).startsWith('5 questions, one for each place you have studied.'), `setup count: ${await text(page.getByTestId('exam-setup-count'))}`);
+    assert(await page.getByTestId('exam-direction-meaning-term').isChecked(), 'the default direction is not "meaning to term"');
+    assert(await page.getByTestId('exam-input-choice').isChecked(), 'the answer mode does not follow the recall setting');
+    assert((await page.getByTestId('exam-self-marked-note').count()) === 0, 'multiple choice is announced as self-marked');
+    assert((await smallText(page, 'exam')).length === 0, `exam setup: text below 16 px: ${await smallText(page, 'exam')}`);
+    await assertPalaceHidden(page, 'exam setup');
+    await shot(page, 'exam-setup');
+    assert((await examRecords(page)).length === 0, 'opening the setup recorded something');
+    await tabTo(page, 'exam-start');
+    await page.keyboard.press('Enter');
+
+    // The paper, meaning to term. Planned: Quartz right, Feldspar wrong, Mica "I don't know", Olivine right,
+    // Pyrite wrong at first and changed to right before handing in.
+    const asked = [];
+    for (let i = 1; i <= 5; i++) {
+      const q = await examQuestion(page, i, 5);
+      assert(q.n > 0 && q.prompt === 'Which term is this?', `question ${i}: "${q.cue}" / "${q.prompt}"`);
+      asked.push(q.n);
+      await assertPalaceHidden(page, `exam question ${i}`);
+      assert((await focusedId(page)) === 'exam-question', `question ${i}: the focus is on "${await focusedId(page)}", not on the question`);
+      assert((await page.locator('[data-testid=exam] [aria-pressed=true]').count()) === 0, `question ${i}: an answer is chosen before the learner chose one`);
+      assert(await page.getByTestId(i === 5 ? 'exam-handin' : 'exam-next').isDisabled(), `question ${i}: the way on is open before an answer`);
+      // Nothing moves on from a question with no answer.
+      await page.keyboard.press('Space');
+      await page.keyboard.press('ArrowRight');
+      assert((await text(page.getByTestId('exam-count'))) === `Question ${i} of 5`, `question ${i}: moved on with no answer`);
+      const options = await choiceTexts(page, 'exam-choice');
+      assert(options.length === 4 && options.every((o) => EXAM_TERMS.includes(o)) && options.includes(EXAM_TERMS[q.n - 1]), `question ${i}: options ${options}`);
+      const right = options.indexOf(EXAM_TERMS[q.n - 1]);
+      const wrong = options.findIndex((o) => o !== EXAM_TERMS[q.n - 1]);
+      if (q.n === 3) await page.keyboard.press('0');
+      else await page.keyboard.press(String((q.n === 2 || q.n === 5 ? wrong : right) + 1));
+      await page.locator('[data-testid=exam] [aria-pressed=true]').waitFor();
+      assert((await page.locator('[data-testid=exam] [aria-pressed=true]').count()) === 1, `question ${i}: more than one answer is marked as picked`);
+      assert((await text(page.getByTestId('exam-ack'))).includes('You can change it until you hand in.'), `question ${i}: the answer is not acknowledged`);
+      await assertPalaceHidden(page, `exam question ${i}, answered`);
+      if (i === 1) await shot(page, 'exam-question');
+      // After a pick the focus is on the way on, so Space moves on (and on the last question asks first).
+      await page.waitForFunction((id) => document.activeElement?.getAttribute('data-testid') === id, i === 5 ? 'exam-handin' : 'exam-next');
+      await page.keyboard.press('Space');
+    }
+    assert([...asked].sort().join('') === '12345', `the exam did not ask every item once: ${asked}`);
+    assert(asked.join('') !== '12345', 'the questions came in route order');
+
+    // "Hand in?" asks first, with the focus on the way back. Back through the paper to change the answer about Pyrite.
+    await page.getByTestId('exam-handin-ask').waitFor();
+    assert((await focusedId(page)) === 'exam-handin-no', `"Hand in?" puts the focus on "${await focusedId(page)}"`);
+    await page.keyboard.press('Enter');
+    await page.getByTestId('exam-handin').waitFor();
+    assert((await examRecords(page)).length === 0, 'an exam was recorded before it was handed in');
+    const pyriteAt = asked.indexOf(5) + 1;
+    for (let i = 5; i > pyriteAt; i--) await page.keyboard.press('ArrowLeft');
+    await examQuestion(page, pyriteAt, 5);
+    const kept = await text(page.locator('[data-testid=exam] [aria-pressed=true]'));
+    assert(!kept.includes('Pyrite') && !kept.includes('know'), `going back did not show the answer given: ${kept}`);
+    const again = await choiceTexts(page, 'exam-choice');
+    await page.keyboard.press(String(again.indexOf('Pyrite') + 1));
+    await page.locator('[data-testid=exam-choice][aria-pressed=true]:has-text("Pyrite")').waitFor();
+    // With every question answered the paper can be handed in from here.
+    if (pyriteAt < 5) {
+      await tabTo(page, 'exam-handin-early');
+      await page.keyboard.press('Enter');
+    } else await page.keyboard.press('Space');
+    await page.getByTestId('exam-handin-ask').waitFor();
+    await tabTo(page, 'exam-handin-yes');
+    await page.keyboard.press('Enter');
+
+    // The results: the score, every question with both answers, and for each miss its place and its image.
+    await page.getByTestId('exam-results').waitFor();
+    assert((await focusedId(page)) === 'exam-score', 'exam results: the focus is not on the score');
+    assert((await text(page.getByTestId('exam-score'))) === '3 of 5', `exam score: ${await text(page.getByTestId('exam-score'))}`);
+    assert(/^Answered without the palace in \d+( min \d+)? s\. Meaning to term, multiple choice\.$/.test(await text(page.getByTestId('exam-time'))), `exam time line: ${await text(page.getByTestId('exam-time'))}`);
+    assert((await text(page.getByTestId('exam-effect'))) === 'This exam is listed in Progress. It changed no review date and no place in the palace: those follow the recall walks.', `exam effect line: ${await text(page.getByTestId('exam-effect'))}`);
+    const rows = await page.getByTestId('exam-row').evaluateAll((els) =>
+      els.map((el) => ({
+        state: el.dataset.state,
+        asked: el.querySelector('[data-testid=exam-row-asked]').textContent,
+        given: el.querySelector('[data-testid=exam-row-given]').textContent,
+        right: el.querySelector('[data-testid=exam-row-right]').textContent,
+        place: el.querySelector('[data-testid=exam-row-place]')?.textContent ?? '',
+        image: el.querySelector('[data-testid=exam-row-image]')?.textContent ?? '',
+      })),
+    );
+    assert(rows.map((r) => EXAM_MEANINGS.indexOf(r.asked) + 1).join('') === asked.join(''), 'the results do not list the questions in the order asked');
+    for (const r of rows) {
+      const n = EXAM_MEANINGS.indexOf(r.asked) + 1;
+      const missed = n === 2 || n === 3;
+      assert(r.state === (missed ? 'wrong' : 'right') && r.right === `Right answer ${EXAM_TERMS[n - 1]}`, `results row for ${EXAM_TERMS[n - 1]}: ${JSON.stringify(r)}`);
+      if (n === 3) assert(r.given === 'Your answer I don’t know', `the row for Mica says "${r.given}"`);
+      if (n === 5) assert(r.given === 'Your answer Pyrite', `the changed answer was not the one graded: ${r.given}`);
+      if (missed) assert(r.place === `It lives at ${place(n)}, in ${roomOf[`domus-0${n}`]}.` && r.image.includes(examScene(n)) && r.image.includes('⭐'), `the miss at ${place(n)} shows "${r.place}" / "${r.image}"`);
+      else assert(r.place === '' && r.image === '', `a right answer names its place: ${JSON.stringify(r)}`);
+    }
+    assert((await text(page.getByTestId('exam-walk-back'))) === 'Walk back to the 2 places you missed', `the walk back reads "${await text(page.getByTestId('exam-walk-back'))}"`);
+    assert((await smallText(page, 'exam')).length === 0, `exam results: text below 16 px: ${await smallText(page, 'exam')}`);
+    await shot(page, 'exam-results');
+
+    // What it wrote: one record of kind `exam`, and not a byte of the review store.
+    let exams = await examRecords(page);
+    assert(exams.length === 1 && exams[0].total === 5 && exams[0].correct === 3 && exams[0].unknown === 1 && exams[0].exam?.direction === 'meaning-term' && exams[0].exam?.selfMarked === undefined, `the exam's record: ${JSON.stringify(exams)}`);
+    assert(exams[0].items.map((it) => `${it.itemId}:${it.correct}`).join(' ') === 'x-1:true x-2:false x-3:false x-4:true x-5:true', `the exam's record lists ${JSON.stringify(exams[0].items)}`);
+    assert((await storedReview(page)) === before, 'an exam changed the stored review cards');
+    assert((await page.evaluate((id) => window.__memoriaApp.viewOf(id).integrity.slice(0, 5).join(' '), EXAM_DECK)) === '1 1 1 1 1', 'an exam changed the state of a place');
+
+    // A reload: the record is still there, and so are the cards. Progress lists the exam, off the line.
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert((await page.getByTestId('storage-notice').count()) === 0, 'the exam record was set aside on reload');
+    exams = await examRecords(page);
+    assert(exams.length === 1 && exams[0].kind === 'exam' && exams[0].correct === 3, 'the exam record did not survive a reload');
+    assert((await storedReview(page)) === before, 'the review cards changed over the reload');
+    assert((await page.getByTestId('exam').count()) === 0 && (await page.getByTestId('exam-cut-short').count()) === 0, 'a finished exam came back after a reload');
+    await tabTo(page, 'title-progress');
+    await page.keyboard.press('Enter');
+    await page.getByTestId('progress').waitFor();
+    assert((await text(page.getByTestId('progress-summary'))) === 'Before study: 1 of 5. Latest (recall walk): 5 of 5. 2 walks in all.', `Progress summary with an exam: ${await text(page.getByTestId('progress-summary'))}`);
+    assert((await text(page.getByTestId('progress-exams'))) === '1 exam, taken without the palace: in the table, not on the line.', `Progress, exam line: ${await text(page.getByTestId('progress-exams'))}`);
+    assert((await page.getByTestId('progress-chart').getAttribute('aria-label')).includes('score on each of 2 walks'), 'an exam is on the line of the recall walks');
+    const kinds = await page.getByTestId('progress-row').evaluateAll((els) => els.map((el) => `${el.dataset.kind}|${el.children[2].textContent}: ${el.children[3].textContent}`));
+    assert(kinds.join(' ; ') === 'survey|Before study (survey): 1 of 5 ; recall|Recall walk: 5 of 5 ; exam|Exam · meaning to term: 3 of 5', `the table of walks: ${kinds}`);
+    assert((await text(page.getByTestId('progress-weak-none'))) === 'No place has been missed on a recall walk.', 'an exam miss is counted as a place missed on a walk');
+    await page.locator('[data-testid=progress] details summary').click();
+    await page.getByTestId('progress-table').scrollIntoViewIfNeeded();
+    await shot(page, 'exam-progress');
+
+    // A second exam, from Progress, the other way round: the term is shown and the options are meanings.
+    await tabTo(page, 'progress-exam');
+    await page.keyboard.press('Enter');
+    await page.getByTestId('exam-setup').waitFor();
+    await page.getByTestId('exam-direction-term-meaning').check();
+    await page.getByTestId('exam-start').click();
+    const asked2 = [];
+    for (let i = 1; i <= 5; i++) {
+      const q = await examQuestion(page, i, 5);
+      assert(EXAM_TERMS.includes(q.cue) && q.prompt === 'What does this mean?', `term to meaning, question ${i}: "${q.cue}" / "${q.prompt}"`);
+      asked2.push(q.n);
+      await assertPalaceHidden(page, `term to meaning, question ${i}`);
+      assert((await focusedId(page)) !== 'exam-unknown', `term to meaning, question ${i}: "I don't know" has the focus`);
+      const options = await choiceTexts(page, 'exam-choice');
+      assert(options.length === 4 && options.every((o) => EXAM_MEANINGS.includes(o)) && options.includes(EXAM_MEANINGS[q.n - 1]), `term to meaning, question ${i}: options ${options}`);
+      // Olivine and Pyrite are missed this time (a wrong meaning, and "I don't know").
+      if (q.n === 5) await page.getByTestId('exam-unknown').click();
+      else await page.getByTestId('exam-choice').nth(q.n === 4 ? options.findIndex((o) => o !== EXAM_MEANINGS[3]) : options.indexOf(EXAM_MEANINGS[q.n - 1])).click();
+      if (i === 1) await shot(page, 'exam-question-term-to-meaning');
+      await page.getByTestId(i === 5 ? 'exam-handin' : 'exam-next').click();
+    }
+    await page.getByTestId('exam-handin-yes').click();
+    await page.getByTestId('exam-results').waitFor();
+    assert((await text(page.getByTestId('exam-score'))) === '3 of 5', `second exam score: ${await text(page.getByTestId('exam-score'))}`);
+    assert((await text(page.getByTestId('exam-time'))).endsWith('Term to meaning, multiple choice.'), `second exam: ${await text(page.getByTestId('exam-time'))}`);
+    const right2 = await page.getByTestId('exam-row-right').allTextContents();
+    assert(right2.every((t) => EXAM_MEANINGS.includes(t.replace('Right answer ', ''))), `term to meaning: the right answers shown are ${right2}`);
+    exams = await examRecords(page);
+    assert(exams.length === 2 && exams[1].exam?.direction === 'term-meaning' && exams[1].correct === 3 && exams[1].unknown === 1, `the second exam's record: ${JSON.stringify(exams[1])}`);
+    assert((await storedReview(page)) === before, 'the second exam changed the stored review cards');
+
+    // The walk back: an ordinary study walk over exactly the two places missed, in route order.
+    await page.getByTestId('exam-walk-back').click();
+    for (const [i, n] of [[1, 4], [2, 5]]) {
+      await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 2 · ${place(n)}")`).waitFor();
+      await page.getByTestId('encode-term').waitFor();
+      assert((await text(page.getByTestId('encode-term'))) === EXAM_TERMS[n - 1] && (await text(page.getByTestId('encode-scene'))) === examScene(n), `walk back, stop ${i}: ${await text(page.getByTestId('encode-term'))}`);
+      const view = await page.evaluate(() => window.__memoriaApp.view());
+      assert(view.camera === n - 1, `walk back, stop ${i}: the camera is at ${view.camera}`);
+      assert((await page.getByTestId('exam').count()) === 0, 'the exam sheet is still up during the walk back');
+      if (i === 1) await shot(page, 'exam-walk-back');
+      await page.getByTestId('walk-next').click();
+    }
+    await page.getByTestId('interstitial').waitFor();
+    assert((await storedReview(page)) === before, 'the walk back to the missed places changed a review card');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    assert((await examRecords(page)).length === 2, 'the walk back wrote or lost an exam record');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `exam on Reviews and in Progress; meaning to term 3 of 5 by keyboard (asked ${asked.join('')}), an answer changed before handing in; term to meaning 3 of 5 (asked ${asked2.join('')}); no place, image or verdict during the paper; walk back over the 2 missed places; 2 records of kind exam, kept over a reload and off the Progress line; review store byte-identical`;
+  },
+
+  /** Exam Mode, typed answers; leaving; a reload; and the palaces that offer no exam. */
+  async j() {
+    const { context, page, errors } = await open();
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    const now = Date.now();
+    const day = 24 * 3600 * 1000;
+    const seed = examSeed(now);
+    const imago = (n) => ({ scene: `A scene ${n}.`, glyphs: ['⭐'], action: 'bob', source: 'learner' });
+    // An ordered list with no meanings, studied and recalled: asked by position.
+    const RANKS = ['Private', 'Corporal', 'Sergeant'];
+    const ranks = { id: 'deck-ranks', title: 'Three ranks', kind: 'list', layoutId: 'domus', createdAt: 8, surveyedAt: now - day, items: RANKS.map((term, k) => ({ id: `r-${k + 1}`, term, locusId: `domus-0${k + 1}`, imago: imago(k + 1) })) };
+    const rankCards = RANKS.map((_, k) => [`r-${k + 1}`, { itemId: `r-${k + 1}`, deckId: ranks.id, box: 2, dueAt: now + day, lastReviewedAt: now - 3600_000, reps: 1, lapses: 0, survey: 'unknown', surveyGiven: '', studiedAt: now - day }]);
+    // Images placed by an older build, never surveyed and never recalled: it still needs its survey.
+    const old = { id: 'deck-old', title: 'An unsurveyed palace', kind: 'list', layoutId: 'domus', createdAt: 7, items: [1, 2, 3].map((n) => ({ id: `o-${n}`, term: `Old ${n}`, meaning: `Old meaning ${n}`, locusId: `domus-0${n}`, imago: imago(n) })) };
+    const oldCards = [1, 2, 3].map((n) => [`o-${n}`, { itemId: `o-${n}`, deckId: old.id, box: 0, dueAt: 0, reps: 0, lapses: 0, studiedAt: now - day }]);
+    // Surveyed, and nothing studied yet.
+    const bare = { id: 'deck-bare', title: 'A surveyed palace', kind: 'list', layoutId: 'domus', createdAt: 6, surveyedAt: now - day, items: [1, 2, 3].map((n) => ({ id: `b-${n}`, term: `Bare ${n}`, meaning: `Bare meaning ${n}`, locusId: `domus-0${n}`, imago: imago(n) })) };
+    const bareCards = [1, 2, 3].map((n) => [`b-${n}`, { itemId: `b-${n}`, deckId: bare.id, box: 0, dueAt: 0, reps: 0, lapses: 0, survey: 'unknown', surveyGiven: '' }]);
+    const surveyOf = (deck, prefix) => ({ id: `walk-${deck.id}`, deckId: deck.id, kind: 'survey', at: now - day, total: 3, correct: 0, unknown: 3, ms: 4000, items: [1, 2, 3].map((n) => ({ itemId: `${prefix}-${n}`, correct: false, unknown: true })) });
+    await seedState(page, {
+      decks: { [EXAM_DECK]: seed.deck, [ranks.id]: ranks, [old.id]: old, [bare.id]: bare },
+      cards: { ...seed.cards, ...Object.fromEntries([...rankCards, ...oldCards, ...bareCards]) },
+      records: [...seed.records, surveyOf(ranks, 'r'), surveyOf(old, 'o'), surveyOf(bare, 'b')],
+      settings: { familiarized: { domus: true }, reducedMotion: true, recallInput: 'typed' },
+    });
+    const before = await storedReview(page);
+    const openExam = async (title) => {
+      await page.getByRole('button', { name: `Exam on ${title}`, exact: true }).click();
+      await page.getByTestId('exam-setup').waitFor();
+    };
+
+    // Who is offered an exam: the two studied palaces, on Reviews and in Progress. Not the palace that still
+    // needs its survey, not the one in which nothing has been studied, not one that was never opened.
+    await page.getByTestId('title-progress').click();
+    await page.getByTestId('progress').waitFor();
+    const offered = await page.getByTestId('progress-palace').evaluateAll((els) => els.map((el) => `${el.querySelector('h2').textContent}:${el.querySelector('[data-testid=progress-exam]') ? 'exam' : 'none'}`));
+    assert([...offered].sort().join(' | ') === 'A surveyed palace:none | An unsurveyed palace:none | Five minerals:exam | Three ranks:exam', `Progress offers exams on: ${offered}`);
+    await page.getByTestId('progress-back').click();
+    await page.getByTestId('title-review').click();
+    await page.getByTestId('review').waitFor();
+    const labels = await page.getByTestId('review-exam').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
+    assert([...labels].sort().join(' | ') === 'Exam on Five minerals | Exam on Three ranks', `Reviews offers exams on: ${labels}`);
+
+    // 1. Typed, meaning to term: the setup follows the recall setting; terms are graded as on the recall walk.
+    await openExam(EXAM_TITLE);
+    assert(await page.getByTestId('exam-input-typed').isChecked(), 'the answer mode does not follow the recall setting (typed)');
+    assert((await page.getByTestId('exam-self-marked-note').count()) === 0, 'typed terms are announced as self-marked');
+    await page.getByTestId('exam-start').click();
+    const asked = [];
+    for (let i = 1; i <= 5; i++) {
+      const q = await examQuestion(page, i, 5);
+      asked.push(q.n);
+      await assertPalaceHidden(page, `typed exam, question ${i}`);
+      assert((await focusedId(page)) === 'exam-input', `typed exam, question ${i}: the focus is on "${await focusedId(page)}"`);
+      assert((await page.getByTestId('exam-input').inputValue()) === '', `typed exam, question ${i}: the field is not empty`);
+      // Quartz with a typo (forgiven), Feldspar wrong, Mica "I don't know" by the question mark, Olivine with an article, Pyrite right.
+      const typed = { 1: 'Quarts', 2: 'Granite', 4: 'the olivine', 5: 'Pyrite' }[q.n];
+      if (typed === undefined) {
+        await page.keyboard.press('?');
+        await page.locator('[data-testid=exam-unknown][aria-pressed=true]').waitFor();
+        assert((await page.getByTestId('exam-input').inputValue()) === '', 'the question mark was typed into the field');
+        await page.getByTestId(i === 5 ? 'exam-handin' : 'exam-next').click();
+      } else {
+        await page.keyboard.type(typed);
+        if (i === 1) await shot(page, 'exam-question-typed');
+        await page.keyboard.press('Enter');
+      }
+    }
+    assert(asked.join('') !== '12345', 'the typed questions came in route order');
+    // Enter on the last question asks "Hand in?" and never hands in by itself.
+    await page.getByTestId('exam-handin-ask').waitFor();
+    assert((await examRecords(page)).length === 0, 'the typed exam was recorded before it was handed in');
+    // Back to the first question: what was typed is still in the field and can be changed.
+    await page.getByTestId('exam-handin-no').click();
+    for (let i = 5; i > 1; i--) await page.getByTestId('exam-back').click();
+    await examQuestion(page, 1, 5);
+    const first = asked[0];
+    const firstTyped = { 1: 'Quarts', 2: 'Granite', 3: '', 4: 'the olivine', 5: 'Pyrite' }[first];
+    assert((await page.getByTestId('exam-input').inputValue()) === firstTyped, `going back shows "${await page.getByTestId('exam-input').inputValue()}", not "${firstTyped}"`);
+    if (first === 2) await page.getByTestId('exam-input').fill('Feldspar');
+    await page.getByTestId('exam-handin-early').click();
+    await page.getByTestId('exam-handin-yes').click();
+    await page.getByTestId('exam-results').waitFor();
+    assert((await page.getByTestId('exam-marking').count()) === 0 && (await page.getByTestId('exam-self-marked').count()) === 0, 'typed terms were sent for self-marking');
+    // Feldspar is right only if its question came first and was changed.
+    const want = first === 2 ? 4 : 3;
+    assert((await text(page.getByTestId('exam-score'))) === `${want} of 5`, `typed exam score: ${await text(page.getByTestId('exam-score'))}, expected ${want}`);
+    assert((await text(page.getByTestId('exam-time'))).endsWith('Meaning to term, typed.'), `typed exam: ${await text(page.getByTestId('exam-time'))}`);
+    let exams = await examRecords(page);
+    assert(exams.length === 1 && exams[0].correct === want && exams[0].unknown === 1 && exams[0].exam?.selfMarked === undefined, `the typed exam's record: ${JSON.stringify(exams)}`);
+    assert((await storedReview(page)) === before, 'the typed exam changed the stored review cards');
+    await page.getByTestId('exam-reviews').click();
+    await page.getByTestId('review').waitFor();
+    assert((await page.getByTestId('exam').count()) === 0, '"Back to reviews" left the sheet up');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'review-heading');
+
+    // 2. Leaving midway asks first and records nothing: Escape, then the browser's Back button.
+    await openExam(EXAM_TITLE);
+    await page.keyboard.press('Escape');
+    await page.getByTestId('review').waitFor();
+    assert((await page.getByTestId('exam').count()) === 0, 'Escape on the setup did not close it');
+    await page.waitForFunction((label) => document.activeElement?.getAttribute('aria-label') === label, `Exam on ${EXAM_TITLE}`);
+    await openExam(EXAM_TITLE);
+    await page.getByTestId('exam-start').click();
+    await examQuestion(page, 1, 5);
+    await page.keyboard.type('Mica');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('exam-leave-confirm').waitFor();
+    assert((await focusedId(page)) === 'exam-leave-stay', `"Leave this exam?" puts the focus on "${await focusedId(page)}"`);
+    await shot(page, 'exam-leave');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('exam-leave-confirm').waitFor({ state: 'detached' });
+    assert((await page.getByTestId('exam-input').inputValue()) === 'Mica', 'cancelling "Leave?" lost the answer');
+    await page.evaluate(() => history.back());
+    await page.getByTestId('exam-leave-confirm').waitFor();
+    assert((await page.getByTestId('exam-paper').count()) === 1, 'the Back button left the exam without asking');
+    await page.getByTestId('exam-leave-yes').click();
+    await page.getByTestId('review').waitFor();
+    assert((await page.getByTestId('exam').count()) === 0, 'leaving did not close the exam');
+    assert((await examRecords(page)).length === 1 && (await storedReview(page)) === before, 'an exam that was left wrote something');
+
+    // 3. Typed, term to meaning: no grader can judge a typed meaning, so the learner marks each one.
+    await openExam(EXAM_TITLE);
+    await page.getByTestId('exam-direction-term-meaning').check();
+    assert((await text(page.getByTestId('exam-self-marked-note'))).includes('mark it yourself'), 'the setup does not say that typed meanings are self-marked');
+    await shot(page, 'exam-setup-self-marked');
+    await page.getByTestId('exam-start').click();
+    for (let i = 1; i <= 5; i++) {
+      const q = await examQuestion(page, i, 5);
+      assert(EXAM_TERMS.includes(q.cue) && q.prompt === 'What does this mean?', `typed meanings, question ${i}: "${q.cue}"`);
+      await assertPalaceHidden(page, `typed meanings, question ${i}`);
+      if (q.n === 3) await page.getByTestId('exam-unknown').click();
+      else await page.getByTestId('exam-input').fill(`my words for ${q.cue}`);
+      await page.getByTestId(i === 5 ? 'exam-handin' : 'exam-next').click();
+    }
+    await page.getByTestId('exam-handin-yes').click();
+    await page.getByTestId('exam-marking').waitFor();
+    assert((await examRecords(page)).length === 1, 'a self-marked exam was recorded before it was marked');
+    assert((await text(page.getByTestId('exam-marking'))).includes('This exam is self-marked'), 'the marking screen does not say that the exam is self-marked');
+    const markRows = await page.getByTestId('exam-mark-row').evaluateAll((els) => els.map((el) => el.textContent));
+    assert(markRows.length === 4 && markRows.every((t) => !t.includes('Mica')), `rows to mark: ${markRows}`);
+    assert(markRows.every((t) => EXAM_TERMS.some((term, k) => t.includes(`You wrote my words for ${term}`) && t.includes(`The meaning ${EXAM_MEANINGS[k]}`))), `a row does not show the answer beside the right one: ${markRows}`);
+    assert(await page.getByTestId('exam-marking-done').isDisabled(), 'the results are open before every answer is marked');
+    assert((await text(page.getByTestId('exam-marks-left'))) === '4 answers left to mark.', `marks left: ${await text(page.getByTestId('exam-marks-left'))}`);
+    assert((await page.locator('[data-testid=exam-marking] [aria-pressed=true]').count()) === 0, 'a mark is chosen before the learner chose one');
+    // Quartz and Feldspar right, the other two missed (the row's own term says which is which).
+    for (let k = 0; k < 4; k++) {
+      const row = page.getByTestId('exam-mark-row').nth(k);
+      const had = (await row.textContent()).includes('Quartz') || (await row.textContent()).includes('Feldspar');
+      await row.getByTestId(had ? 'exam-mark-right' : 'exam-mark-wrong').click();
+    }
+    assert((await text(page.getByTestId('exam-marks-left'))) === 'Every answer is marked.', `marks left: ${await text(page.getByTestId('exam-marks-left'))}`);
+    assert((await smallText(page, 'exam')).length === 0, `exam marking: text below 16 px: ${await smallText(page, 'exam')}`);
+    await shot(page, 'exam-marking');
+    await page.getByTestId('exam-marking-done').click();
+    await page.getByTestId('exam-results').waitFor();
+    assert((await text(page.getByTestId('exam-score'))) === '2 of 5', `self-marked score: ${await text(page.getByTestId('exam-score'))}`);
+    assert((await text(page.getByTestId('exam-self-marked'))) === 'Self-marked: the typed meanings were judged by you.', 'the results do not say that the exam was self-marked');
+    assert((await text(page.getByTestId('exam-walk-back'))) === 'Walk back to the 3 places you missed', `self-marked walk back: ${await text(page.getByTestId('exam-walk-back'))}`);
+    exams = await examRecords(page);
+    assert(exams.length === 2 && exams[1].exam?.direction === 'term-meaning' && exams[1].exam?.selfMarked === true && exams[1].correct === 2 && exams[1].unknown === 1, `the self-marked record: ${JSON.stringify(exams[1])}`);
+    assert((await storedReview(page)) === before, 'self-marks reached the review cards');
+    assert((await page.evaluate((id) => window.__memoriaApp.viewOf(id).integrity.slice(0, 5).join(' '), EXAM_DECK)) === '1 1 1 1 1', 'self-marks changed the state of a place');
+    await shot(page, 'exam-results-self-marked');
+    await page.getByTestId('exam-reviews').click();
+    await page.getByTestId('review').waitFor();
+
+    // 4. A list with no meanings has no direction: each item is asked for by its position, in shuffled order.
+    await openExam('Three ranks');
+    assert((await page.getByTestId('exam-direction').count()) === 0 && (await text(page.getByTestId('exam-by-position'))).includes('no direction to choose'), 'a list without meanings offers a direction');
+    await page.getByTestId('exam-input-choice').check();
+    await page.getByTestId('exam-start').click();
+    const positions = [];
+    for (let i = 1; i <= 3; i++) {
+      await page.locator(`[data-testid=exam-count]:has-text("Question ${i} of 3")`).waitFor();
+      const prompt = await text(page.getByTestId('exam-question'));
+      const nth = ['1st', '2nd', '3rd'].findIndex((o) => prompt === `Which comes ${o} in Three ranks?`);
+      assert(nth >= 0 && (await page.getByTestId('exam-cue').count()) === 0, `position question ${i}: "${prompt}"`);
+      positions.push(nth + 1);
+      await assertPalaceHidden(page, `position question ${i}`);
+      const options = await choiceTexts(page, 'exam-choice');
+      assert([...options].sort().join() === [...RANKS].sort().join(), `position question ${i}: options ${options}`);
+      // The 2nd is missed.
+      await page.getByTestId('exam-choice').nth(nth === 1 ? options.indexOf('Private') : options.indexOf(RANKS[nth])).click();
+      if (i === 1) await shot(page, 'exam-question-position');
+      await page.getByTestId(i === 3 ? 'exam-handin' : 'exam-next').click();
+    }
+    assert(positions.join('') !== '123', 'the position questions came in route order');
+    await page.getByTestId('exam-handin-yes').click();
+    await page.getByTestId('exam-results').waitFor();
+    assert((await text(page.getByTestId('exam-score'))) === '2 of 3' && (await text(page.getByTestId('exam-time'))).endsWith('By position, multiple choice.'), `position exam: ${await text(page.getByTestId('exam-score'))}, ${await text(page.getByTestId('exam-time'))}`);
+    const missedRow = page.locator('[data-testid=exam-row][data-state=wrong]');
+    assert((await text(missedRow.getByTestId('exam-row-asked'))) === '2nd in Three ranks' && (await text(missedRow.getByTestId('exam-row-right'))) === 'Right answer Corporal', `the missed position: ${await text(missedRow)}`);
+    assert((await text(missedRow.getByTestId('exam-row-place'))) === `It lives at ${placeName['domus-02']}, in ${roomOf['domus-02']}.`, `the missed position's place: ${await text(missedRow.getByTestId('exam-row-place'))}`);
+    assert((await text(page.getByTestId('exam-walk-back'))) === 'Walk back to the place you missed', `one miss: ${await text(page.getByTestId('exam-walk-back'))}`);
+    exams = await examRecords(page);
+    assert(exams.length === 3 && exams[2].deckId === 'deck-ranks' && exams[2].exam?.direction === 'position' && exams[2].correct === 2, `the position exam's record: ${JSON.stringify(exams[2])}`);
+    assert((await storedReview(page)) === before, 'the position exam changed the stored review cards');
+    await page.getByTestId('exam-reviews').click();
+    await page.getByTestId('review').waitFor();
+
+    // 5. A reload in the middle of an exam: back on Reviews, told so once, with nothing recorded.
+    await openExam(EXAM_TITLE);
+    await page.getByTestId('exam-start').click();
+    await examQuestion(page, 1, 5);
+    await page.keyboard.type('Quartz');
+    await page.keyboard.press('Enter');
+    await examQuestion(page, 2, 5);
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('review').waitFor();
+    assert((await page.getByTestId('exam').count()) === 0, 'an exam came back after a reload');
+    assert((await text(page.getByTestId('exam-cut-short'))) === 'The page was reloaded in the middle of an exam. Nothing from it was recorded.', 'the reload is not explained');
+    assert((await examRecords(page)).length === 3 && (await storedReview(page)) === before, 'a reload in the middle of an exam recorded something');
+    await shot(page, 'exam-cut-short');
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert((await page.getByTestId('review').count()) === 0, 'a second reload still returns to Reviews');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `typed terms graded (${want} of 5, asked ${asked.join('')}); typed meanings self-marked 2 of 5, cards untouched; a bare list asked by position (${positions.join('')}), 2 of 3; Escape and Back ask before leaving, nothing recorded; a reload mid-exam returns to Reviews; no exam for an unsurveyed or unstudied palace`;
   },
 
   async g() {

@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { canExam, forgetCutShort, startExam, useExam } from '@/flows/exam';
+import { canExam, startExam, useExam } from '@/flows/exam';
 import { leave, startRecall } from '@/flows/flow';
 import { formatWhen, plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
@@ -19,9 +18,8 @@ export function Review() {
   const queue = reviewQueue(decks, cards, now);
   const anyDue = queue.some((r) => r.progress.due > 0);
   const anyExam = queue.some((r) => canExam(r.deck, cards));
-  // A reload ended an exam in progress: said once, here, and forgotten when this screen is left.
+  // A reload ended an exam in progress: said once, here, and forgotten when this screen is left (src/flows/exam.ts).
   const cutShort = useExam((s) => s.cutShort);
-  useEffect(() => forgetCutShort, []);
 
   return (
     <section className="screen" data-testid="review">
