@@ -1,8 +1,9 @@
 import { useCallback } from 'react';
-import { type BufferGeometry, CylinderGeometry, DodecahedronGeometry, ExtrudeGeometry, RingGeometry, Shape, SphereGeometry, Vector2 } from 'three';
-import { type Parts, Welded, at, box, shell } from '@/layouts/kits/build';
+import { type BufferGeometry, CylinderGeometry, ExtrudeGeometry, RingGeometry, Shape, SphereGeometry, Vector2 } from 'three';
+import { type Parts, Welded, archedWall, at, box, shell } from '@/layouts/kits/build';
 import type { KitRoomProps, RoomPlan } from '@/layouts/kits/types';
 import { limb, ribbonGeometry } from '@/layouts/props/parts';
+import { rockGeometry, scatter } from './rocks';
 
 /**
  * One court of the Zen garden: open sky, a low plastered wall with a tile coping down each
@@ -46,6 +47,8 @@ const T = 0.3;
 const SETBACK = 0.25;
 /** Top of the plaster of the side walls: above eye height, below the crowns of the trees beyond. */
 const WALL = 2.1;
+/** And of the wall along the front of the garden, which stops short of the name tablet. */
+const FRONT_WALL = 1.9;
 /**
  * Top of the hedges across the route, the same for every court: one court is seen from
  * another only through the gates (the generator relies on it, see KitDef.Room).
@@ -63,8 +66,6 @@ export const ZEN_SIGN_HEIGHT = 2.77;
 /** The gate's roof in section, eaves to ridge to eaves: it rises more steeply towards the ridge. */
 const ROOF: [number, number][] = [[-1.2, 3.38], [-0.8, 3.52], [-0.4, 3.72], [0, 3.98], [0.4, 3.72], [0.8, 3.52], [1.2, 3.38]];
 const ROOF_HALF = 1.95;
-/** The board that closes each end of the roof, just under its tiles. */
-const GABLE: [number, number][] = [[-0.8, 3.28], [0.8, 3.28], [0.8, 3.49], [0.4, 3.69], [0, 3.95], [-0.4, 3.69], [-0.8, 3.49]];
 /** Gravel before the front gate: the walk begins 8 m out. The front hedge is this wide either side, so nothing shows past its ends. */
 const FORECOURT = 10;
 const FRONT_REACH = 13;
@@ -78,9 +79,6 @@ const list = (): BufferGeometry[] => [];
 const lists = () => ({ floor: list(), foliage: list(), stone: list(), wall: list(), ceiling: list(), wood: list(), trim: list(), metal: list() }) satisfies Parts;
 type Court = ReturnType<typeof lists>;
 
-/** A fixed scatter in 0..1: the same stones in the same places on every visit. */
-const scatter = (i: number, k: number) => Math.abs(Math.sin(i * 12.9898 + k * 78.233) * 43758.5453) % 1;
-
 /** An outline in XY extruded `length` along +z. */
 function prism(points: [number, number][], length: number): BufferGeometry {
   return new ExtrudeGeometry(new Shape(points.map(([x, y]) => new Vector2(x, y))), { depth: length, bevelEnabled: false });
@@ -92,7 +90,7 @@ const alongX = (g: BufferGeometry, x0: number, z: number) => at(g, [x0, 0, z], [
 /** A tile coping in section: a little roof `half` wide either side of the wall's middle, standing on y. */
 const coping = (half: number, y: number): [number, number][] => [[-half, y], [half, y], [half, y + 0.06], [0.05, y + 0.34], [-0.05, y + 0.34], [-half, y + 0.06]];
 
-const rock = (p: [number, number, number], s: [number, number, number], turn: number) => at(new DodecahedronGeometry(1, 0), p, [0.2, turn, 0.1], s);
+const rock = (p: [number, number, number], s: [number, number, number], turn: number) => at(rockGeometry(Math.round(turn * 10)), p, [0.2, turn, 0.1], s);
 const mound = (p: [number, number, number], s: [number, number, number]) => at(new SphereGeometry(1, 16, 8), p, [0, 0, 0], s);
 
 /**
@@ -108,8 +106,7 @@ function crossing(parts: Court, plan: RoomPlan, z0: number, shut: boolean, reach
   const thick = P - 2 * HEDGE_BACK;
   const shoulder = HEDGE - 0.25;
 
-  for (const s of [-1, 1]) parts.foliage.push(box(reach - jamb, shoulder, thick, [(s * (reach + jamb)) / 2, shoulder / 2, zc]));
-  parts.foliage.push(box(2 * jamb, shoulder - HEAD - 0.14, thick, [0, (shoulder + HEAD + 0.14) / 2, zc]));
+  parts.foliage.push(at(archedWall(-reach, reach, shoulder, thick, [{ x0: -jamb, x1: jamb, spring: HEAD + 0.14, point: 0 }]), [0, 0, zc - thick / 2]));
   // Clipped to a chamfer along the top.
   parts.foliage.push(alongX(prism([[-thick / 2, shoulder], [thick / 2, shoulder], [thick / 2 - 0.13, HEDGE], [-thick / 2 + 0.13, HEDGE]], 2 * reach), -reach, zc));
 
@@ -117,8 +114,9 @@ function crossing(parts: Court, plan: RoomPlan, z0: number, shut: boolean, reach
   parts.wood.push(box(2 * D, 0.22, P + 0.04, [0, LINTEL + 0.11, zc]));
   parts.wall.push(box(2 * D, HEAD - LINTEL - 0.22, P, [0, (HEAD + LINTEL + 0.22) / 2, zc]));
   parts.wood.push(box(2 * jamb + 0.3, 0.14, P + 0.2, [0, HEAD + 0.07, zc]));
-  parts.ceiling.push(alongX(shell(ROOF, 0.1, 2 * ROOF_HALF), -ROOF_HALF, zc));
-  for (const s of [-1, 1]) parts.wood.push(alongX(prism(GABLE, 0.08), s * (jamb + 0.34) - 0.04, zc));
+  parts.ceiling.push(alongX(shell(ROOF, 0.12, 2 * ROOF_HALF), -ROOF_HALF, zc));
+  // The arms that carry the eaves: one over each post, lying on the head beam.
+  for (const s of [-1, 1]) parts.wood.push(box(0.14, 0.1, 1.4, [s * (D + POST / 2), HEAD + 0.19, zc]));
   parts.stone.push(box(2 * D, 0.05, P + 0.3, [0, 0.02, zc]));
 
   if (shut) {
@@ -159,20 +157,29 @@ function buildCourt({ index, plan, plots, open }: KitRoomProps): Parts {
   const across = (i: number, inset: number): [number, number] => [-Math.sign(plots[i].wall[0]) * (W - inset), plots[i].wall[1]];
 
   (v.ground === 'moss' ? parts.foliage : parts.floor).push(box(2 * outer, 0.2, span, [0, -0.1, mid]));
+  // The side walls run into the hedges at both ends.
+  const run = (first ? P / 2 : 0) - zEnd;
   for (const s of [-1, 1]) {
     const x = s * (inner + T / 2);
-    parts.wall.push(box(T, WALL, span, [x, WALL / 2, mid]));
-    parts.ceiling.push(at(prism(coping(T / 2 + 0.22, WALL - 0.02), span), [x, 0, zEnd]));
+    parts.wall.push(box(T, WALL, run, [x, WALL / 2, zEnd + run / 2]));
+    parts.ceiling.push(at(prism(coping(T / 2 + 0.22, WALL - 0.02), run), [x, 0, zEnd]));
   }
   crossing(parts, plan, -L, !open, outer);
   if (first) {
     parts.floor.push(box(2 * FRONT_REACH, 0.2, FORECOURT, [0, -0.1, P + FORECOURT / 2]));
     crossing(parts, plan, P, false, FRONT_REACH);
+    // Seen from outside, the garden wall stands before its hedge: lower than the name over the gate.
+    const reach = FRONT_REACH - plan.door.halfWidth - POST;
+    for (const s of [-1, 1]) {
+      const x = s * (FRONT_REACH - reach / 2);
+      parts.wall.push(box(reach, FRONT_WALL, 0.26, [x, FRONT_WALL / 2, P + 0.09]));
+      parts.ceiling.push(alongX(prism(coping(0.3, FRONT_WALL - 0.02), reach), x - reach / 2, P + 0.09));
+    }
     stepping(parts, P + 9.4, P + 0.9);
     // Clipped shrubs either side of the gate.
     for (const s of [-1, 1]) {
-      parts.foliage.push(mound([s * 3.1, 0, P + 1.0], [1.0, 0.62, 0.72]));
-      parts.foliage.push(mound([s * 4.5, 0, P + 1.25], [0.7, 0.44, 0.6]));
+      parts.foliage.push(mound([s * 3.1, 0, P + 1.2], [1.0, 0.62, 0.72]));
+      parts.foliage.push(mound([s * 4.5, 0, P + 1.4], [0.7, 0.44, 0.6]));
     }
   }
 
@@ -229,25 +236,32 @@ function buildCourt({ index, plan, plots, open }: KitRoomProps): Parts {
     parts.foliage.push(mound([f * 2.9, 0, -7.35], [0.7, 0.1, 0.4]));
   }
 
-  // Beyond the side walls: what looks over them, behind the stretches of wall no place stands by.
-  if (v.beyond !== 'open') {
-    for (let i = 0; i < 4; i++) {
-      const [x, z] = across(i, -T - SETBACK - 1.7);
+  // Beyond the side walls: what looks over them, behind stretches of wall no place stands by.
+  if (v.beyond === 'trees') {
+    // Two clipped trees, one behind each wall, at opposite ends of the court.
+    for (const i of [0, 3]) {
+      const [x, z] = across(i, -T - SETBACK - 1.5);
       const s = Math.sign(x);
-      if (v.beyond === 'trees') {
-        parts.foliage.push(mound([x, 3.3, z], [1.7, 1.5 + 0.3 * scatter(i, 5), 1.5]));
-        parts.foliage.push(mound([x + s * 0.9, 4.2, z + 0.9 - 1.8 * (i % 2)], [1.1, 0.9, 1.1]));
-      } else {
-        // A clump of bamboo: culms leaning out of the clump, each with a spray of leaves at its head.
-        for (let c = 0; c < 5; c++) {
-          const dz = (c - 2) * 0.5 + 0.2 * scatter(i * 7 + c, 6);
-          const dx = 0.5 * scatter(i * 7 + c, 7) - 0.9;
-          const h = 5.4 + 1.5 * scatter(i * 7 + c, 8);
-          const lean = (c - 2) * 0.28;
-          const culm = limb([x + s * dx, 0, z + dz], [x + s * (dx - 0.35), h, z + dz + lean], 0.045);
-          parts.foliage.push(at(new CylinderGeometry(1, 1, 1, 6), culm.p, culm.r, culm.s));
-          parts.foliage.push(at(new SphereGeometry(1, 10, 6), [x + s * (dx - 0.4), h - 0.35, z + dz + lean * 1.1], [0, 0, s * 0.5], [0.75, 0.28, 0.5]));
-        }
+      parts.foliage.push(mound([x, 2.9, z], [1.3, 1.05, 1.25]));
+      parts.foliage.push(mound([x + s * 0.7, 3.45, z + (i ? 0.8 : -0.8)], [0.85, 0.7, 0.85]));
+    }
+  } else if (v.beyond === 'bamboo') {
+    // A clump of bamboo across from every side place: slim culms, each ending in a plume of leaves that nods outwards.
+    for (let i = 0; i < 4; i++) {
+      const [x, z] = across(i, -T - SETBACK - 0.9);
+      const s = Math.sign(x);
+      for (let c = 0; c < 7; c++) {
+        const k = i * 7 + c;
+        const foot: [number, number, number] = [x + s * 0.5 * scatter(k, 7), 0, z + (c - 3) * 0.34 + 0.12 * scatter(k, 6)];
+        const h = 3.7 + 0.9 * scatter(k, 8);
+        const nod = (c - 3) * 0.16;
+        const head: [number, number, number] = [foot[0] - s * 0.25, h, foot[2] + nod];
+        const culm = limb(foot, head, 0.04);
+        parts.foliage.push(at(new CylinderGeometry(1, 1, 1, 6), culm.p, culm.r, culm.s));
+        const from: [number, number, number] = [head[0] + s * 0.03, h - 1.0, head[2] - nod * 0.4];
+        const to: [number, number, number] = [head[0] - s * 0.22, h + 0.45, head[2] + nod * 0.9];
+        const plume = limb(from, to, 0.2);
+        parts.foliage.push(at(new SphereGeometry(1, 8, 8), plume.p, plume.r, [0.2, Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]) / 2, 0.2]));
       }
     }
   }

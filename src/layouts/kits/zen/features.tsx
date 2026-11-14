@@ -1,8 +1,9 @@
-import { ConeGeometry, DodecahedronGeometry } from 'three';
+import { ConeGeometry } from 'three';
 import type { AccentKey } from '@/core/types';
 import type { FeatureDef } from '@/layouts/kits/types';
-import { type Placement, Repeated, UNIT_BALL, UNIT_BOX, UNIT_ROD, arc, lathe, limb, plate, tube, turned, useGeometry } from '@/layouts/props/parts';
+import { type Placement, Repeated, UNIT_BALL, UNIT_BOX, UNIT_ROD, arc, lathe, limb, plate, ribbonGeometry, tube, turned, useGeometry } from '@/layouts/props/parts';
 import { Surface } from '@/styles';
+import { rockGeometry, roughen } from './rocks';
 
 /**
  * The landmarks of the Zen garden. Each is built round the origin, standing on y = 0 and
@@ -18,11 +19,9 @@ type Vec = [number, number, number];
 const HEX_TURN = Math.PI / 6;
 const SQUARE_TURN = Math.PI / 4;
 
-/** A garden rock: faceted, never round. Scale it unevenly and turn it so no two look alike. */
-const ROCK = () => new DodecahedronGeometry(1, 0);
-
+/** A garden rock: faceted, never round. Scaled unevenly and turned, so that no two look alike. */
 function Rock({ p, s, turn = 0, accent }: { p: Vec; s: Vec; turn?: number; accent?: AccentKey }) {
-  const geometry = useGeometry(ROCK);
+  const geometry = useGeometry(() => rockGeometry(Math.round(turn * 10)));
   return (
     <mesh geometry={geometry} position={p} rotation={[0.2, turn, 0.1]} scale={s} castShadow receiveShadow>
       <Surface slot="stone" accent={accent} />
@@ -87,15 +86,15 @@ const BENCH_LEGS: Placement[] = [-1, 1].flatMap((sx) => [-1, 1].map((sz): Placem
 
 function PaperUmbrella({ accent }: Props) {
   // Folded paper between the ribs: flat facets.
-  const canopy = useGeometry(() => lathe([[0.7, -0.22], [0.04, 0.04], [0, 0.04]], 16, true));
+  const canopy = useGeometry(() => lathe([[0.7, -0.26], [0.04, 0.04], [0, 0.04]], 16, true));
   return (
     <group>
-      <mesh position={[-0.3, 1.1, -0.15]} castShadow>
-        <cylinderGeometry args={[0.028, 0.034, 2.2, 8]} />
+      <mesh position={[-0.3, 1.0, -0.15]} castShadow>
+        <cylinderGeometry args={[0.028, 0.034, 2.0, 8]} />
         <Surface slot="wood" />
       </mesh>
       {/* tipped a little towards whoever stands before it, so its top shows */}
-      <group position={[-0.3, 2.2, -0.15]} rotation={[0.2, 0, 0]}>
+      <group position={[-0.3, 2.0, -0.15]} rotation={[0.24, 0, 0]}>
         <mesh geometry={canopy} castShadow>
           <Surface slot="cloth" accent={accent} doubleSided />
         </mesh>
@@ -141,11 +140,11 @@ function CloudPine({ accent }: Props) {
         <Surface slot="wood" />
       </Repeated>
       {/* the clouds, crown first */}
-      <Pad p={[0.12, 2.84, 0]} s={[0.62, 0.2, 0.5]} accent={accent} />
-      <Pad p={[-0.56, 2.26, 0.1]} s={[0.48, 0.16, 0.42]} accent={accent} />
-      <Pad p={[0.6, 1.87, -0.05]} s={[0.48, 0.16, 0.44]} accent={accent} />
-      <Pad p={[-0.66, 1.37, 0.15]} s={[0.42, 0.15, 0.4]} accent={accent} />
-      <Pad p={[0.62, 1.03, 0.2]} s={[0.4, 0.13, 0.36]} accent={accent} />
+      <Pad p={[0.12, 2.8, 0]} s={[0.6, 0.25, 0.5]} accent={accent} />
+      <Pad p={[-0.56, 2.26, 0.1]} s={[0.48, 0.2, 0.42]} accent={accent} />
+      <Pad p={[0.6, 1.87, -0.05]} s={[0.48, 0.19, 0.44]} accent={accent} />
+      <Pad p={[-0.66, 1.37, 0.15]} s={[0.42, 0.18, 0.4]} accent={accent} />
+      <Pad p={[0.62, 1.03, 0.2]} s={[0.4, 0.16, 0.36]} accent={accent} />
       {/* the lowest branch rests on a crutch */}
       <mesh position={[0.7, 0.45, 0.2]} castShadow>
         <cylinderGeometry args={[0.03, 0.03, 0.9, 8]} />
@@ -240,8 +239,8 @@ function WisteriaTrellis({ accent }: Props) {
 // ───────────────────────── 6. The Standing Rocks ─────────────────────────
 
 function StandingRocks({ accent }: Props) {
-  const tall = useGeometry(() => lathe([[0.3, 0], [0.34, 0.5], [0.27, 1.15], [0.13, 1.58], [0, 1.64]], 5, true));
-  const attendant = useGeometry(() => lathe([[0.26, 0], [0.28, 0.3], [0.2, 0.68], [0.07, 0.84], [0, 0.86]], 5, true));
+  const tall = useGeometry(() => roughen(lathe([[0.3, 0], [0.34, 0.5], [0.27, 1.15], [0.13, 1.58], [0, 1.64]], 5, true), 0.2, 1));
+  const attendant = useGeometry(() => roughen(lathe([[0.26, 0], [0.28, 0.3], [0.2, 0.68], [0.07, 0.84], [0, 0.86]], 5, true), 0.2, 2));
   return (
     <group>
       <Pad p={[0, 0, 0.02]} s={[1.0, 0.12, 0.62]} />
@@ -278,11 +277,12 @@ const KNOB = () => turned([[0, 0], [0.06, 0.02], [0.075, 0.08], [0.04, 0.14], [0
 function ArchedBridge({ accent }: Props) {
   const deck = useGeometry(() => plate(BRIDGE_DECK, 0.8));
   const rail = useGeometry(() => plate(BRIDGE_RAIL, 0.04));
+  // Drawn in plan (x, -z), then laid flat.
+  const bed = useGeometry(() => ribbonGeometry([[0.2, -0.68], [-0.06, -0.3], [0.1, 0.08], [-0.12, 0.42], [0.04, 0.68]], 0.62, 0.02));
   return (
     <group>
       {/* the dry stream it crosses: a bed of pebbles running out towards the viewer */}
-      <mesh position={[0, 0.01, 0]} receiveShadow>
-        <boxGeometry args={[0.9, 0.02, 1.36]} />
+      <mesh geometry={bed} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <Surface slot="stone" />
       </mesh>
       <mesh geometry={deck} castShadow receiveShadow>
@@ -315,7 +315,7 @@ const KOI: [number, number, number][] = [[0.34, 0.1, 1.9], [0.0, 0.3, 3.3], [0.3
 
 function KoiPond({ accent }: Props) {
   const bank = useGeometry(() => lathe([[0.74, 0.0], [0.96, 0.0], [0.93, 0.09], [0.8, 0.1], [0.74, 0.03]], 11, true));
-  const stone = useGeometry(() => lathe([[0.2, 0], [0.22, 0.24], [0.14, 0.52], [0, 0.6]], 5, true));
+  const stone = useGeometry(() => roughen(lathe([[0.2, 0], [0.22, 0.24], [0.14, 0.52], [0, 0.6]], 5, true), 0.2, 3));
   const koi = useGeometry(() => plate(KOI_OUTLINE, 0.04, 0.01));
   return (
     <group>
@@ -438,7 +438,7 @@ function StonePagoda({ accent }: Props) {
  */
 export const ZEN_FEATURES: FeatureDef[] = [
   { id: 'stone-lantern', name: 'Stone Lantern', hint: 'A tall stone lantern: a six-sided light box under a wide cap, on a slim shaft.', mount: 'floor', footprint: 0.6, height: 2.05, Component: StoneLantern },
-  { id: 'paper-umbrella', name: 'Paper Umbrella', hint: 'A big paper umbrella on a pole, tipped over a low bench.', mount: 'floor', footprint: 1.0, height: 2.35, Component: PaperUmbrella },
+  { id: 'paper-umbrella', name: 'Paper Umbrella', hint: 'A big paper umbrella on a pole, tipped over a low bench.', mount: 'floor', footprint: 1.0, height: 2.15, Component: PaperUmbrella },
   { id: 'cloud-pine', name: 'Cloud Pine', hint: 'A leaning pine pruned into flat clouds of needles, its lowest branch propped on a crutch.', mount: 'floor', footprint: 1.1, height: 3.05, Component: CloudPine },
   { id: 'water-basin', name: 'Water Basin', hint: 'A low stone basin fed by a bamboo spout, a ladle laid across its rim.', mount: 'floor', footprint: 0.9, height: 1.0, Component: WaterBasin },
   { id: 'wisteria-trellis', name: 'Wisteria Trellis', hint: 'A timber trellis on four posts, long flower clusters hanging down from it.', mount: 'floor', footprint: 1.2, height: 2.6, Component: WisteriaTrellis },
@@ -446,5 +446,5 @@ export const ZEN_FEATURES: FeatureDef[] = [
   { id: 'arched-bridge', name: 'Arched Bridge', hint: 'A little arched footbridge with handrails, over a dry stream of pebbles.', mount: 'floor', footprint: 1.15, height: 1.1, Component: ArchedBridge },
   { id: 'koi-pond', name: 'Koi Pond', hint: 'A small pond rimmed with stone, three carp circling a rock.', mount: 'floor', footprint: 1.0, height: 0.65, Component: KoiPond },
   { id: 'bonsai', name: 'Bonsai', hint: 'A tiny windswept tree in a glazed pot, on a tall slender stand.', mount: 'floor', footprint: 0.45, height: 1.78, Component: Bonsai },
-  { id: 'stone-pagoda', name: 'Stone Pagoda', hint: 'A five-storey stone tower, a roof over every storey and a ringed spire on top.', mount: 'floor', footprint: 0.75, height: 3.1, Component: StonePagoda },
+  { id: 'stone-pagoda', name: 'Stone Pagoda', hint: 'A five-storey stone tower, a roof over every storey and a ringed spire on top.', mount: 'floor', footprint: 0.9, height: 3.1, Component: StonePagoda },
 ];
