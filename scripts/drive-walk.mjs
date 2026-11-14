@@ -234,7 +234,7 @@ try {
     const c = window.__memoria.camera;
     return { y: c.view && c.view.enabled ? c.view.offsetY : 0, zoom: c.zoom };
   });
-  check(Math.abs(sheet.y - frame.height / 4) < 2 && sheet.zoom < 0.7 && sheet.zoom > 0.6, 'bottom inset of half the frame -> principal point lifted a quarter, lens widened', `offsetY ${sheet.y.toFixed(1)}, zoom ${sheet.zoom.toFixed(3)}`);
+  check(Math.abs(sheet.y - frame.height / 4) < 2 && sheet.zoom < 0.65 && sheet.zoom > 0.5, 'bottom inset of half the frame -> principal point lifted a quarter, lens widened', `offsetY ${sheet.y.toFixed(1)}, zoom ${sheet.zoom.toFixed(3)}`);
   if (shotsDir) await page.screenshot({ path: path.join(shotsDir, 'inset-bottom.png') });
   await session((s) => s.setInsetBottom(0));
   await page.waitForTimeout(1500);

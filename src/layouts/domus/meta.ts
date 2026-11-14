@@ -13,6 +13,12 @@ import type { PalaceLayoutMeta } from '@/core/types';
  * least that radius, and each view stands 4 to 6 m back so that feature and image both sit
  * inside the left 1060 px of a 1440 px frame (the walk panel is docked on the right).
  */
+/**
+ * Floor footprint of each feature (see PalaceLayout.footprint), in route order: lamp, bench,
+ * amphora, arch, the pool, sundial, statue, laurel urn, scroll shelf, lectern, armillary, window wall.
+ */
+export const DOMUS_FOOTPRINT = [0.3, 0.9, 0.45, 0.5, 1.8, 0.45, 0.5, 0.55, 0.95, 0.45, 0.4, 0.4];
+
 export const DOMUS_META: PalaceLayoutMeta = {
   id: 'domus',
   name: 'Domus',

@@ -48,10 +48,13 @@ const SHAKE_DELAY = 0.14;
 const SHAKE_SECONDS = 0.5;
 const SHAKE_METRES = 0.055;
 
-/** The ring starts inside the footprint of the feature and runs out well clear of the widest one (the pool). */
-const RING_FROM = 0.45;
-const RING_TO = 2.35;
-/** Half the side of the quad the ring is drawn on. */
+/**
+ * The ring starts at the edge of the feature's footprint (`layout.footprint`) and runs out
+ * this far beyond it: far enough to read as spreading, near enough to stay in the picture.
+ */
+const RING_REACH = 0.7;
+const DEFAULT_FOOTPRINT = 0.5;
+/** Half the side of the quad the ring is drawn on: room for the widest footprint (a pool). */
 const EXTENT = 2.7;
 /** Just proud of the floor. */
 const FLOOR_Y = 0.02;
@@ -72,6 +75,8 @@ const frag = /* glsl */ `
   uniform vec3 uPigment;
   uniform float uT;
   uniform float uSeed;
+  uniform float uFrom;
+  uniform float uTo;
   varying vec2 vUv;
   float hash21(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -91,13 +96,13 @@ const frag = /* glsl */ `
     float a = atan(p.y, p.x);
     float turn = fract((a + uSeed) / 6.2831853);
     float grow = 1.0 - pow(1.0 - uT, 3.0);
-    float R = mix(${RING_FROM.toFixed(2)}, ${RING_TO.toFixed(2)}, grow);
+    float R = mix(uFrom, uTo, grow);
     // One turn of a spiral, not a closed circle: where the stroke ends it misses its start.
-    R *= 1.0 + 0.05 * (turn - 0.5);
-    float rr = r - (sin(a * 2.0 + uSeed) * 0.03 + sin(a * 5.0 + uSeed * 2.3) * 0.012) * (0.4 + 0.6 * grow);
+    R += 0.07 * (turn - 0.5);
+    float rr = r - (sin(a * 2.0 + uSeed) * 0.022 + sin(a * 5.0 + uSeed * 2.3) * 0.009) * (0.4 + 0.6 * grow);
     float aa = fwidth(r) * 0.9;
 
-    float pen = 0.026 * (0.6 + 0.6 * (0.5 + 0.5 * sin(a * 2.0 + uSeed * 1.3))) * (1.0 - 0.45 * grow);
+    float pen = 0.019 * (0.6 + 0.6 * (0.5 + 0.5 * sin(a * 2.0 + uSeed * 1.3))) * (1.0 - 0.4 * grow);
     float line = 1.0 - smoothstep(pen - aa, pen + aa, abs(rr - R));
     // Dry brush: bristle streaks along the stroke open up as the ink runs out.
     float bristle = vnoise(vec2(a * 9.0 + uSeed, (rr - R) * 70.0));
@@ -107,12 +112,12 @@ const frag = /* glsl */ `
     // The stroke is laid down from its start round to its end in the first moments.
     line *= smoothstep(turn - 0.12, turn, uT * 3.2);
 
-    float inside = smoothstep(R - 0.5, R - 0.04, rr) * (1.0 - smoothstep(R - 0.03, R + 0.01, rr));
+    float inside = smoothstep(R - 0.3, R - 0.03, rr) * (1.0 - smoothstep(R - 0.02, R + 0.01, rr));
     float wash = inside * (0.65 + 0.35 * vnoise(p * 3.1 + uSeed)) * smoothstep(turn - 0.2, turn, uT * 3.2);
 
     float fade = 1.0 - smoothstep(0.5, 1.0, uT);
     float inkA = line * fade * 0.92;
-    float washA = wash * fade * 0.34 * (1.0 - inkA);
+    float washA = wash * fade * 0.26 * (1.0 - inkA);
     float alpha = inkA + washA;
     if (alpha < 0.004) discard;
     gl_FragColor = vec4((uInk * inkA + uPigment * washA) / alpha, alpha);
@@ -138,7 +143,14 @@ export function FlourishRing({ flourish, layout }: { flourish: Flourish; layout:
         polygonOffset: true,
         polygonOffsetFactor: -2,
         polygonOffsetUnits: -2,
-        uniforms: { uInk: { value: new Color() }, uPigment: { value: new Color() }, uT: { value: 0 }, uSeed: { value: 0 } },
+        uniforms: {
+          uInk: { value: new Color() },
+          uPigment: { value: new Color() },
+          uT: { value: 0 },
+          uSeed: { value: 0 },
+          uFrom: { value: DEFAULT_FOOTPRINT },
+          uTo: { value: DEFAULT_FOOTPRINT + RING_REACH },
+        },
       }),
     [],
   );
@@ -172,6 +184,9 @@ export function FlourishRing({ flourish, layout }: { flourish: Flourish; layout:
     // A different hand at each place, the same one every time at that place.
     u.uSeed.value = locus.index * 1.7 + 0.6;
     u.uPigment.value.copy(pigments[locus.index]);
+    const footprint = layout.footprint?.[locus.index] ?? DEFAULT_FOOTPRINT;
+    u.uFrom.value = footprint * 0.85;
+    u.uTo.value = Math.min(footprint + RING_REACH, EXTENT - 0.15);
   });
 
   return (

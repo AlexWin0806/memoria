@@ -105,7 +105,7 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
           still={reduced}
         />
       )}
-      {qa.debug && <DebugPosts layout={layout} />}
+      {qa.posts && <DebugPosts layout={layout} />}
     </>
   );
 }

@@ -29,8 +29,8 @@ const DRIFT_RISE = 0.04;
  * height with the place and its image. When the sheet leaves less than that, the lens
  * widens just enough to keep both in the strip above it, down to this zoom.
  */
-const VIEW_FILL = 0.78;
-const MIN_ZOOM = 0.42;
+const VIEW_FILL = 0.86;
+const MIN_ZOOM = 0.4;
 
 /** Pointer in -1..1, tracked on the window so it works under the 2D overlay too. */
 const pointer = { x: 0, y: 0 };

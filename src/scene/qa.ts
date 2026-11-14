@@ -37,6 +37,7 @@ declare global {
  *   &veil=hold                           keep the loading veil up (to look at it)
  *   &dev=0.2 | &dev=1,0.2,…              override development (one value for all, or per locus)
  *   &debug                               posts at the locus anchors; stores on window.__memoria
+ *   &debug=stores                        the stores only, no posts (for clean screenshots of driven states)
  *   ?perf                                frame-time overlay
  *   ?theme=<id>                          override the theme from settings
  */
@@ -57,6 +58,8 @@ export interface Qa {
   holdVeil: boolean;
   dev: number[] | null;
   debug: boolean;
+  /** Posts and ground grid at the locus anchors. */
+  posts: boolean;
   perf: boolean;
   theme: string | null;
 }
@@ -91,6 +94,7 @@ export function readQa(lociCount: number, search = location.search): Qa {
     holdVeil: q.get('veil') === 'hold',
     dev: dev && dev.length ? dev : null,
     debug: q.has('debug'),
+    posts: q.has('debug') && q.get('debug') !== 'stores',
     perf: q.has('perf'),
     theme: q.get('theme'),
   };

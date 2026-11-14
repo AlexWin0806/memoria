@@ -1,0 +1,12 @@
+[
+  { "name": "flourish-lamp", "query": "shot=0&tokens=all&inset=380&flourish=0.5&dev=0.6,0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.18,0.18", "timeoutMs": 180000 },
+  { "name": "flourish-fountain", "query": "shot=4&tokens=all&inset=380&flourish=0.55", "timeoutMs": 180000 },
+  { "name": "flourish-bench-late", "query": "shot=1&tokens=all&inset=380&flourish=0.8", "timeoutMs": 180000 },
+  { "name": "sheet-lamp-390", "query": "shot=0&tokens=all&insetBottom=500", "width": 390, "height": 800, "timeoutMs": 180000 },
+  { "name": "sheet-fountain-390", "query": "shot=4&tokens=all&insetBottom=500", "width": 390, "height": 800, "timeoutMs": 180000 },
+  { "name": "title-1440", "query": "", "waitMs": 9000, "timeoutMs": 180000 },
+  { "name": "title-1024", "query": "", "width": 1024, "height": 700, "waitMs": 9000, "timeoutMs": 180000 },
+  { "name": "title-loading", "query": "veil=hold", "waitMs": 2500, "timeoutMs": 180000 },
+  { "name": "locus-02", "query": "shot=1&tokens=all&inset=380", "timeoutMs": 180000 },
+  { "name": "locus-08", "query": "shot=7&tokens=all&inset=380", "timeoutMs": 180000 }
+]
