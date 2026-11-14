@@ -68,7 +68,11 @@ export interface KitRoomProps {
    * a room must look the same however long the palace grows after it.
    */
   index: number;
-  /** Until ring rooms are built, a ring is laid out (and passed) as a hall. */
+  /**
+   * `ring` only reaches a kit that sets `KitDef.rings`: an eight-sided room whose sides are
+   * `plan.halfWidth` from its centre (which is `halfWidth` behind the entrance), the two
+   * doorways in the near and the far side, places before five of the other six.
+   */
   shape: 'hall' | 'ring';
   plan: RoomPlan;
   /**
@@ -105,6 +109,15 @@ export interface KitDef {
   features: FeatureDef[];
   /** One line per room, by room index (cycled if there are more rooms): the mood of that room (`Room.mood`). */
   moods: string[];
+  /**
+   * True when `Room` draws ring rooms (`shape: 'ring'`: an eight-sided room, see `RoomPlan`).
+   * A kit without it is given a hall for every room, ring or not. Decide before learners
+   * build palaces in the kit: turning it on later re-plans the ring rooms that exist, and
+   * everything after them on the route.
+   */
+  rings?: boolean;
+  /** The mood of a ring room, whatever its index. Default: the line for its index in `moods`. */
+  ringMood?: string;
   /**
    * Height of the middle of the name tablet the generator hangs over each doorway, on the face
    * at z = `RoomPlan.partition` of the room's own frame (the side you walk in from). Default:

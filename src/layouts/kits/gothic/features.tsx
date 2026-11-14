@@ -535,10 +535,14 @@ function BookWheel({ accent }: Props) {
 
 const PULPIT_FLOOR = 1.36;
 const PULPIT_STEPS: Placement[] = Array.from({ length: 5 }, (_, i): Placement => ({
-  p: [0.78, (PULPIT_FLOOR * (i + 1)) / 5 - 0.04, 0.62 - i * 0.27],
-  s: [0.5, 0.08, 0.3],
+  p: [0.8, (PULPIT_FLOOR * (i + 1)) / 5 - 0.045, 0.62 - i * 0.27],
+  s: [0.58, 0.09, 0.3],
 }));
-const PULPIT_STRINGERS: Placement[] = [-1, 1].map((s) => limb([0.78 + s * 0.24, 0.1, 0.84], [0.78 + s * 0.24, PULPIT_FLOOR - 0.1, -0.5], 0.035));
+/** The boards the steps are housed in: a stair, not a ladder. */
+const PULPIT_STRINGERS: Placement[] = [-1, 1].map((s) => {
+  const board = limb([0.8 + s * 0.29, 0.02, 0.86], [0.8 + s * 0.29, PULPIT_FLOOR - 0.12, -0.5], 0.04);
+  return { ...board, s: [0.04, board.s?.[1] ?? 1, 0.26] };
+});
 
 function Pulpit({ accent }: Props) {
   const tub = useMemo(() => lathe([[0.22, PULPIT_FLOOR - 0.34], [0.62, PULPIT_FLOOR], [0.66, PULPIT_FLOOR + 0.06], [0.66, 2.28], [0.7, 2.3], [0.7, 2.36], [0.6, 2.36], [0.6, PULPIT_FLOOR + 0.06], [0, PULPIT_FLOOR + 0.06]], 8, true), []);
@@ -574,12 +578,12 @@ function Pulpit({ accent }: Props) {
       <Repeated items={PULPIT_STEPS} make={UNIT_BOX}>
         <Surface slot="wood" />
       </Repeated>
-      <Repeated items={PULPIT_STRINGERS} make={UNIT_OCTAGON}>
+      <Repeated items={PULPIT_STRINGERS} make={UNIT_BOX}>
         <Surface slot="wood" />
       </Repeated>
-      {/* the sounding board, held over the preacher on a post at the back */}
-      <mesh position={[0, 2.2, -0.6]} castShadow>
-        <boxGeometry args={[0.14, 1.7, 0.1]} />
+      {/* the sounding board, held over the preacher by a panelled back */}
+      <mesh position={[0, 2.2, -0.62]} castShadow>
+        <boxGeometry args={[0.66, 1.72, 0.07]} />
         <Surface slot="wood" />
       </mesh>
       <mesh position={[0, 3.0, -0.08]} rotation={[0, TAU / 16, 0]} castShadow>
