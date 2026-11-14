@@ -4,6 +4,7 @@ import { useArrivedFallback, useReducedMotion } from '@/flows/hooks';
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { useActiveTheme } from '@/themes/active';
+import { Compare } from '@/ab/Compare';
 import { Compose } from './Compose';
 import { Recall } from './Recall';
 import { Results } from './Results';
@@ -69,6 +70,7 @@ function OverlayRoot() {
         </Panel>
       )}
       {confirmLeave && <LeaveConfirm compose={mode === 'compose'} />}
+      <Compare />
     </div>
   );
 }
