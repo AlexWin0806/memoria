@@ -60,7 +60,8 @@ function Shell() {
         {
           x0: NICHE.z - atriumMid - NICHE.half,
           x1: NICHE.z - atriumMid + NICHE.half,
-          y0: NICHE.sill,
+          // From inside the sill slab, not from its top: see NICHE.
+          y0: NICHE.sill - NICHE.lap,
           top: NICHE.spring,
           arched: true,
         },

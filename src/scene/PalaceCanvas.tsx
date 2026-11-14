@@ -9,6 +9,7 @@ import { STYLES, StyleEnvironment, StylePost, StyleProvider } from '@/styles';
 import { useActiveTheme } from '@/themes/active';
 import { PalaceScene } from './PalaceScene';
 import { PerfLog } from './PerfLog';
+import { FeatureLayout, integrityField } from './integrity';
 import { readQa } from './qa';
 import { Ready } from './shot';
 import { VeilPainter, VeilSheet, createVeil, finishRule } from './veil';
@@ -99,7 +100,7 @@ export function PalaceCanvas() {
 
   useEffect(() => {
     if (import.meta.env.DEV || qa.debug) {
-      window.__memoria = { ...window.__memoria, session: useSession, decks: useDecks, review: useReview, settings: useSettings, layout };
+      window.__memoria = { ...window.__memoria, session: useSession, decks: useDecks, review: useReview, settings: useSettings, layout, integrity: integrityField };
     }
   }, [qa, layout]);
 
@@ -118,7 +119,9 @@ export function PalaceCanvas() {
       >
         <StyleProvider theme={theme}>
           <StyleEnvironment />
-          <layout.Structure />
+          <FeatureLayout.Provider value={layout}>
+            <layout.Structure />
+          </FeatureLayout.Provider>
           <PalaceScene layout={layout} qa={qa} veil={veil} />
           <StylePost />
         </StyleProvider>
