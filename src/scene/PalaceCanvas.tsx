@@ -49,6 +49,7 @@ export function PalaceCanvas() {
   const style = STYLES[theme.style] ?? STYLES.greybox;
   const reduced = prefersReducedMotion(useSettings((s) => s.reducedMotion));
   const veil = useMemo(() => createVeil(qa.frozen, qa.holdVeil), [qa]);
+  const titled = useSession((s) => s.mode === 'attract');
   const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
 
   useEffect(() => {
@@ -81,7 +82,7 @@ export function PalaceCanvas() {
           }}
         />
       </Canvas>
-      <VeilSheet veil={veil} theme={theme} reduced={reduced} />
+      <VeilSheet veil={veil} theme={theme} reduced={reduced} titled={titled} />
     </div>
   );
 }

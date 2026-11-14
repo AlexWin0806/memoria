@@ -63,13 +63,17 @@ export function VeilPainter({ veil, reduced }: { veil: Veil; reduced: boolean })
   return null;
 }
 
+/** Width the title screen's text column covers on the left. */
+const TITLE_COLUMN = 'min(680px, 47vw)';
 const KEYFRAMES = '@keyframes memoria-veil-rule { from { transform: scaleX(0); } to { transform: scaleX(1); } }';
 
 /**
  * The veil's DOM: the sheet, and on first load the title with its rule. The rule is a
  * transform animation, so it keeps drawing while shader compilation blocks the main thread.
+ * `titled`: the title screen is up and already carries the word in its text column, so the
+ * veil shows the rule alone, centred in the part of the page that column leaves free.
  */
-export function VeilSheet({ veil, theme, reduced }: { veil: Veil; theme: Theme; reduced: boolean }) {
+export function VeilSheet({ veil, theme, reduced, titled }: { veil: Veil; theme: Theme; reduced: boolean; titled: boolean }) {
   const { paper, ink } = theme.palette;
   return (
     <div
@@ -78,7 +82,15 @@ export function VeilSheet({ veil, theme, reduced }: { veil: Veil; theme: Theme; 
         veil.el = el;
         if (el) el.style.opacity = String(veil.shown);
       }}
-      style={{ position: 'absolute', inset: 0, background: paper, pointerEvents: 'none', display: 'grid', placeItems: 'center' }}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        paddingLeft: titled ? TITLE_COLUMN : 0,
+        background: paper,
+        pointerEvents: 'none',
+        display: 'grid',
+        placeItems: 'center',
+      }}
     >
       {veil.intro > 0 && (
         <div
@@ -88,13 +100,15 @@ export function VeilSheet({ veil, theme, reduced }: { veil: Veil; theme: Theme; 
           style={{ color: ink, textAlign: 'center' }}
         >
           <style>{KEYFRAMES}</style>
-          <div style={{ fontFamily: `'${theme.type.display}', Georgia, serif`, fontSize: 46, lineHeight: 1, letterSpacing: '0.02em' }}>Memoria</div>
+          {!titled && (
+            <div style={{ fontFamily: `'${theme.type.display}', Georgia, serif`, fontSize: 46, lineHeight: 1, letterSpacing: '0.02em' }}>Memoria</div>
+          )}
           <div
             ref={(el) => {
               veil.rule = el;
             }}
             style={{
-              width: 232,
+              width: titled ? 320 : 232,
               height: 1,
               margin: '20px auto 0',
               background: ink,
