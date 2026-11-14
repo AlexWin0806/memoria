@@ -1,0 +1,102 @@
+{
+  "id": "ink-sanguine",
+  "name": "Sanguine",
+  "style": "ink",
+  "palette": {
+    "paper": "#f3e8d0",
+    "ink": "#8a3b2a",
+    "inkSoft": "#b57a63",
+    "surfaces": {
+      "floor": "#dcc3a0",
+      "wall": "#e6d2b3",
+      "ceiling": "#d9bf9f",
+      "trim": "#cfae8a",
+      "stone": "#dccbb0",
+      "wood": "#c49a72",
+      "metal": "#c2ad92",
+      "water": "#b9c4b6",
+      "foliage": "#b5b592",
+      "cloth": "#dcbfa3",
+      "glow": "#f3dcae"
+    },
+    "accents": {
+      "red": "#a8392b",
+      "amber": "#c99a3c",
+      "green": "#6d8a5c",
+      "teal": "#4d7f7a",
+      "blue": "#4f6288",
+      "plum": "#734660"
+    },
+    "sky": [
+      "#f3e8d0",
+      "#dcc7a0"
+    ],
+    "fog": "#f3e8d0"
+  },
+  "light": {
+    "ambient": 1,
+    "keyColor": "#fff3df",
+    "keyIntensity": 1,
+    "keyDirection": [
+      0.6,
+      -0.75,
+      -0.25
+    ],
+    "fillColor": "#f3e8d0",
+    "fillIntensity": 0,
+    "locusGlow": 0
+  },
+  "fog": {
+    "near": 30,
+    "far": 120
+  },
+  "post": {
+    "lineWidth": 2.1,
+    "farWidth": 0.6,
+    "creaseWeight": 0.55,
+    "inkOpacity": 0.86,
+    "wobble": 1.0,
+    "wobbleScale": 90,
+    "depthThreshold": 0.008,
+    "normalThreshold": 0.16,
+    "distanceFade": 0.7,
+    "toneLit": 0.36,
+    "toneShade": -0.12,
+    "washLit": 0.6,
+    "washLitPigment": 0.78,
+    "washHalf": 0.92,
+    "shadeMix": 0.3,
+    "washThreshold": 0.2,
+    "washFull": 0.8,
+    "washFirst": 0.45,
+    "bleed": 0.34,
+    "pool": 0.18,
+    "poolWidth": 3,
+    "reserve": 0.4,
+    "granulation": 0.07,
+    "hatchSpacing": 8,
+    "hatchWidth": 1.3,
+    "hatchStrength": 0.5,
+    "grain": 0.1,
+    "fibre": 0.05,
+    "blotch": 0.05,
+    "vignette": 0.75,
+    "foxing": 0.2,
+    "laid": 0.035,
+    "quality": 2
+  },
+  "type": {
+    "display": "IM Fell English",
+    "text": "EB Garamond Variable"
+  },
+  "ui": {
+    "bg": "#f3e8d0",
+    "panel": "#f8f0df",
+    "fg": "#4a231a",
+    "muted": "#8a5f50",
+    "accent": "#a8392b",
+    "success": "#4f6e45",
+    "danger": "#8f2a1e",
+    "radius": 2
+  }
+}

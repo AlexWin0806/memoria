@@ -87,10 +87,10 @@ try {
     const url = `${base}/?${b.query ?? ''}`;
     try {
       await page.goto(url, { waitUntil: 'load' });
-      await page.waitForFunction('window.__MEMORIA_READY__ === true', null, { timeout: 45000 });
+      await page.waitForFunction('window.__MEMORIA_READY__ === true', null, { timeout: 120000 });
       await page.waitForTimeout(b.waitMs ?? 600);
       const file = path.join(outDir, `${b.name}.png`);
-      await page.screenshot({ path: file });
+      await page.screenshot({ path: file, timeout: 180000 });
       console.log(`ok   ${b.name}  ->  ${path.relative(process.cwd(), file)}`);
     } catch (e) {
       failed++;

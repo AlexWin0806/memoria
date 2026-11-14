@@ -1,6 +1,17 @@
 [
-  { "name": "ink-wide", "query": "proto=1&theme=ink-vellum&shot=wide" },
-  { "name": "ink-fountain", "query": "proto=1&theme=ink-vellum&shot=fountain" },
-  { "name": "ink-door", "query": "proto=1&theme=ink-vellum&shot=door" },
-  { "name": "ink-develop", "query": "proto=1&theme=ink-vellum&shot=wide&dev=0.05,1,0.45" }
+  { "name": "ink-overview-full", "query": "shot=overview&dev=1" },
+  { "name": "ink-01-full", "query": "shot=0&tokens=all&dev=1" },
+  { "name": "ink-01-half", "query": "shot=0&tokens=all&dev=0.65" },
+  { "name": "ink-05-full", "query": "shot=4&tokens=all&dev=1" },
+  { "name": "ink-05-half", "query": "shot=4&tokens=all&dev=0.65" },
+  { "name": "ink-05-mixed", "query": "shot=4&dev=0.18,0.18,0.18,0.65,1,0.3" },
+  { "name": "sanguine-overview-full", "query": "theme=ink-sanguine&shot=overview&dev=1" },
+  { "name": "ink-02-half", "query": "shot=1&tokens=all&dev=0.65" },
+  { "name": "ink-overview-bare", "query": "shot=overview&dev=0.18" },
+  { "name": "sanguine-02-full", "query": "theme=ink-sanguine&shot=1&tokens=all&dev=1" },
+  { "name": "sanguine-05-half", "query": "theme=ink-sanguine&shot=4&tokens=all&dev=0.65" },
+  { "name": "ink-rail-4-030", "query": "rail=4&t=0.3&dev=1&tokens=all" },
+  { "name": "ink-rail-4-040", "query": "rail=4&t=0.4&dev=1&tokens=all" },
+  { "name": "ink-proto-wide", "query": "proto=1&theme=ink-vellum&shot=wide" },
+  { "name": "ink-proto-develop", "query": "proto=1&theme=ink-vellum&shot=wide&dev=0.05,1,0.45" }
 ]
