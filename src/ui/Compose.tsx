@@ -12,6 +12,7 @@ import { getLayout } from '@/layouts';
 import { useDecks } from '@/state/decks';
 import { hasDraft, useDraft } from '@/state/draft';
 import { useSession } from '@/state/session';
+import { PdfUpload } from './PdfUpload';
 
 const ACTIONS: ImagoAction[] = ['spin', 'bob', 'pulse', 'shake', 'orbit', 'swing', 'hop'];
 const SOURCE_NOTE: Record<Imago['source'], string> = {
@@ -297,6 +298,7 @@ export function Compose() {
           placeholder={'Scaphoid - boat-shaped\nLunate: moon-shaped\nTriquetrum - three-cornered'}
           data-testid="compose-text"
         />
+        <PdfUpload target="compose-text" disabled={planning} />
         {dropped && (
           <p className="hint" role="status" data-testid="compose-dropped">
             {dropped}

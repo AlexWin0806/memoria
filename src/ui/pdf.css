@@ -1,0 +1,96 @@
+/*
+ * "Upload a PDF" under the notes box. Like overlay.css, every colour, face and radius comes
+ * from the theme's CSS variables. It is set as part of the page margin: a quiet button, a
+ * line of text, hairline rules. No drop-zone card.
+ */
+
+.pdf { margin: 14px 0 0; }
+.pdf__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin: 0;
+  /* A file name can be one long unbroken word. */
+  overflow-wrap: anywhere;
+}
+.pdf__row > span { min-width: 0; }
+.pdf__or { color: var(--ui-muted); }
+.pdf .bar { margin-top: 12px; }
+.pdf__status {
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+}
+.pdf__status:empty { display: none; }
+/* Announced to a screen reader, not shown: the same words are already on the line above. */
+.pdf__status[data-heard-only='true'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.pdf .notice { margin: 12px 0 0; }
+.pdf .hint { margin-top: 10px; }
+
+/* A PDF held over the notes box: the rubric rule of a notice, drawn inside the field. */
+.field[data-pdf-drop='over'] {
+  border-color: var(--ui-accent);
+  background: var(--wash);
+  box-shadow: inset 3px 0 0 var(--ui-accent);
+}
+
+/* ───────── Choosing pages ───────── */
+
+.pdf__choose {
+  min-width: 0;
+  margin: 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--rule-strong);
+}
+.pdf__choose legend {
+  /* A legend sits on the fieldset's top border by default; here it is the first line under the rule. */
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 6px;
+}
+.pdf__choose legend + * { clear: both; }
+.pdf__choose .body { overflow-wrap: anywhere; }
+.pdf__pages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+}
+.pdf__pages li {
+  padding: 8px 4px 8px 2px;
+  border-bottom: 1px solid var(--rule);
+}
+.pdf__pages li:last-child { border-bottom: 0; }
+.pdf__pages .check { align-items: baseline; }
+.pdf__pages .check input { flex: none; transform: translateY(2px); }
+.pdf__count {
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+.pdf__peek {
+  display: block;
+  margin-left: 26px;
+  overflow: hidden;
+  font-size: 16px;
+  font-style: italic;
+  color: var(--ui-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The list scrolls under this bar (overlay.css, .pin): a rule marks where. */
+.pdf__pin {
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-strong);
+}
+.pdf .pdf__pin .notice { margin: 0; }
+.pdf__pin .actions { margin-top: 12px; }
