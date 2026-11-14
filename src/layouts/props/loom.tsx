@@ -4,12 +4,12 @@ import { Surface } from '@/styles';
 import { type Placement, Repeated, UNIT_BALL, UNIT_ROD, timber } from './parts';
 
 const HALF = 0.78;
-const WARP_Z = 0.2;
+const WARP_Z = 0.195;
 const WARP_X = Array.from({ length: 11 }, (_, i) => -0.6 + i * 0.12);
 // The warp hangs straight down from the cloth to its weights; alternate threads are tied off lower.
 const WARP: Placement[] = WARP_X.map((x, i): Placement => {
   const foot = i % 2 ? 0.5 : 0.38;
-  return { p: [x, (1.56 + foot) / 2, WARP_Z], s: [0.008, 1.56 - foot, 0.008] };
+  return { p: [x, (1.56 + foot) / 2, WARP_Z], s: [0.011, 1.56 - foot, 0.011] };
 });
 const WEIGHTS: Placement[] = WARP_X.map((x, i): Placement => ({ p: [x, (i % 2 ? 0.5 : 0.38) - 0.05, WARP_Z], s: [0.045, 0.07, 0.045] }));
 

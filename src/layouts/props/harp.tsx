@@ -9,7 +9,7 @@ const STRINGS: Placement[] = (
     [-0.26, 0.14, 1.72], [-0.18, 0.3, 1.655], [-0.1, 0.46, 1.59], [-0.02, 0.62, 1.555], [0.06, 0.79, 1.52],
     [0.14, 0.95, 1.5], [0.22, 1.11, 1.505], [0.3, 1.27, 1.51],
   ] as const
-).map(([x, y0, y1]) => limb([x, y0, 0], [x, y1, 0], 0.008));
+).map(([x, y0, y1]) => limb([x, y0, 0], [x, y1, 0], 0.011));
 
 /** A tall harp: an upright pillar, a slanted soundbox and a curved neck, strung between. */
 function Harp({ accent }: { accent: AccentKey }) {

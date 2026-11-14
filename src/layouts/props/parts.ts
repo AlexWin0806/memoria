@@ -3,8 +3,26 @@ import { useEffect, useState } from 'react';
 import type { Vec3 } from '@/core/types';
 import { type Placement, limb } from '@/layouts/domus/parts';
 
-/** The house idiom, shared with the handcrafted palace. */
-export { type Placement, Repeated, UNIT_BOX, frameGeometry, lathe, limb, ribbonGeometry } from '@/layouts/domus/parts';
+/** The house idiom, shared with the handcrafted palace. Nothing else is taken from there. */
+export { type Placement, Repeated, UNIT_BOX, lathe, limb, ribbonGeometry } from '@/layouts/domus/parts';
+
+/** A rectangular frame (outer minus inner, `w` wide), extruded from z = 0 along +z. */
+export function frameGeometry(x0: number, x1: number, y0: number, y1: number, w: number, depth: number): ExtrudeGeometry {
+  const s = new Shape();
+  s.moveTo(x0, y0);
+  s.lineTo(x1, y0);
+  s.lineTo(x1, y1);
+  s.lineTo(x0, y1);
+  s.closePath();
+  const hole = new Path();
+  hole.moveTo(x0 + w, y0 + w);
+  hole.lineTo(x0 + w, y1 - w);
+  hole.lineTo(x1 - w, y1 - w);
+  hole.lineTo(x1 - w, y0 + w);
+  hole.closePath();
+  s.holes.push(hole);
+  return new ExtrudeGeometry(s, { depth, bevelEnabled: false });
+}
 
 /**
  * A geometry built once for the life of the component and freed with it. A generated palace
