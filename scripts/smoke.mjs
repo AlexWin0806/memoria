@@ -45,6 +45,20 @@
  *      answer's slot is balanced over ten questions
  *   l  Theme Lab (?lab): its buttons take a real click on the title and during a walk; Copy JSON
  *      holds a change made in the Lab, Reset clears it; keys pressed in the Lab do not reach the walk
+ *   q  A process deck, keyboard only and with reduced motion: the study walk says how each step
+ *      connects; the recall walk asks the place first, then each link that leaves the step (two at
+ *      most, never a matched pair); the steps of a cycle are put in order, started in the middle,
+ *      with undo, and once more after a reload; the results count places, links and order apart; the
+ *      walk record holds `relations` and `order`; and the same answers on the same deck marked as
+ *      facts give the same place scores and review cards, with no question about a link at all
+ *   n  A section walk (places added to a surveyed palace): only the new places are surveyed, studied
+ *      and recalled; the older cards and the palace's survey date are untouched; both walks are
+ *      recorded as walks of new places and kept off the Progress line
+ *   k  "Recall" on a palace in which nothing has been studied: a new one opens on its survey, a
+ *      surveyed one on its study walk, a studied one on the recall walk
+ *
+ * Cases f, t and w start from a deck whose images have been placed (seedStudied): they test the
+ * recall walk, and a palace nobody has studied no longer has one.
  *
  * Timing. Cases a and p print how long a passive run took, with THINK_MS of thought per
  * answer. Run them alone for a fair figure (software rendering slows down when cases share
@@ -508,6 +522,90 @@ async function deckRows(page) {
   return { count: rows.length, meta: Object.fromEntries(rows) };
 }
 
+/**
+ * Marks every item of a built-in deck as studied (its image has been placed), then reloads: the
+ * state of a deck after its study walk, without walking it. Nothing is surveyed or recalled.
+ */
+async function seedStudied(page, deckId, itemIds) {
+  await page.evaluate(
+    ([deck, ids]) => {
+      const cards = Object.fromEntries(ids.map((id) => [id, { itemId: id, deckId: deck, box: 0, dueAt: 0, reps: 0, lapses: 0, studiedAt: Date.now() - 60_000 }]));
+      localStorage.setItem('memoria.review.v1', JSON.stringify({ state: { cards, walk: null }, version: 0 }));
+    },
+    [deckId, itemIds],
+  );
+  await page.reload({ waitUntil: 'load' });
+  await page.getByTestId('title').waitFor();
+}
+const numbered = (prefix, count, pad = 1) => Array.from({ length: count }, (_, k) => `${prefix}${String(k + 1).padStart(pad, '0')}`);
+
+/** Replaces everything saved with these decks, review cards, walk records and settings, then reloads. For pages opened with ?debug=stores. */
+async function seedState(page, { decks = {}, cards = {}, records = [], settings = {} }) {
+  await page.evaluate(
+    ([d, c, r, s]) => {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem('memoria.decks.v1', JSON.stringify({ state: { decks: d }, version: 0 }));
+      localStorage.setItem('memoria.review.v1', JSON.stringify({ state: { cards: c, walk: null }, version: 0 }));
+      localStorage.setItem('memoria.history.v1', JSON.stringify({ state: { records: r }, version: 0 }));
+      localStorage.setItem('memoria.settings.v1', JSON.stringify({ state: s, version: 0 }));
+    },
+    [decks, cards, records, settings],
+  );
+  await page.reload({ waitUntil: 'load' });
+  await page.getByTestId('title').waitFor();
+  await page.waitForFunction(() => window.__memoriaApp && window.__memoria?.session);
+  assert((await page.getByTestId('storage-notice').count()) === 0, 'the seeded data was set aside');
+}
+
+/** Five steps that run in a circle, on the first five places of the handcrafted palace. */
+const STEPS = ['Spring', 'Stream', 'River', 'Sea', 'Cloud'];
+/**
+ * A deck of those five steps with links: each step becomes the next and the last the first (a
+ * cycle); the Sea also blocks the Spring and needs the Stream, the Stream needs the Cloud, and
+ * the Spring and the River are a matched pair. `focus` says whether it is walked as a process.
+ */
+function stepsDeck(id, title, focus) {
+  const item = (n) => ({
+    id: `${id}-${n}`,
+    term: STEPS[n - 1],
+    meaning: `Stage ${n} of the way of water.`,
+    locusId: `domus-0${n}`,
+    imago: { scene: `A scene for stage ${n}.`, glyphs: ['⭐'], action: 'bob', source: 'learner' },
+  });
+  const link = (from, to, kind, label) => ({ from: `${id}-${from}`, to: `${id}-${to}`, kind, label });
+  return {
+    id,
+    title,
+    kind: 'list',
+    layoutId: 'domus',
+    createdAt: 7,
+    surveyedAt: Date.now() - 3_600_000,
+    focus,
+    items: [1, 2, 3, 4, 5].map(item),
+    links: [
+      link(1, 2, 'becomes', 'gathers'),
+      link(2, 3, 'becomes', 'widens'),
+      link(3, 4, 'becomes', 'empties'),
+      link(4, 5, 'becomes', 'evaporates'),
+      link(5, 1, 'becomes', 'rains'),
+      link(4, 1, 'blocks', 'salt'),
+      link(2, 5, 'needs', 'rain'),
+      link(4, 2, 'needs', 'flow'),
+      link(1, 3, 'mirrors', 'fresh water'),
+    ],
+  };
+}
+
+/** Font sizes below 16 px among the elements of a screen that hold text of their own. */
+const smallText = (page, testid) =>
+  page.getByTestId(testid).evaluate((el) =>
+    [...el.querySelectorAll('*')]
+      .filter((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== '') && !e.classList.contains('sr-only'))
+      .map((e) => parseFloat(getComputedStyle(e).fontSize))
+      .filter((px) => px < 16),
+  );
+
 async function tabTo(page, testid) {
   for (let i = 0; i < 120; i++) {
     await page.keyboard.press('Tab');
@@ -895,6 +993,8 @@ const cases = {
   async f() {
     const { context, page, errors } = await open({ width: 390, height: 780 });
     await shot(page, 'narrow-title');
+    // The recall walk of a deck whose images have been placed (a palace nobody has studied opens on its survey: case k).
+    await seedStudied(page, 'fixture-carpals', numbered('carpal-', 8));
     await page.getByTestId('settings').locator('summary').click();
     await page.locator('#set-recall').selectOption('typed');
     await page.locator('#set-motion').selectOption('on');
@@ -1028,6 +1128,8 @@ const cases = {
   /** Typed recall: the place is the cue, grading is fair, and the learner can overrule it. */
   async t() {
     const { context, page, errors } = await open();
+    // A deck whose images have been placed, never surveyed: its recall walk, and a schedule that starts from nothing.
+    await seedStudied(page, 'fixture-spanish-kitchen', numbered('es-kitchen-', Object.keys(spanishAt).length, 2));
     await page.getByTestId('settings').locator('summary').click();
     await page.locator('#set-recall').selectOption('typed');
     await page.locator('#set-motion').selectOption('on');
@@ -1111,6 +1213,8 @@ const cases = {
     const { context, page, errors } = await open();
     const deckTitle = Object.keys((await deckRows(page)).meta).find((t) => t.toLowerCase().includes('mohs'));
     assert(deckTitle, 'the Mohs deck is not listed');
+    // A deck whose images have been placed: there is something to recall.
+    await seedStudied(page, 'fixture-mohs', numbered('mohs-', 10, 2));
     await page.getByRole('button', { name: `Recall ${deckTitle}` }).click();
     const question = page.getByTestId('recall-question');
     // Two answers ("I cannot recall it" is a miss), then on to the third place.
@@ -1236,8 +1340,10 @@ const cases = {
         // The count on the title ("1 place", above) is what the walk has: the first item on the place, and no other.
         const keptItems = await page.evaluate(() => JSON.parse(localStorage.getItem('memoria.decks.v1')).state.decks['deck-ok'].items.map((it) => it.id));
         assert(JSON.stringify(keptItems) === '["k1"]', `${name}: the repaired deck holds ${keptItems}`);
+        // Nothing in it has been studied, so "Recall" opens it on its survey, as "Walk" would.
         await page.getByRole('button', { name: 'Recall A kept palace' }).click();
-        await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 1")').waitFor();
+        await page.locator('[data-testid=survey] [data-testid=walk-label]:has-text("Place 1 of 1")').waitFor();
+        assert((await page.getByTestId('recall').count()) === 0, `${name}: "Recall" on a palace that was never studied started a recall walk`);
         await page.keyboard.press('Escape');
         await page.getByTestId('leave-yes').click();
         await page.getByTestId('title').waitFor();
@@ -1753,6 +1859,530 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return 'Copy JSON, Download JSON and Reset take a real click on the title and during a walk; the clipboard holds the change; Reset clears it';
+  },
+
+  /** A process deck: the walks ask about the process, and score it apart from the places. */
+  async q() {
+    const { context, page, errors } = await open();
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    // The same five steps and the same links twice: once as a process, once as plain facts.
+    const P = stepsDeck('proc', 'The way of water', 'process');
+    const F = stepsDeck('fact', 'Five water words', 'facts');
+    const five = [1, 2, 3, 4, 5];
+    const card = (deck, n, extra = {}) => [`${deck.id}-${n}`, { itemId: `${deck.id}-${n}`, deckId: deck.id, box: 0, dueAt: 0, reps: 0, lapses: 0, survey: 'unknown', surveyGiven: '', ...extra }];
+    // Both surveyed already, on a route the learner knows; the facts deck has had its study walk too.
+    await seedState(page, {
+      decks: { [P.id]: P, [F.id]: F },
+      cards: Object.fromEntries([...five.map((n) => card(P, n)), ...five.map((n) => card(F, n, { studiedAt: Date.now() - 60_000 }))]),
+      settings: { familiarized: { domus: true }, reducedMotion: true },
+    });
+    await page.locator('.ov[data-reduced-motion=true]').waitFor();
+    const key = (k) => page.keyboard.press(k);
+    const focused = () => page.evaluate(() => document.activeElement?.getAttribute('data-testid'));
+    const view = () => page.evaluate(() => window.__memoriaApp.view());
+    const cardsNow = () => page.evaluate(() => JSON.stringify(window.__memoria.review.getState().cards));
+    const shownImages = async () => (await view()).tokens.filter((t) => t.visible).length;
+    const recordsOf = async (deckId) => (await storedProgress(page)).records.filter((r) => r.deckId === deckId);
+    const place = (n) => placeName[`domus-0${n}`];
+
+    // ── The study walk says, in plain words, how each step connects. Keyboard only from here on.
+    await page.getByRole('button', { name: `Walk ${P.title}` }).focus();
+    await key('Enter');
+    const connects = [
+      // A `blocks` link is never worded from its kind ("X blocks Y" is often false: it acts on what makes Y): "holds back", and the label says how.
+      ['Comes from a step further along the route: rains.', 'It becomes the step at the next place.', 'Held back by Sea: salt.', 'Paired with River: fresh water.'],
+      ['Comes from Spring: gathers.', 'It becomes the step at the next place.', 'It needs Cloud: rain.', 'Sea needs it: flow.'],
+      ['Comes from Stream: widens.', 'It becomes the step at the next place.', 'Paired with Spring: fresh water.'],
+      ['Comes from River: empties.', 'It becomes the step at the next place.', 'It needs Stream: flow.', 'It holds back Spring: salt.'],
+      ['Comes from Sea: evaporates.', 'It becomes Spring: rains.', 'Stream needs it: rain.'],
+    ];
+    for (const i of five) {
+      await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 5")`).waitFor();
+      await page.getByTestId('encode-term').waitFor();
+      assert((await text(page.getByTestId('encode-term'))) === STEPS[i - 1], `study stop ${i}: wrong term`);
+      // The item as ever (term, meaning, scene), then the lines about its links.
+      assert((await page.getByTestId('encode-meaning').count()) === 1 && (await page.getByTestId('encode-scene').count()) === 1, `study stop ${i}: the item is not shown as on any study walk`);
+      const lines = await page.getByTestId('encode-links').locator('li').allTextContents();
+      assert(JSON.stringify(lines) === JSON.stringify(connects[i - 1]), `study stop ${i}: the step connects as ${JSON.stringify(lines)}`);
+      if (i === 1) {
+        // The step it turns into is not named before the learner reaches it; neither is the one it comes from, further on.
+        assert(!lines.some((l) => /Stream|Cloud/.test(l)), `study stop 1 names a step that has not been reached: ${lines}`);
+        assert((await smallText(page, 'encode')).length === 0, 'study walk: text smaller than 16 px');
+        await shot(page, 'process-study');
+      }
+      await key(i % 2 ? 'Space' : 'ArrowRight');
+    }
+    await page.getByTestId('interstitial').waitFor();
+    await key('Enter');
+
+    // ── The recall walk: the place first, as ever; then each link that leaves the step.
+    const placePlan = ['right', 'wrong', 'right', 'right', 'right'];
+    // Per place: [the question, the right answer, the sentence shown afterwards, what the learner does].
+    // After a miss, a right answer that waits at a place not asked yet is not named ("held"): naming it
+    // would answer that place, and the place sets the review. It is named there, once that place is answered.
+    const linkPlan = [
+      [['What does Spring become?', 'Stream', 'Spring becomes Stream: gathers.', 'right']],
+      [
+        ['What does Stream become?', 'River', 'Stream becomes a step further along the route: widens.', 'wrong', 'held'],
+        ['What does Stream need?', 'Cloud', 'Stream needs a step further along the route: rain.', 'unknown', 'held'],
+      ],
+      [['What does River become?', 'Sea', 'River becomes Sea: empties.', 'right']],
+      // The Sea also needs the Stream: a third kind, which is not asked (two questions a place at most).
+      // A miss about a step already answered is told in full.
+      [
+        ['What does Sea become?', 'Cloud', 'Sea becomes Cloud: evaporates.', 'right'],
+        ['Which step does Sea hold back?', 'Spring', 'Sea holds back Spring: salt.', 'wrong'],
+      ],
+      // The last step closes the loop.
+      [['What does Cloud become?', 'Spring', 'Cloud becomes Spring: rains.', 'right']],
+    ];
+    // What each place says led to it, once it is answered: only steps already answered on this walk.
+    const ledHere = [[], ['Comes from Spring: gathers.'], ['Comes from Stream: widens.'], ['Comes from River: empties.'], ['Comes from Sea: evaporates.', 'Stream needs it: rain.']];
+    const asked = [];
+    for (const i of five) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 5")`).waitFor();
+      const question = page.getByTestId('recall-question');
+      await question.waitFor();
+      assert((await text(question)) === `What did you leave at ${place(i)}?`, `recall stop ${i}: the place's own question reads "${await text(question)}"`);
+      assert((await page.getByTestId('link-stop').count()) === 0 && (await text(page.getByTestId('recall-feedback'))) === '', `recall stop ${i}: something is asked or shown before the place is answered`);
+      const options = await choiceTexts(page, 'choice');
+      const answer = STEPS[i - 1];
+      assert(options.includes(answer), `recall stop ${i}: ${answer} is not among ${options}`);
+      await key(String((placePlan[i - 1] === 'right' ? options.indexOf(answer) : options.findIndex((o) => o !== answer)) + 1));
+      await page.getByTestId('recall-verdict').waitFor();
+      assert((await text(page.getByTestId('recall-next'))) === 'Next question', `recall stop ${i}: the button after the place reads "${await text(page.getByTestId('recall-next'))}"`);
+      const led = (await page.getByTestId('recall-links').count()) ? await page.getByTestId('recall-links').locator('li').allTextContents() : [];
+      assert(JSON.stringify(led) === JSON.stringify(ledHere[i - 1]), `recall stop ${i}: what led here reads ${JSON.stringify(led)}`);
+      // From here to the next place nothing about the places may change: not a card, not an image in the scene.
+      const cardsAfterPlace = await cardsNow();
+      const imagesAfterPlace = await shownImages();
+      assert(imagesAfterPlace === i, `recall stop ${i}: ${imagesAfterPlace} images are shown after ${i} answers`);
+      await key('Space');
+
+      const here = linkPlan[i - 1];
+      for (let k = 1; k <= here.length; k++) {
+        const [prompt, rightTerm, fact, act, held] = here[k - 1];
+        const stop = page.getByTestId('link-stop');
+        await page.locator(`[data-testid=link-question]:text-is("${prompt}")`).waitFor();
+        assert((await text(stop.getByTestId('walk-label'))) === `Place ${i} of 5 · Link${here.length > 1 ? ` ${k} of ${here.length}` : ''}`, `link ${i}.${k}: labelled "${await text(stop.getByTestId('walk-label'))}"`);
+        asked.push(prompt);
+        // Nothing is shown before the learner commits; "I don't know" is there, never focused, and not what Enter picks.
+        assert((await text(page.getByTestId('link-feedback'))) === '' && (await page.getByTestId('link-next').count()) === 0, `link ${i}.${k}: something is shown before answering`);
+        await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'link-question');
+        assert((await page.getByTestId('link-unknown').count()) === 1, `link ${i}.${k}: no "I don't know"`);
+        await key('Enter');
+        assert((await page.getByTestId('link-verdict').count()) === 0, `link ${i}.${k}: Enter answered with nothing chosen`);
+        const linkOptions = await choiceTexts(page, 'link-choice');
+        assert(linkOptions.includes(rightTerm) && !linkOptions.includes(STEPS[i - 1]) && new Set(linkOptions).size === linkOptions.length, `link ${i}.${k}: options ${linkOptions}`);
+        if (i === 2 && k === 1) {
+          assert((await smallText(page, 'link-stop')).length === 0, 'a question about a link: text smaller than 16 px');
+          await shot(page, 'process-link-question');
+        }
+        await key(act === 'unknown' ? '0' : String((act === 'right' ? linkOptions.indexOf(rightTerm) : linkOptions.findIndex((o) => o !== rightTerm)) + 1));
+        await page.getByTestId('link-verdict').waitFor();
+        assert((await text(page.getByTestId('link-verdict'))) === (act === 'right' ? 'Correct.' : 'Not this time.'), `link ${i}.${k} (${act}): "${await text(page.getByTestId('link-verdict'))}"`);
+        // The right answer and the link's label; or, held back, what the link does without the name of a place not asked yet.
+        assert((await text(page.getByTestId('link-fact'))) === fact, `link ${i}.${k}: the feedback reads "${await text(page.getByTestId('link-fact'))}"`);
+        const marked = await page.locator('[data-testid=link-choice][data-state=right] span:last-child').allTextContents();
+        assert(marked.join() === (held ? '' : rightTerm) && (await page.getByTestId('link-held').count()) === (held ? 1 : 0), `link ${i}.${k}: the right option is marked "${marked}" (held back: ${Boolean(held)})`);
+        assert(!held || !(await text(page.getByTestId('link-feedback'))).includes(rightTerm), `link ${i}.${k}: the feedback names ${rightTerm}, whose place has not been asked yet`);
+        assert((await cardsNow()) === cardsAfterPlace, `link ${i}.${k}: an answer about a link changed a review card`);
+        assert((await shownImages()) === imagesAfterPlace, `link ${i}.${k}: an answer about a link changed the scene`);
+        const onward = k < here.length ? 'Next question' : i < 5 ? 'Next place' : 'Put the steps in order';
+        assert((await text(page.getByTestId('link-next'))) === onward && (await focused()) === 'link-next', `link ${i}.${k}: the way on reads "${await text(page.getByTestId('link-next'))}" (focus on ${await focused()})`);
+        if (i === 2 && k === 1) await shot(page, 'process-link-feedback');
+        if (i === 2 && k === 2) {
+          // Left arrow goes back to the question before (answered, so its feedback), and on again.
+          await key('ArrowLeft');
+          await page.locator('[data-testid=link-question]:text-is("What does Stream become?")').waitFor();
+          assert((await text(page.getByTestId('link-verdict'))) === 'Not this time.', 'going back does not show the earlier answer');
+          await key('ArrowRight');
+          await page.locator(`[data-testid=link-question]:text-is("${prompt}")`).waitFor();
+        }
+        await key(k % 2 ? 'ArrowRight' : 'Space');
+      }
+    }
+    assert(asked.length === 7 && !asked.includes('What does Sea need?') && !asked.some((p) => /pair|mirror/i.test(p)), `the questions about links: ${asked}`);
+    assert(!asked.some((p) => /block|stop|destroy/i.test(p)), `a question words a link as blocking, stopping or destroying: ${asked}`);
+
+    // ── The steps are put in order: a cycle, so any start is right. The walk is already recorded.
+    await page.getByTestId('order').waitFor();
+    assert((await text(page.getByTestId('order-question'))) === 'Which step do you start with?', `the ordering task opens with "${await text(page.getByTestId('order-question'))}"`);
+    assert((await text(page.getByTestId('order-count'))).startsWith('0 of 5 placed.'), 'the ordering task does not start empty');
+    assert((await shownImages()) === 0, 'the images are shown in the scene while the steps are put in order');
+    let records = await recordsOf(P.id);
+    assert(records.length === 1 && records[0].kind === 'recall' && JSON.stringify(records[0].relations) === '{"total":7,"correct":4}' && records[0].order === undefined, `the record before the ordering task: ${JSON.stringify(records)}`);
+    assert((await smallText(page, 'order')).length === 0, 'the ordering task: text smaller than 16 px');
+    let shownSteps = await page.getByTestId('order-step').evaluateAll((els) => els.map((el) => el.dataset.term));
+    assert([...shownSteps].sort().join() === [...STEPS].sort().join() && shownSteps.join() !== STEPS.join(), `the steps are shown as ${shownSteps}`);
+    const pickByKey = (term) => key(String(shownSteps.indexOf(term) + 1));
+    // Started in the middle, with one slip taken back by the Left arrow.
+    for (const term of ['River', 'Sea', 'Cloud', 'Stream']) await pickByKey(term);
+    assert((await text(page.getByTestId('order-count'))) === '4 of 5 placed.', `after four picks: ${await text(page.getByTestId('order-count'))}`);
+    await shot(page, 'process-order');
+    await key('ArrowLeft');
+    assert((await text(page.getByTestId('order-count'))) === '3 of 5 placed.', 'the Left arrow did not take the last step back');
+    // A step that is already placed is inert: its key places nothing.
+    await pickByKey('River');
+    assert((await text(page.getByTestId('order-count'))) === '3 of 5 placed.', 'a placed step was placed twice');
+    for (const term of ['Spring', 'Stream']) await pickByKey(term);
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'order-check');
+    assert((await page.getByTestId('order-placed').allTextContents()).join() === 'River,Sea,Cloud,Spring,Stream', `the order placed: ${await page.getByTestId('order-placed').allTextContents()}`);
+    await key('Enter');
+    await page.getByTestId('order-done').waitFor();
+    assert((await text(page.getByTestId('order-question'))) === '5 of 5 in order.', `a cycle started in the middle scored "${await text(page.getByTestId('order-question'))}"`);
+    assert((await focused()) === 'order-done' && (await page.getByTestId('order-right').count()) === 0, 'after the check the focus is not on the way to the results');
+    records = await recordsOf(P.id);
+    assert(records.length === 1 && JSON.stringify(records[0].order) === '{"total":5,"correct":5}', `the record after the ordering task: ${JSON.stringify(records)}`);
+
+    // A reload on the ordering task: the walk is offered again and returns to the task, which starts afresh.
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert((await text(page.getByTestId('resume'))).includes(`${P.title}, recall, place 5 of 5`), `resume offer: ${await text(page.getByTestId('resume'))}`);
+    await key('Enter');
+    await page.getByTestId('order').waitFor();
+    assert((await shownImages()) === 0, 'after a reload the images are shown while the steps are put in order');
+    shownSteps = await page.getByTestId('order-step').evaluateAll((els) => els.map((el) => el.dataset.term));
+    // This time with Enter on each step, and the last two the wrong way round: three steps no longer follow their own.
+    for (const term of ['River', 'Sea', 'Cloud', 'Stream', 'Spring']) {
+      await page.locator(`[data-testid=order-step][data-term="${term}"]`).focus();
+      await key('Enter');
+    }
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'order-check');
+    await key('Enter');
+    await page.getByTestId('order-done').waitFor();
+    assert((await text(page.getByTestId('order-question'))) === '2 of 5 in order.', `a wrong order scored "${await text(page.getByTestId('order-question'))}"`);
+    const marks = await page.getByTestId('order-placed').evaluateAll((els) => els.map((el) => el.dataset.state));
+    assert(marks.join() === 'wrong,right,right,wrong,wrong', `the steps are marked ${marks}`);
+    assert((await text(page.getByTestId('order-right'))) === 'The order: Spring, Stream, River, Sea, Cloud, and back to Spring.', `the right order reads "${await text(page.getByTestId('order-right'))}"`);
+    await shot(page, 'process-order-checked');
+    await key('Space');
+
+    // ── The results: places, links and order, each counted by itself.
+    await page.getByTestId('results').waitFor();
+    assert((await text(page.getByTestId('results-score'))) === '4 of 5', `the score is "${await text(page.getByTestId('results-score'))}"`);
+    const lines = await Promise.all(['results-places', 'results-links', 'results-order'].map((id) => text(page.getByTestId(id))));
+    assert(lines.join(' ') === 'Places: 4 of 5. Links: 4 of 7. Order: 2 of 5.', `the result lines: ${lines.join(' ')}`);
+    assert(!/Recalled from memory in 0 s/.test(await text(page.getByTestId('results-time'))), 'the resumed walk lost its time');
+    assert((await smallText(page, 'results-lines')).length === 0, 'the result lines: text smaller than 16 px');
+    await shot(page, 'process-results');
+    records = await recordsOf(P.id);
+    const walked = records[0];
+    assert(records.length === 1 && walked.correct === 4 && walked.total === 5 && JSON.stringify(walked.relations) === '{"total":7,"correct":4}' && JSON.stringify(walked.order) === '{"total":5,"correct":2}', `the walk record: ${JSON.stringify(records)}`);
+    // The Progress view: the same three counts, each in a column of its own.
+    await page.getByTestId('results-progress').focus();
+    await key('Enter');
+    await page.getByTestId('progress').waitFor();
+    await page.locator('[data-testid=progress] details summary').focus();
+    await key('Enter');
+    const head = await page.locator('[data-testid=progress-table] th').allTextContents();
+    assert(head.join('|') === 'Walk|When|Kind|Places|No answer|Links|Order', `the table's columns: ${head}`);
+    const cells = await page.getByTestId('progress-row').first().locator('td').allTextContents();
+    assert(cells.slice(2).join('|') === 'Recall walk|4 of 5|0|4 of 7|2 of 5', `the table's row: ${cells}`);
+    await page.getByTestId('progress-table').scrollIntoViewIfNeeded();
+    await shot(page, 'process-progress');
+    await key('Escape');
+    await page.getByTestId('results-home').focus();
+    await key('Enter');
+    await page.getByTestId('title').waitFor();
+
+    // ── The same deck marked as facts is walked as ever: no line about a link, no question, no ordering task.
+    await page.getByRole('button', { name: `Walk ${F.title}` }).focus();
+    await key('Enter');
+    await page.getByTestId('encode-term').waitFor();
+    assert((await page.getByTestId('encode-links').count()) === 0, 'the study walk of a facts deck says how its items connect');
+    await key('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    await page.getByRole('button', { name: `Recall ${F.title}` }).focus();
+    await key('Enter');
+    for (const i of five) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 5")`).waitFor();
+      await page.getByTestId('recall-question').waitFor();
+      const options = await choiceTexts(page, 'choice');
+      const answer = STEPS[i - 1];
+      await key(String((placePlan[i - 1] === 'right' ? options.indexOf(answer) : options.findIndex((o) => o !== answer)) + 1));
+      await page.getByTestId('recall-verdict').waitFor();
+      assert((await text(page.getByTestId('recall-next'))) === (i < 5 ? 'Next place' : 'See the results'), `facts deck, stop ${i}: the button reads "${await text(page.getByTestId('recall-next'))}"`);
+      await key('Space');
+      assert((await page.getByTestId('link-stop').count()) === 0 && (await page.getByTestId('order').count()) === 0, `facts deck, stop ${i}: a question about a link or the ordering task appeared`);
+    }
+    await page.getByTestId('results').waitFor();
+    assert((await text(page.getByTestId('results-score'))) === '4 of 5' && (await page.getByTestId('results-lines').count()) === 0, 'the results of a facts deck are not as they were');
+    const plain = (await recordsOf(F.id))[0];
+    assert(plain && plain.relations === undefined && plain.order === undefined, `the facts deck's record holds links or order: ${JSON.stringify(plain)}`);
+    // Places and reviews: the process deck's are exactly what the same answers give without any question about a link.
+    const strip = (r) => JSON.stringify([r.kind, r.total, r.correct, r.unknown, r.items.map((it) => [it.correct, it.unknown === true])]);
+    assert(strip(walked) === strip(plain), `the place scores differ: ${strip(walked)} against ${strip(plain)}`);
+    const cards = (await storedProgress(page)).cards;
+    for (const n of five) {
+      const [a, b] = [cards[`${P.id}-${n}`], cards[`${F.id}-${n}`]];
+      const sched = (c) => JSON.stringify([c.box, c.reps, c.lapses, c.survey, Math.round((c.dueAt - c.lastReviewedAt) / 1000)]);
+      assert(a && b && sched(a) === sched(b), `place ${n}: the review cards differ: ${a && sched(a)} against ${b && sched(b)}`);
+    }
+
+    // ── Typed answers: the same questions, typed and graded as a typed place is; a reload keeps the answers about links.
+    await page.getByTestId('results-home').click();
+    await page.getByTestId('title').waitFor();
+    await page.getByTestId('settings').locator('summary').click();
+    await page.locator('#set-recall').selectOption('typed');
+    await page.getByRole('button', { name: `Recall ${P.title}` }).click();
+    const typedPlace = async (i, give) => {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 5")`).waitFor();
+      await page.getByTestId('recall-input').fill(give);
+      await key('Enter');
+      await page.getByTestId('recall-verdict').waitFor();
+      await page.getByTestId('recall-next').click();
+    };
+    const linkField = page.getByTestId('link-input');
+    const linkVerdict = () => text(page.getByTestId('link-verdict'));
+    await typedPlace(1, 'spring');
+    await linkField.waitFor();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'link-input');
+    await key('Enter');
+    assert((await page.getByTestId('link-verdict').count()) === 0, 'typed link: Enter on an empty field answered');
+    // One wrong letter and the wrong case still count, as for a place.
+    await linkField.fill('STREEM');
+    await key('Enter');
+    await page.getByTestId('link-verdict').waitFor();
+    assert((await linkVerdict()) === 'Correct.' && (await text(page.getByTestId('link-fact'))) === 'Spring becomes Stream: gathers.', `typed link with a typo: ${await linkVerdict()}`);
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('resume-walk').click();
+    await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 5")').waitFor();
+    await page.getByTestId('recall-next').click();
+    await page.getByTestId('link-verdict').waitFor();
+    assert((await linkVerdict()) === 'Correct.' && (await page.getByTestId('link-input').count()) === 0, 'an answer about a link was lost over a reload');
+    await page.getByTestId('link-next').click();
+    // A typed miss whose answer waits at a place ahead: held back, so there is nothing to overrule it against.
+    await typedPlace(2, 'Stream');
+    await linkField.fill('Lake');
+    await key('Enter');
+    await page.getByTestId('link-verdict').waitFor();
+    assert((await linkVerdict()) === 'Not this time.' && (await page.getByTestId('link-held').count()) === 1 && (await page.getByTestId('link-overrule').count()) === 0, 'a typed miss about a step ahead is not held back');
+    assert(!(await text(page.getByTestId('link-feedback'))).includes('River'), 'a typed miss names a step whose place has not been asked yet');
+    await page.getByTestId('link-next').click();
+    // A question mark in the empty field is "I don't know".
+    await page.locator('[data-testid=link-question]:text-is("What does Stream need?")').waitFor();
+    await linkField.press('?');
+    await page.getByTestId('link-verdict').waitFor();
+    assert((await linkVerdict()) === 'Not this time.', `"?" in the empty field: ${await linkVerdict()}`);
+    await page.getByTestId('link-next').click();
+    await typedPlace(3, 'River');
+    await linkField.fill('the sea');
+    await key('Enter');
+    await page.getByTestId('link-verdict').waitFor();
+    assert((await linkVerdict()) === 'Correct.', `a leading article in a typed link answer: ${await linkVerdict()}`);
+    await page.getByTestId('link-next').click();
+    await typedPlace(4, 'Sea');
+    await linkField.fill('Cloud');
+    await key('Enter');
+    await page.getByTestId('link-next').click();
+    // A typed miss about a step already answered is told in full, and the learner can overrule the grader.
+    await page.locator('[data-testid=link-question]:text-is("Which step does Sea hold back?")').waitFor();
+    await linkField.fill('the source');
+    await key('Enter');
+    await page.getByTestId('link-verdict').waitFor();
+    assert((await linkVerdict()) === 'Not this time.' && (await text(page.getByTestId('link-fact'))) === 'Sea holds back Spring: salt.', 'a typed miss about a step already answered is not told in full');
+    await page.getByTestId('link-overrule').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid=link-verdict]')?.textContent === 'Marked right by you.');
+    await key('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    await page.getByTestId('settings').locator('summary').click();
+    await page.locator('#set-recall').selectOption('choice');
+
+    // ── The built-in showcase is a process too: its first step says how it connects, and names no step ahead.
+    await page.getByRole('button', { name: 'Walk The citric acid cycle, as a cycle' }).click();
+    await page.getByTestId('survey').waitFor();
+    await page.getByTestId('survey-skip').click();
+    await page.getByTestId('survey-skip-yes').click();
+    await page.getByTestId('survey-summary').waitFor();
+    // Its route counts as walked, so that the study walk follows at once.
+    await page.evaluate(() => window.__memoria.settings.getState().markFamiliarized(window.__memoria.session.getState().layoutId));
+    await page.getByTestId('survey-study').click();
+    await page.getByTestId('encode-term').waitFor();
+    const krebs = await page.getByTestId('encode-links').locator('li').allTextContents();
+    assert(
+      JSON.stringify(krebs) === JSON.stringify(['Comes from a step further along the route: joins acetyl-CoA.', 'It becomes the step at the next place.', 'Held back by Succinyl-CoA: inhibits citrate synthase.']),
+      `the citric acid cycle's first step connects as ${JSON.stringify(krebs)}`,
+    );
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'process deck, keyboard only: study lines; 7 questions about links after the places; a missed answer that waits at a place not asked yet is held back and told there; a cycle ordered from the middle 5 of 5, then 2 of 5 after a reload; "Places: 4 of 5. Links: 4 of 7. Order: 2 of 5."; the same answers as plain facts give the same place scores and review cards';
+  },
+
+  /** A section walk: the places added to a palace, and nothing else. */
+  async n() {
+    const { context, page, errors } = await open();
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    const day = 24 * 3600 * 1000;
+    const now = Date.now();
+    const DECK = 'deck-grown';
+    const TITLE = 'A palace with new places';
+    const item = (n) => ({ id: `g-${n}`, term: `Term ${n}`, meaning: `Meaning ${n}`, locusId: `domus-0${n}`, imago: { scene: `Scene ${n}.`, glyphs: ['⭐'], action: 'bob', source: 'learner' } });
+    // Three places surveyed, studied and recalled two days ago; two more added since, about which nothing is known.
+    const surveyedAt = now - 2 * day;
+    const deck = { id: DECK, title: TITLE, kind: 'list', layoutId: 'domus', createdAt: 9, surveyedAt, items: [1, 2, 3, 4, 5].map(item) };
+    const old = (n, survey) => [`g-${n}`, { itemId: `g-${n}`, deckId: DECK, box: 2, dueAt: now + day, lastReviewedAt: now - day, reps: 1, lapses: 0, survey, surveyGiven: survey === 'known' ? `Term ${n}` : '', studiedAt: now - 2 * day }];
+    const rec = (id, kind, at, marks) => ({ id, deckId: DECK, kind, at, total: marks.length, correct: marks.filter((m) => m[1]).length, unknown: 0, ms: 9000, items: marks.map(([n, ok]) => ({ itemId: `g-${n}`, correct: ok })) });
+    await seedState(page, {
+      decks: { [DECK]: deck },
+      cards: Object.fromEntries([old(1, 'known'), old(2, 'unknown'), old(3, 'unknown')]),
+      records: [rec('walk-a', 'survey', now - 2 * day, [[1, true], [2, false], [3, false]]), rec('walk-b', 'recall', now - 2 * day + 60_000, [[1, true], [2, true], [3, true]])],
+      settings: { familiarized: { domus: true }, reducedMotion: true },
+    });
+    const view = () => page.evaluate(() => window.__memoriaApp.view());
+    const olderCards = () => page.evaluate(() => JSON.stringify(['g-1', 'g-2', 'g-3'].map((id) => window.__memoria.review.getState().cards[id])));
+    const surveyDate = () => page.evaluate((id) => window.__memoria.decks.getState().decks[id]?.surveyedAt, DECK);
+    const before = await olderCards();
+    const sectionRecords = async () => (await storedProgress(page)).records.filter((r) => r.id.startsWith('section-'));
+    const place = (n) => placeName[`domus-0${n}`];
+
+    // "Walk" on a surveyed palace with places nobody has been asked about: those places, by themselves, survey first.
+    await page.getByRole('button', { name: `Walk ${TITLE}` }).click();
+    for (const i of [1, 2]) {
+      await page.locator(`[data-testid=survey] [data-testid=walk-label]:has-text("Survey of the new places · Place ${i} of 2")`).waitFor();
+      const question = page.getByTestId('survey-question');
+      await question.waitFor();
+      assert((await question.getAttribute('data-place')) === place(i + 3), `section survey stop ${i}: at ${await question.getAttribute('data-place')}`);
+      let v = await view();
+      assert(v.camera === i + 2 && v.labels === true, `section survey stop ${i}: the camera is at ${v.camera}`);
+      // The older places stay as they are (restored), and show nothing new.
+      assert(v.integrity.slice(0, 3).join(' ') === '1 1 1', `section survey stop ${i}: the older places are ${v.integrity.slice(0, 3)}`);
+      const options = await choiceTexts(page, 'survey-choice');
+      if (i === 1) await page.getByTestId('survey-choice').nth(options.indexOf('Term 4')).click();
+      else await page.keyboard.press('0');
+      await page.getByTestId('survey-ack').waitFor();
+      v = await view();
+      assert(v.integrity[i + 2] === (i === 1 ? 1 : 0), `section survey stop ${i}: the new place is at ${v.integrity[i + 2]}`);
+      assert((await sectionRecords()).length === 0, 'the section survey was saved before it ended');
+      await page.getByTestId('survey-next').click();
+    }
+    await page.getByTestId('survey-summary').waitFor();
+    assert((await text(page.getByTestId('survey-score'))) === 'You knew 1 of 2.', `section summary: ${await text(page.getByTestId('survey-score'))}`);
+    assert((await text(page.getByTestId('survey-summary-label'))) === `Survey · ${TITLE} · 2 new places`, `section summary label: ${await text(page.getByTestId('survey-summary-label'))}`);
+    assert((await page.getByTestId('survey-place').count()) === 2, 'the section summary lists places it did not walk');
+    let v = await view();
+    assert(v.camera === 'overview' && v.integrity.slice(0, 5).join(' ') === '1 1 1 1 0', `after the section survey: camera ${v.camera}, places ${v.integrity.slice(0, 5)}`);
+    await shot(page, 'section-summary');
+    assert((await olderCards()) === before && (await surveyDate()) === surveyedAt, 'the section survey changed an older card or the palace\'s survey date');
+    let sections = await sectionRecords();
+    assert(sections.length === 1 && sections[0].kind === 'survey' && sections[0].total === 2 && sections[0].correct === 1 && sections[0].unknown === 1, `the section survey's record: ${JSON.stringify(sections)}`);
+    // New places are new even in a palace the learner knows: their route is checked before images are placed.
+    assert((await text(page.getByTestId('survey-study'))) === 'Check the route', `after a section survey the next step reads "${await text(page.getByTestId('survey-study'))}"`);
+    await page.getByTestId('survey-study').click();
+    await page.getByTestId('route-question').waitFor();
+    assert((await text(page.getByTestId('route-question'))) === `Which place comes right after ${place(4)}?`, `the section's route check asks "${await text(page.getByTestId('route-question'))}"`);
+    const routeOptions = await choiceTexts(page, 'route-option');
+    await page.keyboard.press(String(routeOptions.indexOf(place(5)) + 1));
+    await page.getByTestId('route-next').click();
+
+    // The study walk and the recall walk of the two new places.
+    for (const i of [1, 2]) {
+      await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 2 · ${place(i + 3)}")`).waitFor();
+      await page.getByTestId('encode-term').waitFor();
+      assert((await text(page.getByTestId('encode-term'))) === `Term ${i + 3}`, `section study stop ${i}: wrong term`);
+      assert((await text(page.getByTestId('encode-survey'))).startsWith(i === 1 ? 'In the survey you answered: Term 4.' : 'In the survey you said: I don’t know.'), `section study stop ${i}: ${await text(page.getByTestId('encode-survey'))}`);
+      await page.getByTestId('walk-next').click();
+    }
+    await page.getByTestId('interstitial').waitFor();
+    await page.getByTestId('recall-start').click();
+    for (const i of [1, 2]) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 2")`).waitFor();
+      const question = page.getByTestId('recall-question');
+      await question.waitFor();
+      assert((await question.getAttribute('data-place')) === place(i + 3), `section recall stop ${i}: at ${await question.getAttribute('data-place')}`);
+      const options = await choiceTexts(page, 'choice');
+      await page.getByTestId('choice').nth(options.indexOf(`Term ${i + 3}`)).click();
+      await page.getByTestId('recall-verdict').waitFor();
+      await page.getByTestId('recall-next').click();
+    }
+    await page.getByTestId('results').waitFor();
+    assert((await text(page.getByTestId('results-score'))) === '2 of 2' && (await page.getByTestId('result-row').count()) === 2, `the section's results: ${await text(page.getByTestId('results-score'))}`);
+    assert((await text(page.getByTestId('results-section'))) === '2 new places: the rest of the palace was not walked.', `the section's results say "${await text(page.getByTestId('results-section'))}"`);
+    assert((await text(page.getByTestId('results-vs-survey'))) === 'Before study: 1 of 2. Now: 2 of 2.', `the section against its own survey: ${await text(page.getByTestId('results-vs-survey'))}`);
+    assert((await text(page.getByTestId('results-again'))) === 'Recall the whole palace', 'the section\'s results offer to recall "again"');
+    await shot(page, 'section-results');
+
+    // Nothing about the older places has changed; the new ones have been through the whole loop.
+    assert((await olderCards()) === before && (await surveyDate()) === surveyedAt, 'the section walk changed an older card or the palace\'s survey date');
+    const stored = await storedProgress(page);
+    const [four, fiveCard] = [stored.cards['g-4'], stored.cards['g-5']];
+    assert(four.survey === 'known' && fiveCard.survey === 'unknown' && [four, fiveCard].every((c) => c.studiedAt !== undefined && c.reps === 1 && c.box === 2), `the new places' cards: ${JSON.stringify([four, fiveCard])}`);
+    sections = await sectionRecords();
+    assert(stored.records.length === 4 && sections.length === 2 && sections[1].kind === 'recall' && sections[1].total === 2 && sections[1].correct === 2, `the walk records: ${JSON.stringify(stored.records.map((r) => [r.id.split('-')[0], r.kind, r.correct, r.total]))}`);
+    assert(JSON.stringify(sections.map((r) => r.items.map((it) => it.itemId))) === '[["g-4","g-5"],["g-4","g-5"]]', 'a section record covers other places than the new ones');
+
+    // Progress: both section walks are in the table, labelled, and neither is on the line.
+    await page.getByTestId('results-progress').click();
+    await page.getByTestId('progress').waitFor();
+    assert((await text(page.getByTestId('progress-summary'))) === 'Before study: 1 of 3. Latest (recall walk): 3 of 3. 2 walks in all.', `Progress summary with section walks: ${await text(page.getByTestId('progress-summary'))}`);
+    assert((await text(page.getByTestId('progress-sections'))) === '2 more walks of new places only: in the table, not on the line.', `Progress, section line: ${await text(page.getByTestId('progress-sections'))}`);
+    assert((await page.getByTestId('progress-chart').getAttribute('aria-label')).includes('score on each of 2 walks'), 'a section walk is on the line of the whole palace');
+    const kinds = await page.getByTestId('progress-row').evaluateAll((els) => els.map((el) => `${el.children[2].textContent}: ${el.children[3].textContent}`));
+    assert(kinds.join(' | ') === 'Before study (survey): 1 of 3 | Recall walk: 3 of 3 | Before study (survey) · 2 new places: 1 of 2 | Recall walk · 2 new places: 2 of 2', `the table of walks: ${kinds}`);
+    await page.locator('[data-testid=progress] details summary').click();
+    await page.getByTestId('progress-table').scrollIntoViewIfNeeded();
+    await shot(page, 'section-progress');
+    await page.getByTestId('progress-back').click();
+    await page.getByTestId('results-home').click();
+    await page.getByTestId('title').waitFor();
+
+    // With no new place left, "Walk" is the study walk of the whole palace again.
+    await page.getByRole('button', { name: `Walk ${TITLE}` }).click();
+    await page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 1 of 5")').waitFor();
+    assert((await page.getByTestId('survey').count()) === 0, 'a palace with no new place was surveyed again');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('leave-yes').click();
+    await page.getByTestId('title').waitFor();
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'two new places in a palace of five: surveyed 1 of 2, route check, studied, recalled 2 of 2; older cards and the survey date untouched; two records labelled "2 new places", off the Progress line';
+  },
+
+  /** "Recall" on a palace in which nothing has been studied. */
+  async k() {
+    const { context, page, errors } = await open();
+    await page.goto(`${base}/?debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp && window.__memoria?.session);
+    const leaveWalk = async () => {
+      await page.keyboard.press('Escape');
+      await page.getByTestId('leave-yes').click();
+      await page.getByTestId('title').waitFor();
+    };
+
+    // 1. A palace that was never opened: its survey comes first (principle 9), whichever link is pressed.
+    await page.getByRole('button', { name: 'Recall The Mohs hardness scale' }).click();
+    await page.locator('[data-testid=survey] [data-testid=walk-label]:has-text("Survey · Place 1 of 10")').waitFor();
+    await page.getByTestId('survey-question').waitFor();
+    assert((await page.getByTestId('recall').count()) === 0, '"Recall" on a new palace started a recall walk');
+    await shot(page, 'recall-new-deck');
+    await leaveWalk();
+    await assertNothingWritten(page, 'after leaving the survey that "Recall" opened');
+
+    // 2. Surveyed and left before the study walk: "Recall" opens the study walk, which is what comes next.
+    const item = (n) => ({ id: `s-${n}`, term: `Term ${n}`, meaning: `Meaning ${n}`, locusId: `domus-0${n}`, imago: { scene: `Scene ${n}.`, glyphs: ['⭐'], action: 'bob', source: 'learner' } });
+    const deck = { id: 'deck-surveyed', title: 'A surveyed palace', kind: 'list', layoutId: 'domus', createdAt: 9, surveyedAt: Date.now() - 3_600_000, items: [1, 2, 3].map(item) };
+    const card = (n, extra = {}) => [`s-${n}`, { itemId: `s-${n}`, deckId: deck.id, box: 0, dueAt: 0, reps: 0, lapses: 0, survey: 'unknown', surveyGiven: '', ...extra }];
+    const settings = { familiarized: { domus: true }, reducedMotion: true };
+    await seedState(page, { decks: { [deck.id]: deck }, cards: Object.fromEntries([1, 2, 3].map((n) => card(n))), settings });
+    await page.getByRole('button', { name: 'Recall A surveyed palace' }).click();
+    await page.getByTestId('encode-term').waitFor();
+    assert((await page.getByTestId('recall').count()) === 0 && (await page.getByTestId('survey').count()) === 0, '"Recall" on a surveyed palace that was never studied did not open its study walk');
+    await leaveWalk();
+
+    // 3. Once an image has been placed there is something to recall.
+    await seedState(page, { decks: { [deck.id]: deck }, cards: Object.fromEntries([card(1, { studiedAt: Date.now() - 60_000 }), card(2), card(3)]), settings });
+    await page.getByRole('button', { name: 'Recall A surveyed palace' }).click();
+    await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 3")').waitFor();
+    await page.getByTestId('recall-question').waitFor();
+    await leaveWalk();
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return '"Recall" on a new palace opens its survey; on a surveyed one, its study walk; on a studied one, the recall walk';
   },
 
   async g() {

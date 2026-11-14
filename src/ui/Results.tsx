@@ -10,10 +10,11 @@ import { isNoStrongerSuggestion, NO_MORE_OFFLINE } from '@/flows/suggest';
 import { JUDGE_REGENERATE_TIMEOUT_MS, JUDGE_STARTS_IN_RUINS, REGENERATE_TIMEOUT_MS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDeck, useDecks } from '@/state/decks';
-import { compareWalks, previousWalk, surveyOf, useHistory } from '@/state/history';
+import { compareWalks, compareWithSurveys, isSectionWalk, previousWalk, useHistory } from '@/state/history';
 import { useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { RepairLegend } from './Legend';
+import { ResultLines } from './Process';
 
 /**
  * `by` says where the text in the editor came from: a new image from the Architect, an
@@ -82,8 +83,8 @@ export function Results() {
   // This walk in the history (a Judge run has none), against the survey and against the walk before it.
   // Each comparison counts only the places this walk asked about, so a review of three is read against the same three.
   const record = judge ? undefined : history.find((r) => r.id === walkId && r.deckId === deck.id);
-  const survey = record ? surveyOf(history, deck.id) : undefined;
-  const sinceSurvey = record && survey ? compareWalks(survey, record) : null;
+  // The score before study comes from the palace's survey and from the survey of any section added since.
+  const sinceSurvey = record ? compareWithSurveys(history, record) : null;
   const earlier = record ? previousWalk(history, record) : undefined;
   const sinceEarlier = record && earlier ? compareWalks(earlier, record) : null;
   // Places stand, fall and are rebuilt only in a surveyed palace, or in a Judge run that starts in ruins.
@@ -145,6 +146,8 @@ export function Results() {
       <h1 className="score" tabIndex={-1} ref={score} data-testid="results-score">
         {right} of {rows.length}
       </h1>
+      {/* A walk of new places only says so; a process deck counts its links and its order apart from the places. */}
+      {record && <ResultLines record={record} />}
       {spot && (
         <p className="body" data-testid="results-spot">
           A spot check: {numberWord(rows.length)} of the {numberWord(deck.items.length)} places, picked at random. The other{' '}
@@ -188,7 +191,7 @@ export function Results() {
           onClick={() => startRecall(deck.id, 'all', judge)}
           data-testid="results-again"
         >
-          {spot ? `Recall all ${numberWord(deck.items.length)}` : 'Recall again'}
+          {spot ? `Recall all ${numberWord(deck.items.length)}` : record && isSectionWalk(record) ? 'Recall the whole palace' : 'Recall again'}
         </button>
         {!judge && (
           <button type="button" className="btn" onClick={openProgress} data-testid="results-progress">

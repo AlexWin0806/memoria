@@ -61,8 +61,9 @@ const RUIN_DEVELOPMENT = 0.18;
  * `savedIntegrity(card)`: restored 1, damaged 0.3, under repair 0.6, in ruins 0.
  *   a place that holds no item                       1
  *   a deck never surveyed (and not a Judge run)      1 everywhere: it looks as it always did
- *   survey walk                                      not yet answered 1; right 1; wrong or "I don't know" 0
- *   survey summary (the deck now has `surveyedAt`)   saved: unknown 0, known 1
+ *   survey walk                                      not yet answered 1; right 1; wrong or "I don't know" 0;
+ *                                                    a place the walk does not stop at (survey of a section): saved
+ *   survey summary (every outcome is on its card)    saved: unknown 0, known 1
  *   familiarize (route walk after the survey)        saved
  *   encode                                           saved, and at least 0.6 once the camera has arrived there
  *   recall, results                                  right 1; miss 0.3; not answered: saved
@@ -78,9 +79,13 @@ export function deriveSceneView(i: Input): SceneView {
   const byLocus = new Map<string, MemoryItem>();
   deck?.items.forEach((it) => byLocus.set(it.locusId, it));
   const answered = new Map(results.map((r) => [r.itemId, r]));
-  // The survey ends on a summary: the walk is over, and the camera steps back to show the whole palace.
   const surveyed = !judge && deck?.surveyedAt !== undefined;
-  const summary = mode === 'survey' && surveyed;
+  // The items this walk stops at. A walk of a section (places added to a palace) stops at only some of the deck's.
+  const walked = new Set(stops.flatMap((index) => byLocus.get(layout.loci[index]?.id ?? '')?.id ?? []));
+  // The survey ends on a summary: the walk is over, and the camera steps back to show the whole palace.
+  // It is over once what it found has been saved with every item it asked about (nothing is saved before
+  // that). The deck's own survey date would not do: the survey of a section is walked in a surveyed deck.
+  const summary = mode === 'survey' && !judge && walked.size > 0 && [...walked].every((id) => cards[id]?.survey !== undefined);
   const inWalk = (mode === 'familiarize' || mode === 'survey' || mode === 'encode' || mode === 'recall') && !summary;
   const current = inWalk && step >= 0 ? stops[step] : undefined;
   const reached = new Set(inWalk ? stops.slice(0, step + (arrived ? 1 : 0)) : []);
@@ -136,7 +141,10 @@ export function deriveSceneView(i: Input): SceneView {
       else whole = mode === 'encode' && here ? INTEGRITY.repair : INTEGRITY.ruins;
     } else if (ruins) {
       const saved = savedIntegrity(card);
-      if (mode === 'survey' && !summary) whole = r && !r.correct ? INTEGRITY.ruins : INTEGRITY.whole;
+      // The survey of a section leaves the places it does not ask about as they are: as saved in a
+      // surveyed deck, whole in a deck that never was. (A survey of the whole deck stops at every place.)
+      if (mode === 'survey' && !walked.has(item.id)) whole = surveyed ? saved : INTEGRITY.whole;
+      else if (mode === 'survey' && !summary) whole = r && !r.correct ? INTEGRITY.ruins : INTEGRITY.whole;
       else if (mode === 'encode') whole = here ? Math.max(saved, INTEGRITY.repair) : saved;
       else if ((mode === 'recall' || mode === 'results') && r) whole = r.correct ? INTEGRITY.whole : INTEGRITY.damaged;
       else whole = saved;

@@ -34,8 +34,9 @@ export interface SessionState {
   judge: boolean;
   /**
    * True while the screen between the encode walk and the recall walk is up ("the images are
-   * now hidden"): no memory image may be visible then. False again once the recall walk
-   * starts or the walk is left. The engine passes it to `deriveSceneView`.
+   * now hidden"), and while the steps of a process are being put in order after its recall
+   * walk: no memory image may be visible then. False again once the recall walk starts, the
+   * results are shown or the walk is left. The engine passes it to `deriveSceneView`.
    */
   imagesHidden: boolean;
   /** Width in px that the overlay covers on the right; the engine re-centres the view. */

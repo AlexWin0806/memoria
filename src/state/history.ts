@@ -22,13 +22,30 @@ interface HistoryState {
   removeDeck: (deckId: string) => void;
 }
 
-/** Drops the oldest walks beyond the cap, never a palace's first survey. */
+/**
+ * A section walk covers only the places that were added to a palace (startSection in
+ * src/flows/flow.ts), never the whole of it, so its score must not be read as the palace's.
+ * It is told apart by its id, which the flow gives this prefix: the record's shape is the
+ * same as any other walk's, and the stored history needs no new field for it.
+ */
+export const SECTION_WALK_PREFIX = 'section-';
+
+export function isSectionWalk(record: Pick<WalkRecord, 'id'>): boolean {
+  return record.id.startsWith(SECTION_WALK_PREFIX);
+}
+
+/**
+ * Drops the oldest walks beyond the cap, never a palace's first survey nor the survey of a
+ * section: each is the only score before study for the places it asked about.
+ */
 function capped(records: WalkRecord[]): WalkRecord[] {
   if (records.length <= HISTORY_MAX) return records;
   const baselines = new Set<string>();
   const seen = new Set<string>();
   for (const r of records) {
-    if (r.kind === 'survey' && !seen.has(r.deckId)) {
+    if (r.kind !== 'survey') continue;
+    if (isSectionWalk(r)) baselines.add(r.id);
+    else if (!seen.has(r.deckId)) {
       seen.add(r.deckId);
       baselines.add(r.id);
     }
@@ -66,9 +83,9 @@ export function walksOf(records: WalkRecord[], deckId: string): WalkRecord[] {
   return records.filter((r) => r.deckId === deckId).sort((a, b) => a.at - b.at);
 }
 
-/** The palace's survey: the baseline. The first one, if it was ever taken again. */
+/** The palace's survey: the baseline. The first one, if it was ever taken again; never the survey of a section. */
 export function surveyOf(records: WalkRecord[], deckId: string): WalkRecord | undefined {
-  return walksOf(records, deckId).find((r) => r.kind === 'survey');
+  return walksOf(records, deckId).find((r) => r.kind === 'survey' && !isSectionWalk(r));
 }
 
 /** A survey nobody walked: "I know none of this" pressed before any answer. */
@@ -91,6 +108,27 @@ export interface WalkComparison {
  */
 export function compareWalks(earlier: WalkRecord, current: WalkRecord): WalkComparison | null {
   const was = new Map(earlier.items.map((it) => [it.itemId, it.correct]));
+  const shared = current.items.filter((it) => was.has(it.itemId));
+  if (!shared.length) return null;
+  return {
+    of: shared.length,
+    before: shared.filter((it) => was.get(it.itemId)).length,
+    now: shared.filter((it) => it.correct).length,
+  };
+}
+
+/**
+ * This walk against what the surveys found before any study at the places it asked about.
+ * Each place is surveyed once, with the palace or with the section that added it, so the
+ * score before study is gathered from every survey taken up to this walk. null when none of
+ * its places was ever surveyed.
+ */
+export function compareWithSurveys(records: WalkRecord[], current: WalkRecord): WalkComparison | null {
+  const was = new Map<string, boolean>();
+  for (const r of walksOf(records, current.deckId)) {
+    if (r.kind !== 'survey' || r.id === current.id || r.at > current.at) continue;
+    for (const it of r.items) if (!was.has(it.itemId)) was.set(it.itemId, it.correct);
+  }
   const shared = current.items.filter((it) => was.has(it.itemId));
   if (!shared.length) return null;
   return {
