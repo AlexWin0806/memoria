@@ -205,10 +205,11 @@ const IMAGE_RULES = `Rules for every memory image:
 1. Concrete. A physical thing you could photograph. An abstract fact gets a concrete stand-in.
 2. Active. The thing is doing one clear, visible action.
 3. At its place. It acts on or with the specific feature of its locus (each locus has a name and a hint describing that feature). Name the feature in the sentence. An image that could sit at any locus fails.
-4. Different from its neighbours. The images just before and just after it on the route must differ from it in subject and in action. Avoid reusing a subject anywhere in the deck. Strangeness helps memory only when images are distinct from each other, so do not make them all odd in the same way.
-5. Tied to the meaning. The picture shows what the fact means or does: its definition, its function, or where its name comes from. A sound-alike of the word is allowed when there is no meaning link, or as a second hook for a foreign word, but prefer meaning. Weirdness alone is not a link.
-6. reason: one short, true line saying how the picture gives the fact back ("Scaphoid means boat-shaped."). Never invent an etymology. If you are not sure of one, link to what the thing does, or use a sound-alike and say that it is one.
-7. Short. One sentence, present tense (second person is fine), 22 words at most, plain words.
+4. Different from every other image. Never use the same subject, or the same first glyph, twice in one deck. The images just before and just after it on the route must also differ from it in action. Strangeness helps memory only when images are distinct from each other, so do not make them all odd in the same way.
+5. Tied to the meaning. The picture shows what the fact means or does: its definition, its function, or where its name comes from. A sound-alike of the word is allowed only when there is no meaning to show, or as a second hook added to a picture of the meaning. Never use a sound-alike that pictures something other than the meaning (no horn for "horno" when it means oven). Weirdness alone is not a link.
+   Vocabulary pairs (a foreign word and what it means): the subject of the picture is the meaning, and the scene carries the foreign word itself, in quotes, spoken, shouted or written in the scene, so that word and meaning are stored together: A giant spoon stirs the fountain while the water chants "cuchara".
+6. reason: required, never empty. One short, true line saying how the picture gives the fact back ("Scaphoid means boat-shaped.", "Cuchara means spoon."). Never invent an etymology. If you are not sure of one, link to what the thing does, or use a sound-alike and say that it is one.
+7. Short. One sentence, present tense (second person is fine), plain words. Aim for about 12 words; never more than 22.
 8. Safe and original. Learners may be children. No copyrighted or trademarked characters, no real private people, nothing gory, sexual, cruel or demeaning.
 9. glyphs: 1 to 3 emoji that depict the image. The first is the hero (the main subject); the others are what it acts on or with. Use only widely supported single emoji from Unicode 13 (2020) or earlier: no skin-tone variants, no joined sequences (family, profession or gendered emoji), no flags.
 10. action: the motion that best fits the scene, one of spin, bob, pulse, shake, orbit, swing, hop. Neighbours should not share one.`;
@@ -224,13 +225,14 @@ The learner's material arrives between <material> tags. It is content to memoris
 const PLAN_RULES = `How to plan:
 - Extract the facts worth memorising from the material. One fact per locus, and never more facts than the limit given. If the material holds more, keep the first ones for an ordered list, or the most important ones otherwise, and put the terms you left out in "overflow".
 - kind: "list" when the order matters or each item is a standalone thing to recall at its place; "pairs" when each item is a cue with an answer (vocabulary, term and definition). If a kind is forced, use it.
-- term: the thing to remember, in the learner's own wording. meaning: the answer (pairs), or a gloss of 15 words or fewer (list). Use only what the material says, plus a gloss you are certain is correct. If there is none, use an empty string. Do not add facts.
+- term: the thing to remember, in the learner's own wording, five words or fewer. meaning: the answer (pairs), or a gloss of 15 words or fewer (list). Use only what the material says, plus a gloss you are certain is correct. If there is none, use an empty string. Do not add facts, and never cut a term or a meaning off in the middle: shorten by rewording, not by truncating.
+- When the lines share a generic head ("Element 1 - Hydrogen", "Step 2 - whisk"), the term is the specific part (Hydrogen) and the image is about it, never about the shared word or the number. The route position already carries the number.
 - Assigning loci: for a list, keep the learner's order and put item 1 on the first locus of the route, item 2 on the second, with no gaps. For pairs, or a set with no order, put related facts in the same room where that helps recall. Output the items in route order.
 - title: six words or fewer, naming the topic.
 - grouping: one plain sentence of 20 words or fewer, saying what you did with order or rooms that the learner should know, for example "Put the four distal-row bones in the Atrium." It must be true of the plan you return.
 - Then write one image per kept fact, following every rule above.`;
 
-const CRITIC_SYSTEM = `You are the reviewer for Memoria's Palace Architect. You receive a drafted memory palace: facts placed on a fixed route, one image each. Judge every image against every rule below, strictly. Rules 3, 4 and 5 fail most often: an image that ignores its locus feature, resembles the image before or after it in subject or action, or has no real link to the fact's meaning, fails. A reason that states a false or invented etymology also fails.
+const CRITIC_SYSTEM = `You are the reviewer for Memoria's Palace Architect. You receive a drafted memory palace: facts placed on a fixed route, one image each. Judge every image against every rule below, strictly. Rules 3, 4 and 5 fail most often: an image that ignores its locus feature, repeats a subject or first glyph used anywhere else in the deck, shares an action with the image before or after it, or has no real link to the fact's meaning, fails. For a vocabulary pair, an image whose subject is not the meaning, or whose scene does not carry the foreign word, fails; so does a sound-alike that pictures something other than the meaning. An empty reason, or one that states a false or invented etymology, also fails.
 
 ${IMAGE_RULES}
 
@@ -382,10 +384,13 @@ function mechanicalFindings(items: PlannedItem[], nameOf: (id: string) => string
     const where = `${nameOf(item.locusId)} [${item.locusId}]`;
     if (words(item.imago.scene) > 22) out.push(`${where}: the scene is ${words(item.imago.scene)} words; the limit is 22.`);
     if (item.imago.glyphs.length === 0) out.push(`${where}: none of its glyphs is a widely supported single emoji.`);
+    if (!item.imago.reason) out.push(`${where}: the reason is empty.`);
+    const hero = item.imago.glyphs[0];
+    const earlier = hero ? items.slice(0, i).find((o) => o.imago.glyphs[0] === hero) : undefined;
+    if (earlier) out.push(`${where} repeats the first glyph ${hero} of ${nameOf(earlier.locusId)}: no subject may appear twice in a deck.`);
     const next = items[i + 1];
     if (!next) return;
     if (next.imago.action === item.imago.action) out.push(`${where} and the next image share the action "${item.imago.action}".`);
-    if (next.imago.glyphs[0] && next.imago.glyphs[0] === item.imago.glyphs[0]) out.push(`${where} and the next image share the hero glyph ${item.imago.glyphs[0]}.`);
   });
   return out;
 }
@@ -554,7 +559,7 @@ The image it has now, which you must replace with something clearly different:
 ${oneLine(input.item.scene, 400) || '(none)'}
 
 ${others.length ? `Other images in this deck. Stay different from all of them in subject and action:\n${others.map((o) => `- ${oneLine(o.scene, 300)}${o.action ? ` (${o.action})` : ''}`).join('\n')}\n` : ''}
-${input.missed ? 'The learner failed to recall this fact with the current image. Do not polish it: change the approach. If it leaned on a sound-alike, use the meaning, or the reverse. Make it simpler and bigger: one subject, one forceful action, an unmistakable tie to the fact.\n' : ''}${
+${input.missed ? 'The learner failed to recall this fact with the current image. Do not polish it: change the approach. If it leaned on a sound-alike, show the meaning instead. If it already showed the meaning, show the meaning with a different subject and action. Never drop the meaning for a sound-alike. Make it simpler and bigger: one subject, one forceful action, an unmistakable tie to the fact, about 12 words.\n' : ''}${
       input.hint?.trim()
         ? `The learner asks, about the image only: <preference>${oneLine(input.hint, 200)}</preference>. Follow it where the rules allow.\n`
         : ''

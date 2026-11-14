@@ -3,7 +3,9 @@
  * Smoke test for the Palace Architect.  Run: node scripts/architect-smoke.mjs
  *
  *  1. Validates every fixture deck (and the control list) against a schema.
- *  2. Runs the local planner on three sample inputs and prints the plans.
+ *  2. Runs the local planner on three sample inputs and prints the plans, then asserts
+ *     its behaviour on the four inputs from QA review 1 (planets, Spanish vocabulary,
+ *     Krebs-cycle prose, "Element n - name" lines) and on offline "Strengthen".
  *  3. Exercises the API handler's guard rails without a network (405, 400, 503, 429),
  *     then its plan/regenerate logic against canned answers from a localhost stand-in
  *     for the Messages API (no real model involved).
@@ -488,8 +490,14 @@ try {
     try {
       const clientReq = { ...base, maxItems: 8, text: samples['term - meaning list'] };
       queue.push(answer(JSON.stringify(draft)), answer(JSON.stringify(review)));
-      const online = await planPalace(clientReq);
+      const heardOnline = [];
+      const online = await planPalace(clientReq, { onStep: (s) => heardOnline.push(s.label) });
       check('client: plan comes from the API', online.source === 'api' && online.items.length === 8 && online.items.every((it) => it.imago.source === 'architect' && it.id), `source=${online.source}, ${online.items.length} items`);
+      check('client: onStep reports the first stage at once, then what the server did', heardOnline[0] === 'Reading your notes' && online.steps.every((s) => heardOnline.includes(s.label)), heardOnline.slice(0, 2).join(' | '));
+      await planPalace(clientReq, { onStep: () => { throw new Error('listener bug'); } }).then(
+        (p) => check('client: a throwing onStep does not break planning', p.items.length === 8),
+        () => check('client: a throwing onStep does not break planning', false),
+      );
       const repeat = await planPalace(clientReq);
       check('client: the same request is served from the cache', repeat.source === 'api' && fetches === 1 && repeat.items[0].id !== online.items[0].id, `${fetches} fetch(es)`);
       queue.push(answer(JSON.stringify({ scene: 'A cat juggles the lamp.', glyphs: ['🐈'], action: 'hop', reason: 'Chat means cat.' })));
