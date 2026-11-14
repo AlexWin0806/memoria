@@ -221,29 +221,32 @@ export function Encode() {
       <p className="label" data-testid="walk-label">
         Place {step + 1} of {stops.length} · {locus.name}
       </p>
-      {arrived ? (
-        <div aria-live="polite">
-          <h2 className="term" data-testid="encode-term">
-            {item.term}
-          </h2>
-          {item.meaning && (
-            <p className="body" data-testid="encode-meaning">
-              {item.meaning}
+      {/* The live region stays mounted so that each new image is announced when it appears. */}
+      <div aria-live="polite">
+        {arrived ? (
+          <>
+            <h2 className="term" data-testid="encode-term">
+              {item.term}
+            </h2>
+            {item.meaning && (
+              <p className="body" data-testid="encode-meaning">
+                {item.meaning}
+              </p>
+            )}
+            <hr />
+            <p className="scene" data-testid="encode-scene">
+              {item.imago.scene}
             </p>
-          )}
-          <hr />
-          <p className="scene" data-testid="encode-scene">
-            {item.imago.scene}
-          </p>
-          {item.imago.reason && (
-            <p className="reason">
-              <span className="label">Why</span> {item.imago.reason}
-            </p>
-          )}
-        </div>
-      ) : (
-        <p className="muted">Walking to {locus.name}.</p>
-      )}
+            {item.imago.reason && (
+              <p className="reason">
+                <span className="label">Why</span> {item.imago.reason}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="muted">Walking to {locus.name}.</p>
+        )}
+      </div>
       {judge && <ProgressBar value={arrived ? progress : 0} label="Time at this place" />}
       <div className="actions">
         <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>

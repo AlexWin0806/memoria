@@ -72,7 +72,7 @@ function OverlayRoot() {
 
 /**
  * The one docked panel: a page margin on the right, a bottom sheet on narrow screens.
- * Reports the width it covers so the engine can re-centre the view beside it.
+ * Reports the width (docked) or height (sheet) it covers so the engine can re-centre the view.
  */
 function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
   const ref = useRef<HTMLElement>(null);
@@ -81,7 +81,9 @@ function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
     if (!el) return;
     const report = () => {
       const docked = window.innerWidth >= 720;
-      useSession.getState().setInsetRight(docked ? Math.round(el.getBoundingClientRect().width) : 0);
+      const box = el.getBoundingClientRect();
+      useSession.getState().setInsetRight(docked ? Math.round(box.width) : 0);
+      useSession.getState().setInsetBottom(docked ? 0 : Math.round(box.height));
     };
     report();
     const ro = new ResizeObserver(report);
@@ -91,6 +93,7 @@ function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
       ro.disconnect();
       window.removeEventListener('resize', report);
       useSession.getState().setInsetRight(0);
+      useSession.getState().setInsetBottom(0);
     };
   }, []);
   return (
