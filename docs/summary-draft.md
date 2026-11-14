@@ -22,18 +22,18 @@ HackPrinceton Fall 2026. Main track: Education. Special tracks: Amazon Best Prac
 
 ## Problem
 
-Students are asked to memorize ordered, discrete material all the time: anatomy, vocabulary, formulas, dates, a speech. Most re-read and cram, and most of it is gone in a week. The method of loci, the 2,500-year-old technique memory competitors still use, works for exactly this kind of material, but it has a setup cost: you need a palace, a route, and a vivid image for every item. Few students get past that.
+Students are asked to memorize ordered, discrete material all the time: anatomy, vocabulary, formulas, dates, a speech. Most re-read and cram, and most of it is gone in a week. The method of loci, described in writing about 2,100 years ago and still used by memory athletes, works for exactly this kind of material, but it has a setup cost: you need a palace, a route, and a vivid image for every item. Few students get past that.
 
 ## Solution
 
 Memoria removes the setup cost and adds the two things loci alone lack.
 
-1. Paste a list or your raw notes. The Palace Architect extracts the items, proposes one vivid, active image for each, and places them along a fixed route through a palace, keeping related items in the same room. You approve or rewrite every image, because images you make yourself stick better.
+1. Paste a list or your raw notes. The Palace Architect extracts the items, proposes one vivid, active image for each, and places them along a fixed route through a palace, keeping related items in the same room. You approve or rewrite every image, so each one is yours.
 2. Walk the palace to encode. Each image appears at its locus.
 3. Walk it again to recall. The images are hidden until you answer, so every pass is retrieval practice, not re-reading.
 4. The palace schedules your reviews, and it visibly comes to life around the loci you have mastered.
 
-Judge Mode lets anyone feel the effect in about a minute: memorize the eight carpal bones of the wrist by walking, then recall them.
+Judge Mode lets anyone try the method in about two minutes: memorize the eight carpal bones of the wrist by walking, then recall them.
 
 ## Why it serves people
 
