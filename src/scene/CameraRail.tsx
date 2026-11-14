@@ -154,7 +154,7 @@ export function CameraRail({ layout, target, session, reduced, drift, tour, qa, 
       rig.rail.knot(poseOf(layout, to), to).finish();
       sampleRail(rig.rail, timeForProgress(t), rig.pos, rig.look);
     } else {
-      const pose = poseOf(layout, qa.shot ?? 'overview');
+      const pose = qa.pose ?? poseOf(layout, qa.shot ?? 'overview');
       rig.pos.set(...pose.position);
       rig.look.set(...pose.target);
     }
