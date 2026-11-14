@@ -13,6 +13,13 @@ export interface SceneView {
   labels: boolean;
   /** 0..1 per locus index: how complete the palace looks around that locus. */
   development: number[];
+  /**
+   * 0..1 per locus index: how whole the place itself is. 0 = in ruins (the survey found the
+   * fact unknown), about 0.6 = under repair (the fact has been studied but not yet recalled),
+   * 1 = restored. The engine takes the feature apart and puts it back together from this
+   * value. All 1 for a deck that has never been surveyed, and for places that hold nothing.
+   */
+  integrity: number[];
 }
 
 interface Input {
@@ -101,5 +108,7 @@ export function deriveSceneView(i: Input): SceneView {
     development[locus.index] = dev;
   });
 
-  return { camera, tokens, labels: mode === 'familiarize', development };
+  // Placeholder until the survey walk lands: every place is whole.
+  const integrity = new Array<number>(n).fill(1);
+  return { camera, tokens, labels: mode === 'familiarize', development, integrity };
 }

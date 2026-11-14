@@ -57,6 +57,58 @@ export interface Deck {
   createdAt: number;
   /** Fixture decks ship with the app and never touch the network. */
   fixture?: boolean;
+  /**
+   * How items relate to one another (a pathway step becomes the next, one thing blocks
+   * another). The engine draws each link between the two places. Optional; order is not meaningful.
+   */
+  links?: ItemLink[];
+  /** Epoch ms of the last completed survey walk (the diagnostic). Absent = never surveyed. */
+  surveyedAt?: number;
+}
+
+/**
+ * A relationship between two items, drawn in the palace between their two places:
+ *   becomes  `from` turns into or leads to `to` (a step in a pathway, a sequence in time)
+ *   needs    `from` depends on `to` (cannot happen or be understood without it)
+ *   blocks   `from` inhibits or prevents `to` (feedback inhibition, an exception to a rule)
+ *   mirrors  `from` and `to` are a matched pair (opposites, counterparts, the same form in two tenses)
+ */
+export type LinkKind = 'becomes' | 'needs' | 'blocks' | 'mirrors';
+
+export interface ItemLink {
+  /** MemoryItem ids. */
+  from: string;
+  to: string;
+  kind: LinkKind;
+  /** A few words shown on the link, e.g. "loses CO2". Optional. */
+  label?: string;
+}
+
+// ───────────────────────── Palace plan ─────────────────────────
+
+/**
+ * A generated palace: a kit (the architecture) and an ordered chain of rooms, one per
+ * category of the material. It is append-only, so that what a learner has already placed
+ * never moves: rooms are never removed or reordered, and `places` only grows. Encoded into
+ * `Deck.layoutId` by `palaceLayoutId` in src/layouts/spec.ts; the handcrafted palaces keep
+ * their plain ids (`domus`).
+ */
+export interface PalaceSpec {
+  /** Kit id, e.g. `gothic`, `zen`, `castle`. An unknown kit falls back to the default kit. */
+  kit: string;
+  /** In route order. */
+  rooms: PalaceRoomSpec[];
+}
+
+export interface PalaceRoomSpec {
+  /** Stable and unique within the palace (`r1`, `r2`, ...). Never reused. */
+  id: string;
+  /** The category this room holds, shown to the learner ("Past tense"). */
+  name: string;
+  /** How many places are built in this room, 1..ROOM_CAPACITY. Their ids are `<room id>-<n>`, n from 1. */
+  places: number;
+  /** `ring`: a round room whose places stand in a circle, for a cycle. Default `hall`. */
+  shape?: 'hall' | 'ring';
 }
 
 // ───────────────────────── Layout ─────────────────────────
@@ -202,6 +254,28 @@ export interface RecallResult {
   given: string;
   /** Time to answer in ms. */
   ms: number;
+  /** The learner chose "I don't know". Always paired with `correct: false`. */
+  unknown?: boolean;
+}
+
+/** What kind of walk a score came from. `survey` is the diagnostic taken before any study. */
+export type WalkKind = 'survey' | 'recall' | 'review';
+
+/** One finished walk, kept so that the learner can see how their scores change over time. */
+export interface WalkRecord {
+  id: string;
+  deckId: string;
+  kind: WalkKind;
+  /** Epoch ms when the walk ended. */
+  at: number;
+  total: number;
+  correct: number;
+  /** How many were answered "I don't know" (counted as not correct). */
+  unknown: number;
+  /** Per item, in route order. */
+  items: { itemId: string; correct: boolean; unknown?: boolean }[];
+  /** Total answering time in ms. */
+  ms: number;
 }
 
 // ───────────────────────── Session ─────────────────────────
@@ -210,6 +284,7 @@ export type Mode =
   | 'attract' // title screen, slow drift
   | 'compose' // paste content, review the Architect's proposals
   | 'familiarize' // guided walk of the empty route
+  | 'survey' // the diagnostic: a walk of the route with a question at each place, before any study
   | 'encode' // walk with images shown
   | 'recall' // walk with images hidden until answered
   | 'results' // score and schedule

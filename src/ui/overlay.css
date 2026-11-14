@@ -508,13 +508,18 @@ textarea.field { resize: vertical; }
   top: 0;
   bottom: 0;
   left: 0;
-  width: min(760px, 100%);
+  /*
+   * The whole width, not the text column: when the list of palaces is taller than the window
+   * this element scrolls, and a 760 px wide one put its scroll bar in the middle of the picture.
+   * Now the bar is at the window's edge. The text stays in its 520 px column on the left.
+   */
+  right: 0;
   display: flex;
   flex-direction: column;
   padding: 48px 56px 44px;
   overflow-y: auto;
-  /* Full strength under the whole text column (it ends at 56 + 520 px), fading out only beyond it. */
-  background: linear-gradient(90deg, var(--title-wash) 0, var(--title-wash) 600px, transparent 100%);
+  /* Full strength under the whole text column (it ends at 56 + 520 px), fading out by 760 px. */
+  background: linear-gradient(90deg, var(--title-wash) 0, var(--title-wash) 600px, transparent 760px);
 }
 .title > * {
   flex: none;
@@ -599,8 +604,6 @@ textarea.field { resize: vertical; }
 @media (max-width: 899px) {
   .title {
     top: auto;
-    right: 0;
-    width: auto;
     max-height: 72vh;
     padding: 26px 32px 28px;
     border-top: 1px solid var(--rule);
