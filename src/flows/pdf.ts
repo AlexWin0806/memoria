@@ -71,7 +71,7 @@ const MESSAGES = {
     `This PDF has ${pages} pages. Memoria reads PDFs of up to ${PDF_MAX_PAGES} pages. Save the chapter you need as its own PDF, or paste its text.`,
   password: 'This PDF is locked with a password, so it cannot be read here. Open it in a PDF viewer, copy the text and paste it instead.',
   damaged: 'This PDF could not be opened: the file is damaged or incomplete. Paste the text instead.',
-  unavailable: 'The PDF reader could not be loaded. Check your connection and try again, or paste the text instead.',
+  unavailable: 'The PDF reader could not be loaded. Check your connection and try again; if that does not help, reload the page. Or paste the text instead.',
   cancelled: 'Stopped. Nothing was read into your notes.',
 };
 
@@ -100,6 +100,7 @@ type PdfJs = typeof import('pdfjs-dist');
 
 let reader: Promise<PdfJs> | null = null;
 let failedLoads = 0;
+let worker: InstanceType<PdfJs['PDFWorker']> | null = null;
 
 function loadReader(): Promise<PdfJs> {
   reader ??= (async () => {
@@ -488,8 +489,12 @@ export async function extractPdfText(file: File, opts: ExtractOptions = {}): Pro
   if (loaded === 'failed') return fail('reader-unavailable', MESSAGES.unavailable);
   const [pdfjs, data] = loaded;
 
+  // One worker for every PDF read on this page. Left to itself PDF.js starts a new one per
+  // file, and each start fetches the worker again: a second PDF would need the network too.
+  if (!worker || worker.destroyed) worker = new pdfjs.PDFWorker({ verbosity: pdfjs.VerbosityLevel.ERRORS });
+  const mine = worker;
   // Text only: no fonts are drawn and nothing is fetched, so the reader needs no other files.
-  const task = pdfjs.getDocument({ data, verbosity: pdfjs.VerbosityLevel.ERRORS, disableFontFace: true, useSystemFonts: false, useWorkerFetch: false });
+  const task = pdfjs.getDocument({ data, worker: mine, verbosity: pdfjs.VerbosityLevel.ERRORS, disableFontFace: true, useSystemFonts: false, useWorkerFetch: false });
   const stop = () => void task.destroy().catch(() => {});
   signal?.addEventListener('abort', stop, { once: true });
   try {
@@ -530,6 +535,13 @@ export async function extractPdfText(file: File, opts: ExtractOptions = {}): Pro
   } catch (e) {
     if (signal?.aborted) return cancelled();
     if (e instanceof Error && e.name === 'PasswordException') return fail('password', MESSAGES.password);
+    // The worker never started (its file could not be fetched): that is the reader, not the PDF.
+    // It is dropped, so that the next try starts a new one.
+    if (e instanceof Error && /worker/i.test(e.message)) {
+      mine.destroy();
+      if (worker === mine) worker = null;
+      return fail('reader-unavailable', MESSAGES.unavailable);
+    }
     return fail('damaged', MESSAGES.damaged);
   } finally {
     signal?.removeEventListener('abort', stop);
