@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { ArchitectPlan, PalaceKitChoice } from '@/ai/architect';
-import type { DeckFocus, Imago, ItemLink, MemoryItem, PalaceSpec } from '@/core/types';
+import type { Deck, DeckFocus, Imago, ItemLink, MemoryItem, PalaceSpec } from '@/core/types';
 import { DOMUS_META } from '@/layouts/domus/meta';
+import { palaceLayoutId, parsePalaceId } from '@/layouts/spec';
+import { useDecks } from './decks';
 import { useSession } from './session';
 import { cleanDraftState, newTally, STORE_KEYS } from './storage';
 
@@ -33,6 +35,8 @@ export interface DraftPlan extends Pick<ArchitectPlan, 'title' | 'kind' | 'steps
   base: string | null;
   /** The learner has moved a fact to another room since the images were written. */
   rehoused?: boolean;
+  /** Editing a saved palace: the ids of the items the learner has deleted. Their places stay, empty. */
+  removed?: string[];
 }
 
 /** One draft: a new palace, or the notes being added to a palace that stands. */
@@ -63,7 +67,10 @@ export interface DraftDoc {
 interface DraftData extends DraftDoc {
   /** True while the Compose screen is open: a reload then returns straight to it. */
   open: boolean;
-  /** The deck being added to. Null = the draft on screen is a new palace. */
+  /**
+   * What the draft on screen is for. Null = a new palace; a deck id = notes being added to that
+   * deck's palace; EDIT_PREFIX and a deck id = that saved palace being edited in place.
+   */
   target: string | null;
   /** The drafts that are not on screen, by target (NEW_PALACE = the new palace). */
   parked: Record<string, DraftDoc>;
@@ -88,6 +95,14 @@ interface DraftState extends DraftData {
 
 /** Key of the new-palace draft in `parked`. A deck id is never empty. */
 const NEW_PALACE = '';
+/** A target that starts with this is a saved palace being edited; the deck id follows. */
+export const EDIT_PREFIX = 'edit:';
+
+/** The deck a draft is about, and what is being done to it. */
+export function draftSubject(target: string | null): { deckId: string | null; editing: boolean } {
+  if (target === null) return { deckId: null, editing: false };
+  return target.startsWith(EDIT_PREFIX) ? { deckId: target.slice(EDIT_PREFIX.length), editing: true } : { deckId: target, editing: false };
+}
 const keyOf = (target: string | null): string => target ?? NEW_PALACE;
 
 const EMPTY_DOC: DraftDoc = { text: '', stage: 'input', plan: null, items: [], title: '', drafted: {}, shown: {}, rest: [], links: [], focus: 'facts', arch: ARCH_AUTO };
@@ -154,8 +169,8 @@ export const useDraft = create<DraftState>()(
         }),
       forget: (deckId) =>
         set((s) => {
-          const { [deckId]: _gone, ...parked } = s.parked;
-          return s.target === deckId ? { ...EMPTY_DOC, target: null, parked } : { parked };
+          const { [deckId]: _notes, [EDIT_PREFIX + deckId]: _edits, ...parked } = s.parked;
+          return s.target === deckId || s.target === EDIT_PREFIX + deckId ? { ...EMPTY_DOC, target: null, parked } : { parked };
         }),
     }),
     {
@@ -212,9 +227,76 @@ export function openNewPalace(): void {
   useSession.getState().toCompose();
 }
 
+const sameFact = (a: MemoryItem, b: MemoryItem): boolean => a.term.trim() === b.term.trim() && (a.meaning ?? '').trim() === (b.meaning ?? '').trim();
+const sameImage = (a: Imago, b: Imago): boolean =>
+  a.scene.trim() === b.scene.trim() && a.glyphs.join() === b.glyphs.join() && a.action === b.action && (a.reason ?? '').trim() === (b.reason ?? '').trim() && a.source === b.source;
+
+/**
+ * What an edit of a saved palace would change, item by item, against the deck as it is saved
+ * now. `facts`: the term or the meaning differs (the fact itself is another one). `images`:
+ * only the image differs.
+ */
+export function editChanges(doc: Pick<DraftDoc, 'items' | 'plan' | 'title'>, deck: Deck): { facts: string[]; images: string[]; removed: string[]; title: boolean; layoutId: string } {
+  const saved = new Map(deck.items.map((it) => [it.id, it]));
+  const removed = (doc.plan?.removed ?? []).filter((id) => saved.has(id));
+  const facts: string[] = [];
+  const images: string[] = [];
+  for (const it of doc.items) {
+    const was = saved.get(it.id);
+    if (!was || removed.includes(it.id)) continue;
+    if (!sameFact(it, was)) facts.push(it.id);
+    else if (!sameImage(it.imago, was.imago)) images.push(it.id);
+  }
+  // Rooms can be renamed, and nothing else about the palace: the names are laid over the deck's own rooms.
+  const spec = parsePalaceId(deck.layoutId);
+  const names = new Map((doc.plan?.spec?.rooms ?? []).map((r) => [r.id, r.name]));
+  const layoutId = spec ? palaceLayoutId({ ...spec, rooms: spec.rooms.map((r) => ({ ...r, name: names.get(r.id) ?? r.name })) }) : deck.layoutId;
+  return { facts, images, removed, title: (doc.title.trim() || deck.title) !== deck.title, layoutId };
+}
+
+/** True when saving the edit would change the deck at all. */
+export function editIsDirty(doc: Pick<DraftDoc, 'items' | 'plan' | 'title'>, deck: Deck): boolean {
+  const c = editChanges(doc, deck);
+  return c.facts.length > 0 || c.images.length > 0 || c.removed.length > 0 || c.title || c.layoutId !== deck.layoutId;
+}
+
+/**
+ * "Edit": opens Compose on a saved palace, to rename it and to change its facts and images in
+ * place. Edits begun earlier and not saved come back, unless the palace has changed since
+ * (grown, or lost one of the items they are about): then the editor starts from the deck.
+ */
+export function openEditor(deckId: string): void {
+  const deck = useDecks.getState().decks[deckId];
+  if (!deck) return;
+  useDraft.getState().openFor(EDIT_PREFIX + deckId);
+  const d = useDraft.getState();
+  const ids = new Set(deck.items.map((it) => it.id));
+  const usable = d.plan !== null && d.plan.base === deck.layoutId && d.items.length > 0 && d.items.every((it) => ids.has(it.id));
+  if (!usable) {
+    d.patch({
+      ...EMPTY_DOC,
+      stage: 'proposal',
+      plan: { title: deck.title, kind: deck.kind, steps: [], source: 'local', overflow: [], spec: parsePalaceId(deck.layoutId), kit: null, drawnFor: null, focus: deck.focus ?? 'facts', lowConfidence: [], pendingRooms: [], base: deck.layoutId, removed: [] },
+      items: deck.items,
+      title: deck.title,
+      links: deck.links ?? [],
+      focus: deck.focus ?? 'facts',
+      drafted: Object.fromEntries(deck.items.map((it) => [it.id, it.imago.source])),
+      shown: Object.fromEntries(deck.items.map((it) => [it.id, [it.imago.scene]])),
+    });
+  }
+  useSession.getState().toCompose();
+}
+
 // Whatever way Compose is left, the next plain `toCompose()` is a new palace again: the notes
-// being added to a deck come back only through that deck's own "Add to this palace". A reload
-// does not pass through here, so it returns to the draft that was on screen.
+// being added to a deck, and the edits to one, come back only through that deck's own entry.
+// A reload does not pass through here, so it returns to the draft that was on screen.
 useSession.subscribe((s, was) => {
-  if (was.mode === 'compose' && s.mode !== 'compose') useDraft.getState().openFor(null);
+  if (was.mode !== 'compose' || s.mode === 'compose') return;
+  const d = useDraft.getState();
+  const { deckId, editing } = draftSubject(d.target);
+  const deck = deckId ? useDecks.getState().decks[deckId] : undefined;
+  // An editor that was opened and changed nothing leaves no draft behind: it would only go stale.
+  if (editing && (!deck || !editIsDirty(d, deck))) d.discard();
+  useDraft.getState().openFor(null);
 });

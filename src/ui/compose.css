@@ -126,7 +126,8 @@
 }
 .links__words { min-width: 0; overflow-wrap: anywhere; }
 .links__said { margin: 10px 0 0; }
-.links__said:empty { display: none; }
+/* Empty, it takes no room, but it stays in the page: it is where the focus goes when a row is removed. */
+.links__said:empty { margin: 0; }
 .links__add {
   min-width: 0;
   margin: 16px 0 0;

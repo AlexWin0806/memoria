@@ -327,6 +327,7 @@ export interface CleanDraftDoc {
     /** An extension: the layout id of the deck when the new notes were read. */
     base: string | null;
     rehoused?: boolean;
+    removed?: string[];
   } | null;
   items: MemoryItem[];
   title: string;
@@ -384,6 +385,7 @@ function cleanPlan(v: unknown, t: Tally): CleanDraftDoc['plan'] {
     pendingRooms: strings(v.pendingRooms),
     base: str(v.base) ? v.base : null,
     ...(v.rehoused === true ? { rehoused: true } : {}),
+    ...(Array.isArray(v.removed) ? { removed: strings(v.removed) } : {}),
   };
 }
 

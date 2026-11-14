@@ -44,6 +44,8 @@ export function ProposalCard({
   roomId,
   onMove,
   moved,
+  factChanged = false,
+  onDelete,
 }: {
   item: MemoryItem;
   /** Position on the route (or among the items being added), from 1. */
@@ -70,11 +72,16 @@ export function ProposalCard({
   onMove?: (roomId: string) => void;
   /** What the last move of this card did. */
   moved?: string | null;
+  /** Editing a saved palace: the term or the meaning is no longer the saved one. */
+  factChanged?: boolean;
+  /** Editing a saved palace: delete this fact. Asked about first, here on the card. */
+  onDelete?: () => void;
 }) {
   const { patchItem, patchImago } = useDraft.getState();
   const drafted = useDraft((d) => d.drafted[it.id]);
   // The room chosen in the menu. Nothing moves until the button is pressed, so the arrow keys can pass over a room.
   const [wanted, setWanted] = useState(roomId ?? '');
+  const [deleting, setDeleting] = useState(false);
   const id = (name: string) => `${name}-${it.id}`;
   const mine = it.imago.source === 'learner';
   const flag = checked && missing(it).length > 0;
@@ -114,6 +121,11 @@ export function ProposalCard({
           <input id={id('meaning')} className="field" value={it.meaning ?? ''} onChange={(e) => patchItem(it.id, { meaning: e.target.value })} />
         </div>
       </div>
+      {factChanged && (
+        <p className="prop__flag" role="status" data-testid="prop-refact">
+          Changing a fact sends its place back for repair.
+        </p>
+      )}
       <label className="sub" htmlFor={id('scene')}>
         Image
       </label>
@@ -204,6 +216,30 @@ export function ProposalCard({
           This image is mine
         </label>
         <span className="muted">{SOURCE_NOTE[it.imago.source]}</span>
+        {onDelete &&
+          (deleting ? (
+            <span className="confirm-inline" role="group" aria-label="Delete this fact?">
+              <span className="muted">Delete this fact? Its place stays, empty.</span>
+              <button
+                type="button"
+                className="link link--danger"
+                onClick={() => {
+                  setDeleting(false);
+                  onDelete();
+                }}
+                data-testid="prop-delete-yes"
+              >
+                Delete
+              </button>
+              <button type="button" className="link" autoFocus onClick={() => setDeleting(false)} data-testid="prop-delete-no">
+                Keep
+              </button>
+            </span>
+          ) : (
+            <button type="button" className="link" onClick={() => setDeleting(true)} data-testid="prop-delete">
+              Delete this fact
+            </button>
+          ))}
       </div>
       {note === 'silent' && (
         <p className="notice" role="status" data-testid="regenerate-silent">

@@ -16,7 +16,7 @@ import {
 } from '@/ai/architect';
 import { linkCap } from '@/ai/wire';
 import type { Deck, Imago, ItemLink, MemoryItem, PalaceSpec } from '@/core/types';
-import { leave, startEncode, startSection } from '@/flows/flow';
+import { discardSavedWalk, leave, startEncode, startSection, useFlow } from '@/flows/flow';
 import { plural } from '@/flows/format';
 import { cleanPaste, droppedNote, MIN_ITEMS, restLines } from '@/flows/paste';
 import { isNoStrongerSuggestion } from '@/flows/suggest';
@@ -26,9 +26,10 @@ import { getLayout } from '@/layouts';
 import { KIT_LIST } from '@/layouts/kits/list';
 import { MAX_PLACES, MAX_ROOMS, palaceLayoutId, parsePalaceId, placeId, ROOM_CAPACITY, specPlaces, specRoomLeft } from '@/layouts/spec';
 import { useDecks } from '@/state/decks';
-import { ARCH_AUTO, ARCH_HOUSE, hasDraft, useDraft, type DraftPlan } from '@/state/draft';
+import { ARCH_AUTO, ARCH_HOUSE, draftSubject, editChanges, editIsDirty, hasDraft, useDraft, type DraftPlan } from '@/state/draft';
 import { repairCounts, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
+import { useSettings } from '@/state/settings';
 import { LinksEditor, type LinkEnd } from './LinksEditor';
 import { kitInfo, palaceSizeLine, roomOfPlace } from './palaceWords';
 import { PdfUpload } from './PdfUpload';
@@ -56,6 +57,24 @@ async function copyText(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * CALL SITE FOR THE REVIEW STORE. src/state/review.ts belongs to the other app agent; this
+ * wants an action there:
+ *
+ *     resetItems: (itemIds: string[]) => void
+ *
+ * "Forget all progress for these items: their cards are removed, so each reads as new (and its
+ * place as in ruins in a surveyed palace), and the walk ledger forgets them too." Until that
+ * action exists the same is done here through the store's own setState. The cards of every
+ * other item are left as the very same objects.
+ */
+function forgetProgress(itemIds: string[]): void {
+  if (itemIds.length === 0) return;
+  const gone = new Set(itemIds);
+  const without = <T,>(record: Record<string, T>): Record<string, T> => Object.fromEntries(Object.entries(record).filter(([id]) => !gone.has(id)));
+  useReview.setState((s) => ({ cards: without(s.cards), walk: s.walk ? { ...s.walk, before: without(s.walk.before), given: without(s.walk.given) } : null }));
 }
 
 /** One room of the proposal, with the images that are placed in it. */
@@ -86,8 +105,13 @@ export function Compose() {
   const { text, stage, plan, items, title, target, arch, links, focus } = draft;
   const decks = useDecks((s) => s.decks);
   const cards = useReview((s) => s.cards);
-  /** The palace being added to. Undefined for a new palace, and when that deck is gone. */
-  const standing: Deck | undefined = target ? decks[target] : undefined;
+  const { deckId: subjectId, editing } = draftSubject(target);
+  /** The saved palace this screen is about. Undefined for a new palace, and when that deck is gone. */
+  const subject: Deck | undefined = subjectId ? decks[subjectId] : undefined;
+  /** The palace being added to. */
+  const standing: Deck | undefined = editing ? undefined : subject;
+  /** The palace being edited in place. */
+  const edited: Deck | undefined = editing ? subject : undefined;
   const standingSpec = standing ? parsePalaceId(standing.layoutId) : null;
 
   const [planning, setPlanning] = useState(false);
@@ -109,7 +133,25 @@ export function Compose() {
   // What the last move to another room did, said on the card that was moved.
   const [moved, setMoved] = useState<{ id: string; text: string } | null>(null);
   // What was already here when the screen opened is a draft from earlier: say so, quietly.
-  const [restored, setRestored] = useState(() => hasDraft(useDraft.getState()));
+  const [restored, setRestored] = useState(() => {
+    const d = useDraft.getState();
+    const about = draftSubject(d.target);
+    const deck = about.deckId ? useDecks.getState().decks[about.deckId] : undefined;
+    // An editor always holds the palace it edits: only edits made earlier are a draft.
+    return about.editing ? deck !== undefined && editIsDirty(d, deck) : hasDraft(d);
+  });
+  // What the last deletion in the editor did, said where the focus goes when the card is gone.
+  const [said, setSaid] = useState('');
+  const editStatus = useRef<HTMLParagraphElement>(null);
+  // The card that was just moved to another room: its menu takes the focus once it is drawn there.
+  const focusAfterMove = useRef<{ id: string; roomId: string } | null>(null);
+  useEffect(() => {
+    const want = focusAfterMove.current;
+    const menu = want ? document.getElementById(`room-of-${want.id}`) : null;
+    if (!want || !menu || menu.closest('[data-room]')?.getAttribute('data-room') !== want.roomId) return;
+    focusAfterMove.current = null;
+    menu.focus();
+  });
   const heading = useRef<HTMLHeadingElement>(null);
   const listEnd = useRef<HTMLDivElement>(null);
   // Counts design attempts, so an answer that arrives after the learner moved on is dropped.
@@ -171,14 +213,15 @@ export function Compose() {
 
   // The palace is on screen while it is composed: the engine shows whatever layout the session names.
   const sceneLayoutId = useMemo(() => {
-    if (target) return stage === 'proposal' && planLayoutId ? planLayoutId : (standing?.layoutId ?? null);
+    if (target) return stage === 'proposal' && planLayoutId ? planLayoutId : (subject?.layoutId ?? null);
     if (stage === 'proposal' && planLayoutId) return planLayoutId;
     if (chosenArch === ARCH_HOUSE) return ARCH_HOUSE;
     if (plan?.spec && (chosenArch === ARCH_AUTO || chosenArch === plan.spec.kit)) return planLayoutId;
     // A kit picked before anything is planned: one room of it. Nothing picked: the scene stays as it was.
     return chosenArch === ARCH_AUTO ? null : palaceLayoutId(sampleSpec(chosenArch));
-  }, [target, stage, planLayoutId, standing?.layoutId, chosenArch, plan?.spec]);
-  const sceneDeckId = target && standing ? standing.id : null;
+  }, [target, stage, planLayoutId, subject?.layoutId, chosenArch, plan?.spec]);
+  // A new palace is shown empty; a palace that stands keeps the images it has.
+  const sceneDeckId = subject ? subject.id : null;
   useEffect(() => {
     const want = sceneLayoutId ?? before.current?.layoutId;
     if (!want) return;
@@ -440,8 +483,8 @@ export function Compose() {
     });
     const at = getLayout(palaceLayoutId({ ...spec, rooms })).loci.find((l) => l.id === placeId(roomId, housed[spec.rooms.indexOf(to)].length));
     setMoved({ id: item.id, text: `Moved to ${name}${at ? `: it now sits at ${at.name}` : ''}.` });
-    // The card is drawn again in its new room: the menu that moved it keeps the focus.
-    setTimeout(() => document.getElementById(`room-of-${item.id}`)?.focus(), 0);
+    // The card is drawn again in its new room: the menu that moved it keeps the focus (see the effect above).
+    focusAfterMove.current = { id: item.id, roomId };
   };
 
   /**
@@ -471,17 +514,88 @@ export function Compose() {
     imago: { ...it.imago, scene: it.imago.scene.trim(), reason: it.imago.reason?.trim() || undefined },
   });
 
+  /** Names the incomplete cards and goes to the first. True when there is one. */
+  const stopAtIncomplete = (): boolean => {
+    if (incomplete.length === 0) return false;
+    setChecked(true);
+    // Go to the first incomplete card and put the cursor in the field it lacks.
+    const first = items.find((it) => it.id === incomplete[0].id);
+    const field = !first ? '' : !first.term.trim() ? 'term' : !first.imago.scene.trim() ? 'scene' : 'glyphs';
+    document.getElementById(`card-${incomplete[0].id}`)?.scrollIntoView({ block: 'start' });
+    document.getElementById(`${field}-${incomplete[0].id}`)?.focus({ preventScroll: true });
+    return true;
+  };
+
+  const placeName = (item: MemoryItem): string => layout.loci.find((l) => l.id === item.locusId)?.name ?? 'its place';
+
+  /** Editing: a fact is taken out. Nothing is deleted until the changes are saved, and its place stays where it is. */
+  const removeItem = (item: MemoryItem) => {
+    const d = useDraft.getState();
+    if (!d.plan) return;
+    if (d.items.length <= MIN_ITEMS) setSaid(`Not deleted: a palace needs at least ${MIN_ITEMS} facts. To be rid of all of it, delete the palace from the title screen.`);
+    else {
+      d.patch({ items: d.items.filter((it) => it.id !== item.id), plan: { ...d.plan, removed: [...(d.plan.removed ?? []), item.id] } });
+      setSaid(`${item.term.trim() || 'The fact'} will be deleted when you save. Its place, ${placeName(item)}, stays where it is, empty.`);
+    }
+    // The card that had the focus is gone: the line that says what happened takes it.
+    editStatus.current?.focus();
+  };
+
+  /** Editing: a fact that was taken out comes back, at its own place, as it is saved. */
+  const putBack = (item: MemoryItem) => {
+    const d = useDraft.getState();
+    if (!d.plan) return;
+    const order = new Map(layout.loci.map((l) => [l.id, l.index]));
+    const at = (it: MemoryItem) => order.get(it.locusId) ?? Number.MAX_SAFE_INTEGER;
+    d.patch({ items: [...d.items, item].sort((a, b) => at(a) - at(b)), plan: { ...d.plan, removed: (d.plan.removed ?? []).filter((id) => id !== item.id) } });
+    setSaid(`${item.term.trim() || 'The fact'} is back at ${placeName(item)}.`);
+    editStatus.current?.focus();
+  };
+
+  /**
+   * Saves an edit of a saved palace as a patch on the deck as it is now. No id, no place and no
+   * link changes; an item that was not touched stays the very same object, and its review card
+   * is not written. A changed term or meaning is another fact, so that item's progress is
+   * forgotten and its place goes back for repair; a changed image keeps its progress.
+   */
+  const saveEdits = () => {
+    const deck = edited ? useDecks.getState().decks[edited.id] : undefined;
+    if (!deck || !plan || stopAtIncomplete()) return;
+    const changes = editChanges({ items, plan, title }, deck);
+    const gone = new Set(changes.removed);
+    const touched = new Set([...changes.facts, ...changes.images]);
+    const edits = new Map(items.map((it) => [it.id, trimmed(it)]));
+    useDecks.getState().upsert({
+      ...deck,
+      title: title.trim() || deck.title,
+      layoutId: changes.layoutId,
+      items: deck.items
+        .filter((it) => !gone.has(it.id))
+        .map((it) => {
+          const now = edits.get(it.id);
+          return now && touched.has(it.id) ? { ...it, term: now.term, meaning: now.meaning, imago: now.imago } : it;
+        }),
+      // A link whose fact is deleted goes with it; every other link is left as it is.
+      ...(deck.links && gone.size > 0 ? { links: deck.links.filter((l) => !gone.has(l.from) && !gone.has(l.to)) } : {}),
+    });
+    forgetProgress([...changes.facts, ...changes.removed]);
+    // The route is the same route with another name over a door: what the learner knows of it carries over.
+    if (changes.layoutId !== deck.layoutId && useSettings.getState().familiarized[deck.layoutId]) useSettings.getState().markFamiliarized(changes.layoutId);
+    // A walk that a reload cut short was a walk of the palace as it was.
+    if (useFlow.getState().savedWalk?.deckId === deck.id && (changes.facts.length > 0 || gone.size > 0)) discardSavedWalk();
+    // The scene goes back to what it showed before, under the palace's new id if a room was renamed.
+    if (before.current?.layoutId === deck.layoutId) before.current = { ...before.current, layoutId: changes.layoutId };
+    useDraft.getState().discard();
+    leave();
+  };
+
   const place = () => {
-    if (!plan || !planLayoutId || !readAll || planning) return;
-    if (incomplete.length > 0) {
-      setChecked(true);
-      // Go to the first incomplete card and put the cursor in the field it lacks.
-      const first = items.find((it) => it.id === incomplete[0].id);
-      const field = !first ? '' : !first.term.trim() ? 'term' : !first.imago.scene.trim() ? 'scene' : 'glyphs';
-      document.getElementById(`card-${incomplete[0].id}`)?.scrollIntoView({ block: 'start' });
-      document.getElementById(`${field}-${incomplete[0].id}`)?.focus({ preventScroll: true });
+    if (edited) {
+      saveEdits();
       return;
     }
+    if (!plan || !planLayoutId || !readAll || planning) return;
+    if (stopAtIncomplete()) return;
     const placed = items.map(trimmed);
     const fresh = new Set(placed.map((it) => it.id));
 
@@ -539,6 +653,8 @@ export function Compose() {
     setSlow(false);
     setReadAll(false);
     setChecked(false);
+    // An editor with nothing in it has nothing to show: back to the palaces.
+    if (editing) leave();
   };
 
   const discardControl = discarding ? (
@@ -564,7 +680,22 @@ export function Compose() {
 
   // ───────────────────────── A palace that cannot be added to ─────────────────────────
 
-  if (target && (!standing || !standingSpec)) {
+  if (editing && (!edited || !plan)) {
+    return (
+      <section className="screen" data-testid="edit-gone">
+        <p className="label">Edit this palace</p>
+        <h1 className="question">This palace is no longer here</h1>
+        <p className="body">The palace you were editing has been deleted, so there is nothing to change.</p>
+        <div className="actions">
+          <button type="button" className="btn btn--primary" onClick={leave}>
+            Back to palaces
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (target && !editing && (!standing || !standingSpec)) {
     return (
       <section className="screen" data-testid="extend-fixed">
         <p className="label">Add to this palace</p>
@@ -685,8 +816,8 @@ export function Compose() {
             Formats: <code>term - meaning</code>, <code>term: meaning</code>, or one item per line. A line that starts with <code>#</code> is a
             heading
             {standing
-              ? ': one that names a room of this palace adds to that room, and any other opens a new room'
-              : ', and each heading becomes a room; without headings the facts are sorted into rooms for you'}
+              ? ': one that names a room of this palace adds to that room, and other headings open new rooms'
+              : ', and headings become rooms; without headings the facts are sorted into rooms for you'}
             . A palace holds up to {MAX_PLACES} places, in {MAX_ROOMS} rooms of {ROOM_CAPACITY}; each place holds one fact
             {standing ? '.' : `, and a palace needs at least ${MIN_ITEMS}.`}
           </p>
@@ -810,6 +941,163 @@ export function Compose() {
   const fresh = new Set(items.map((it) => it.id));
   const ends: LinkEnd[] = standing ? [...items.map((it) => ({ id: it.id, term: it.term })), ...standing.items.map((it) => ({ id: it.id, term: it.term, standing: true }))] : items.map((it) => ({ id: it.id, term: it.term }));
   const kitOptions: PickOption[] = KIT_LIST.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb }));
+
+  // Editing: the cards whose term or meaning is no longer the saved one.
+  const factsChanged = new Set(edited ? editChanges({ items, plan, title }, edited).facts : []);
+  const roomsList = shownRooms.map((room, k) => (
+        <section key={room.id} className="room" aria-labelledby={`room-h-${room.id}`} data-testid="room" data-room={room.id} data-new={room.isNew ? 'true' : 'false'}>
+          <div className="room__head">
+            <h2 id={`room-h-${room.id}`} className="label">
+              Room {groups.indexOf(room) + 1}
+              {standing ? '' : ` of ${groups.length}`}
+              {room.isNew && (
+                <span className="room__new" data-testid="room-new">
+                  {' '}
+                  · new room
+                </span>
+              )}
+            </h2>
+            {room.editable ? (
+              <>
+                <label className="sub" htmlFor={`room-name-${room.id}`}>
+                  Category (the name over the door)
+                </label>
+                <input
+                  id={`room-name-${room.id}`}
+                  className="field room__name"
+                  value={room.name}
+                  maxLength={40}
+                  onChange={(e) => renameRoom(room.id, roomName(e.target.value))}
+                  // A room is never left without a name: the generator would call it "Room n" anyway.
+                  onBlur={(e) => !e.target.value.trim() && renameRoom(room.id, `Room ${groups.indexOf(room) + 1}`)}
+                  data-testid="room-name"
+                />
+              </>
+            ) : (
+              <p className="room__title" data-testid="room-title">
+                {room.name}
+              </p>
+            )}
+            <p className="muted" data-testid="room-count">
+              {plural(room.items.length, standing ? 'new image' : 'image')}
+              {standing && !room.isNew ? ', joining what is already here' : ''}
+            </p>
+          </div>
+          <ol className="proposal" start={room.items[0].n + 1} aria-label={`Images in ${room.name.trim() || `room ${k + 1}`}`}>
+            {room.items.map(({ item, n }) => (
+              <ProposalCard
+                key={item.id}
+                item={item}
+                number={n + 1}
+                place={layout.loci.find((l) => l.id === item.locusId)?.name ?? 'Unplaced'}
+                checked={checked}
+                low={low.includes(item.id)}
+                drawing={room.drawing && item.imago.source !== 'learner'}
+                busy={busy === item.id}
+                anyBusy={busy !== null}
+                note={regenNote?.id === item.id ? regenNote.note : null}
+                emojiNote={emojiNote === item.id}
+                onEmojiStripped={() => emojiNote === null && setEmojiNote(item.id)}
+                onRegenerate={() => regenerate(item)}
+                // Where a fact sits is the learner's to change while the palace is new: rooms that stand are not rearranged.
+                rooms={plan.spec && !subject && !planning && groups.length > 1 ? groups.map((g, i) => ({ id: g.id, name: `${i + 1} · ${g.name.trim() || `Room ${i + 1}`}` })) : undefined}
+                roomId={room.id}
+                onMove={(roomId) => moveToRoom(item, roomId)}
+                moved={moved?.id === item.id ? moved.text : null}
+                // Editing a saved palace: a fact can be deleted (after a question), and a changed fact says what follows.
+                factChanged={factsChanged.has(item.id)}
+                onDelete={edited ? () => removeItem(item) : undefined}
+                // Tabbing into the last card counts as having read to the end.
+                onFocus={item.id === lastId ? () => setReadAll(true) : undefined}
+              />
+            ))}
+          </ol>
+        </section>
+      ));
+
+  // ───────────────────────── A saved palace, edited in place ─────────────────────────
+
+  if (edited) {
+    const changes = editChanges({ items, plan, title }, edited);
+    const dirty = editIsDirty({ items, plan, title }, edited);
+    const goneItems = edited.items.filter((it) => changes.removed.includes(it.id));
+    const goneLinks = (edited.links ?? []).filter((l) => changes.removed.includes(l.from) || changes.removed.includes(l.to)).length;
+    const one = goneItems.length === 1;
+    return (
+      <section className="screen" data-testid="edit" data-layout={planLayoutId ?? undefined}>
+        <p className="label">Edit this palace</p>
+        <h1 className="question" tabIndex={-1} ref={heading}>
+          {edited.title}
+        </h1>
+        {restoredLine}
+        <p className="body" data-testid="edit-keeps">
+          Change a name, a fact or an image. Nothing moves: every fact keeps its place{(edited.links?.length ?? 0) > 0 ? ', and the links stay as they are' : ''}.
+        </p>
+        <p className="body" data-testid="edit-repair">
+          Changing a term or a meaning changes the fact, so its place goes back for repair and the fact is studied again. Changing only the image
+          keeps its progress.
+        </p>
+        <label className="label" htmlFor="deck-title">
+          Name of this palace
+        </label>
+        <input id="deck-title" className="field" value={title} onChange={(e) => draft.patch({ title: e.target.value })} data-testid="compose-title" />
+        <p className="skip">
+          <button type="button" className="link" onClick={skipToPlace} data-testid="compose-skip">
+            Skip to the save button
+          </button>
+        </p>
+
+        {roomsList}
+
+        <p className="links__said" role="status" tabIndex={-1} ref={editStatus} data-testid="edit-status">
+          {said}
+        </p>
+        {goneItems.length > 0 && (
+          <div className="notice" data-testid="edit-removed">
+            <p>
+              {plural(goneItems.length, 'fact')} will be deleted when you save. {one ? 'Its place stays where it is' : 'Their places stay where they are'}, empty
+              {goneLinks > 0 ? `, and ${plural(goneLinks, 'link')} to ${one ? 'it' : 'them'} ${goneLinks === 1 ? 'goes' : 'go'} with ${one ? 'it' : 'them'}` : ''}.
+            </p>
+            <ul className="links__list">
+              {goneItems.map((it) => (
+                <li key={it.id} className="links__row">
+                  <span className="links__words">
+                    {it.term} · {placeName(it)}
+                  </span>
+                  <button type="button" className="link" onClick={() => putBack(it)} aria-label={`Put ${it.term} back`} data-testid="edit-put-back">
+                    Put it back
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div ref={listEnd} data-testid="proposal-end" />
+
+        <div className="dock" data-testid="compose-dock">
+          {checked && incomplete.length > 0 && (
+            <p className="notice notice--danger" role="alert" data-testid="compose-problems">
+              Not saved yet. {incomplete.length === 1 ? 'This card is' : 'These cards are'} incomplete: {incomplete.map((c) => c.label).join('; ')}.
+            </p>
+          )}
+          {!dirty && (
+            <p className="hint" data-testid="edit-clean">
+              Nothing has been changed yet.
+            </p>
+          )}
+          <div className="actions">
+            <button type="button" className="btn btn--primary" ref={placeButton} disabled={!dirty} onClick={place} data-testid="compose-place">
+              Save these changes
+            </button>
+            <button type="button" className="btn btn--quiet" onClick={leave} data-testid="edit-leave">
+              Back to palaces
+            </button>
+          </div>
+          {dirty && <p className="draft-tools">{discardControl}</p>}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="screen" data-testid="proposal" data-compose={standing ? 'extend' : 'new'} data-layout={planLayoutId ?? undefined}>
@@ -994,73 +1282,7 @@ export function Compose() {
         </button>
       </p>
 
-      {shownRooms.map((room, k) => (
-        <section key={room.id} className="room" aria-labelledby={`room-h-${room.id}`} data-testid="room" data-room={room.id} data-new={room.isNew ? 'true' : 'false'}>
-          <div className="room__head">
-            <h2 id={`room-h-${room.id}`} className="label">
-              Room {groups.indexOf(room) + 1}
-              {standing ? '' : ` of ${groups.length}`}
-              {room.isNew && (
-                <span className="room__new" data-testid="room-new">
-                  {' '}
-                  · new room
-                </span>
-              )}
-            </h2>
-            {room.editable ? (
-              <>
-                <label className="sub" htmlFor={`room-name-${room.id}`}>
-                  Category (the name over the door)
-                </label>
-                <input
-                  id={`room-name-${room.id}`}
-                  className="field room__name"
-                  value={room.name}
-                  maxLength={40}
-                  onChange={(e) => renameRoom(room.id, roomName(e.target.value))}
-                  // A room is never left without a name: the generator would call it "Room n" anyway.
-                  onBlur={(e) => !e.target.value.trim() && renameRoom(room.id, `Room ${groups.indexOf(room) + 1}`)}
-                  data-testid="room-name"
-                />
-              </>
-            ) : (
-              <p className="room__title" data-testid="room-title">
-                {room.name}
-              </p>
-            )}
-            <p className="muted" data-testid="room-count">
-              {plural(room.items.length, standing ? 'new image' : 'image')}
-              {standing && !room.isNew ? ', joining what is already here' : ''}
-            </p>
-          </div>
-          <ol className="proposal" start={room.items[0].n + 1} aria-label={`Images in ${room.name.trim() || `room ${k + 1}`}`}>
-            {room.items.map(({ item, n }) => (
-              <ProposalCard
-                key={item.id}
-                item={item}
-                number={n + 1}
-                place={layout.loci.find((l) => l.id === item.locusId)?.name ?? 'Unplaced'}
-                checked={checked}
-                low={low.includes(item.id)}
-                drawing={room.drawing && item.imago.source !== 'learner'}
-                busy={busy === item.id}
-                anyBusy={busy !== null}
-                note={regenNote?.id === item.id ? regenNote.note : null}
-                emojiNote={emojiNote === item.id}
-                onEmojiStripped={() => emojiNote === null && setEmojiNote(item.id)}
-                onRegenerate={() => regenerate(item)}
-                // Where a fact sits is the learner's to change while the palace is new: rooms that stand are not rearranged.
-                rooms={plan.spec && !standing && !planning && groups.length > 1 ? groups.map((g, i) => ({ id: g.id, name: `${i + 1} · ${g.name.trim() || `Room ${i + 1}`}` })) : undefined}
-                roomId={room.id}
-                onMove={(roomId) => moveToRoom(item, roomId)}
-                moved={moved?.id === item.id ? moved.text : null}
-                // Tabbing into the last card counts as having read to the end.
-                onFocus={item.id === lastId ? () => setReadAll(true) : undefined}
-              />
-            ))}
-          </ol>
-        </section>
-      ))}
+      {roomsList}
 
       <LinksEditor links={links} ends={ends} onChange={setLinks} taken={standing?.links ?? []} fresh={standing ? fresh : undefined} max={linkCap(items.length + (standing?.items.length ?? 0))}>
         <p className="body" data-testid="links-about">

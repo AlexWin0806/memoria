@@ -6,7 +6,7 @@ import { formatWhen, plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
 import { JUDGE_PROMISE } from '@/flows/timing';
 import { getDeck, useAllDecks, useDecks } from '@/state/decks';
-import { hasExtensionDraft, hasNewPalaceDraft, openExtension, openNewPalace, useDraft } from '@/state/draft';
+import { EDIT_PREFIX, hasExtensionDraft, hasNewPalaceDraft, openEditor, openExtension, openNewPalace, useDraft } from '@/state/draft';
 import { useHistory } from '@/state/history';
 import { deckProgress, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
@@ -52,6 +52,8 @@ export function Title() {
   const drafting = useDraft((d) => hasNewPalaceDraft(d));
   // Notes waiting to be added to a palace are kept with that palace.
   const adding = useDraft((d) => decks.filter((deck) => hasExtensionDraft(deck.id, d)).map((deck) => deck.id).join(' '));
+  // Edits begun and not saved are kept with their palace too.
+  const editing = useDraft((d) => decks.filter((deck) => d.parked[EDIT_PREFIX + deck.id] !== undefined).map((deck) => deck.id).join(' '));
 
   const remove = (deckId: string) => {
     useDecks.getState().remove(deckId);
@@ -148,6 +150,12 @@ export function Title() {
                   {!deck.fixture && style && (
                     <button type="button" className="link" onClick={() => openExtension(deck.id)} aria-label={`Add to ${deck.title}`} data-testid="deck-extend">
                       {adding.split(' ').includes(deck.id) ? 'Add (draft)' : 'Add'}
+                    </button>
+                  )}
+                  {/* A built-in deck is changed only as before: one image at a time, from its results. */}
+                  {!deck.fixture && (
+                    <button type="button" className="link" onClick={() => openEditor(deck.id)} aria-label={`Edit ${deck.title}`} data-testid="deck-edit">
+                      {editing.split(' ').includes(deck.id) ? 'Edit (draft)' : 'Edit'}
                     </button>
                   )}
                   {!deck.fixture && (

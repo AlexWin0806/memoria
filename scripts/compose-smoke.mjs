@@ -27,6 +27,12 @@
  *   e  Saved data: a deck whose links name a missing item, link an item to itself or have an
  *      unknown kind, and whose focus is not one of the two, keeps its items and its good links;
  *      the rest is dropped and the original is set aside
+ *   t  A saved palace is edited in place: its name, a room's name, a term, a meaning, an image;
+ *      one fact deleted (asked about first; put back; deleted again). No id, place or link
+ *      changes, the deleted fact's place stays, empty, and its link goes with it; the items that
+ *      were not touched are identical and their review cards too; a changed image keeps its
+ *      card; a changed term or meaning loses its card, and its place is in ruins; the edits
+ *      survive a reload before they are saved; built-in decks have no Edit entry
  *   v  Where a fact sits is the learner's to change: a fact is moved to another room (the room
  *      it leaves closes up, the room it joins gains a place, the palace on screen follows); a
  *      full room and a room's only fact are refused, in words; the screen says that the images
@@ -37,6 +43,9 @@
  *      rewrites meanwhile is not overwritten; the kit, the reason for it, the process focus and
  *      the links the outline carried are all shown. (This checks the screen against the wire
  *      format, not the live model.)
+ *   s  The outline arrives and the rooms never do: "Stop waiting: keep the drafts" ends the wait,
+ *      the screen names the rooms whose images are offline drafts, the palace can be placed, and
+ *      a reload says the same
  *   w  An Architect that does not answer: "Do not wait: continue by hand" gives the offline plan
  *      at once; left alone, the request runs out of time by itself (28 s) and the offline plan
  *      is shown with its notice, the notes untouched
@@ -612,9 +621,24 @@ const cases = {
     const row = deckRow(page, 'Smoke test house');
     assert((await row.getByTestId('deck-extend').count()) === 0 && (await row.getByTestId('deck-palace').count()) === 0, 'a house deck should have no "Add" entry and no style line');
     assert((await text(row.locator('.deck__meta'))) === '5 places · not started', `the house row reads: ${await text(row.locator('.deck__meta'))}`);
+    // The house can be edited as well: its rooms keep their names, and a palace is never cut below three facts.
+    await row.getByTestId('deck-edit').click();
+    await page.getByTestId('edit').waitFor();
+    assert((await page.getByTestId('room-name').count()) === 0 && (await page.getByTestId('proposal-row').count()) === 5, 'the editor of a house deck is not as expected');
+    const places = Object.fromEntries(deck.items.map((it) => [it.id, it.locusId]));
+    for (let i = 0; i < 3; i++) {
+      await page.getByTestId('proposal-row').last().getByTestId('prop-delete').click();
+      await page.getByTestId('proposal-row').last().getByTestId('prop-delete-yes').click();
+    }
+    assert((await page.getByTestId('proposal-row').count()) === 3, `a palace was cut to ${await page.getByTestId('proposal-row').count()} facts`);
+    assert((await text(page.getByTestId('edit-status'))).startsWith('Not deleted: a palace needs at least 3 facts.'), `deleting the third last fact: ${await text(page.getByTestId('edit-status'))}`);
+    await page.getByTestId('compose-place').click();
+    await page.getByTestId('title').waitFor();
+    const cut = (await savedDecks(page)).find((x) => x.id === deck.id);
+    assert(cut.layoutId === HOUSE && cut.items.length === 3 && cut.items.every((it) => places[it.id] === it.locusId), 'editing a house deck moved something');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return 'an old draft opens as before; the house is planned by planPalace (5 of 12 places), saved on domus with no links, surveyed in the house; no Add entry on its row; reduced motion on throughout';
+    return 'an old draft opens as before; the house is planned by planPalace (5 of 12 places), saved on domus with no links, surveyed in the house; no Add entry on its row; edited in place, never below three facts; reduced motion on throughout';
   },
 
   async d() {
@@ -667,6 +691,138 @@ const cases = {
     return 'of 7 links three are kept (one loses a label that is not text); missing item, self link, unknown kind and a non-link are dropped; bad focus dropped; deck and items kept; original set aside';
   },
 
+  async t() {
+    const deck = genDeck('deck-edit', 'Edit me', KITS[0].id, [['One', 3], ['Two', 3]]);
+    const [a, b, c, d, e, f] = deck.items.map((it) => it.id);
+    deck.surveyedAt = 1700000001000;
+    deck.focus = 'process';
+    deck.links = [{ from: a, to: b, kind: 'becomes' }, { from: b, to: c, kind: 'needs', label: 'water' }, { from: d, to: e, kind: 'mirrors' }];
+    const later = Date.now() + 5 * 24 * 3600 * 1000;
+    const card = (itemId, more) => ({ itemId, deckId: deck.id, box: 0, dueAt: 0, reps: 0, lapses: 0, ...more });
+    const cards = {
+      [a]: card(a, { box: 3, dueAt: later, reps: 2, lastReviewedAt: 1700000005000, survey: 'unknown', surveyGiven: '', studiedAt: 1700000002000 }),
+      [b]: card(b, { survey: 'known', surveyGiven: 'meaning 1.2' }),
+      [c]: card(c, { survey: 'unknown', surveyGiven: '', studiedAt: 1700000002000 }),
+      [d]: card(d, { box: 2, dueAt: later, reps: 1, lastReviewedAt: 1700000005000, survey: 'unknown', studiedAt: 1700000002000 }),
+      [e]: card(e, { survey: 'unknown', surveyGiven: 'a wrong guess' }),
+    };
+    const { context, page, errors } = await open({
+      seed: {
+        fn: ([decks, review]) => {
+          if (localStorage.getItem('memoria.decks.v1')) return;
+          localStorage.setItem('memoria.decks.v1', JSON.stringify({ state: { decks }, version: 0 }));
+          localStorage.setItem('memoria.review.v1', JSON.stringify({ state: { cards: review, walk: null }, version: 0 }));
+        },
+        arg: [{ [deck.id]: deck }, cards],
+      },
+    });
+    await page.getByTestId('title').waitFor();
+    const savedCards = () => page.evaluate(() => JSON.parse(localStorage.getItem('memoria.review.v1') ?? '{}').state?.cards ?? {});
+    const stored = async () => (await savedDecks(page)).find((x) => x.id === deck.id);
+    assert(JSON.stringify(await stored()) === JSON.stringify(deck) && (await page.getByTestId('storage-notice').count()) === 0, 'the seeded deck was not kept as it is');
+    // Built-in decks keep the rule they had: no editor.
+    assert((await deckRow(page, 'The eight carpal bones').getByTestId('deck-edit').count()) === 0, 'a built-in deck offers the editor');
+    const entry = deckRow(page, 'Edit me').getByTestId('deck-edit');
+    assert((await entry.getAttribute('aria-label')) === 'Edit Edit me' && (await text(entry)) === 'Edit', 'the row has no Edit entry');
+    await entry.focus();
+    await page.keyboard.press('Enter');
+    const editor = page.getByTestId('edit');
+    await editor.waitFor();
+
+    // The same list, by room; nothing here can move a fact, change the building or the links.
+    assert((await page.getByTestId('compose-title').inputValue()) === 'Edit me' && (await page.getByTestId('proposal-row').count()) === 6, 'the editor does not show the palace as it is saved');
+    assert(JSON.stringify(await roomNames(page)) === JSON.stringify(['One', 'Two']), `rooms: ${await roomNames(page)}`);
+    for (const id of ['kit', 'focus', 'links', 'prop-room', 'compose-steps', 'arch', 'draft-restored']) assert((await page.getByTestId(id).count()) === 0, `the editor shows "${id}"`);
+    assert((await text(page.getByTestId('edit-keeps'))) === 'Change a name, a fact or an image. Nothing moves: every fact keeps its place, and the links stay as they are.', `the editor says: ${await text(page.getByTestId('edit-keeps'))}`);
+    assert((await text(page.getByTestId('edit-repair'))).startsWith('Changing a term or a meaning changes the fact, so its place goes back for repair'), 'the editor does not say what changing a fact does');
+    assert((await page.getByTestId('compose-place').isDisabled()) && (await text(page.getByTestId('edit-clean'))) === 'Nothing has been changed yet.', 'an untouched editor can be saved');
+    await sceneShows(page, deck.layoutId);
+    assert((await session(page)).deckId === deck.id, 'the palace being edited should be shown with its images');
+    await legible(page, '[data-testid=edit]');
+
+    // The name, a room, a term, an image, a meaning.
+    await page.getByTestId('compose-title').fill('Edited palace');
+    await page.getByTestId('room-name').first().fill('Uno');
+    await page.getByTestId('prop-term').nth(0).fill('A new term');
+    const flags = () => page.locator('[data-testid=proposal-row]').evaluateAll((els) => els.map((el) => el.querySelector('[data-testid=prop-refact]')?.textContent.trim() ?? ''));
+    assert(JSON.stringify(await flags()) === JSON.stringify(['Changing a fact sends its place back for repair.', '', '', '', '', '']), `after changing a term: ${await flags()}`);
+    await page.getByTestId('prop-scene').nth(1).fill('A brand new picture for the second fact.');
+    assert((await flags())[1] === '', 'changing only the image is announced as changing the fact');
+    await page.locator(`[id="meaning-${d}"]`).fill('another meaning');
+    assert((await flags())[3] !== '', 'changing a meaning is not announced as changing the fact');
+
+    // Deleting asks first; the place stays; the fact can be put back until the changes are saved.
+    const third = page.getByTestId('proposal-row').nth(2);
+    await third.getByTestId('prop-delete').click();
+    assert((await page.getByTestId('proposal-row').count()) === 6, 'a fact was deleted without being asked about');
+    await third.getByTestId('prop-delete-no').click();
+    assert((await third.getByTestId('prop-delete-yes').count()) === 0 && (await page.getByTestId('proposal-row').count()) === 6, '"Keep" did not keep the fact');
+    await third.getByTestId('prop-delete').click();
+    await third.getByTestId('prop-delete-yes').click();
+    assert((await page.getByTestId('proposal-row').count()) === 5, 'the fact was not taken out');
+    assert(/^One fact 3 will be deleted when you save\. Its place, .+, stays where it is, empty\.$/.test(await text(page.getByTestId('edit-status'))), `after deleting: ${await text(page.getByTestId('edit-status'))}`);
+    assert((await focused(page)) === 'edit-status', `after deleting, the focus is on ${await focused(page)}`);
+    assert((await text(page.getByTestId('edit-removed'))).startsWith('1 fact will be deleted when you save. Its place stays where it is, empty, and 1 link to it goes with it.'), `what will be deleted: ${await text(page.getByTestId('edit-removed'))}`);
+    await page.getByTestId('edit-put-back').click();
+    assert((await page.getByTestId('proposal-row').count()) === 6 && (await page.getByTestId('edit-removed').count()) === 0, 'the fact was not put back');
+    assert((await page.getByTestId('prop-term').nth(2).inputValue()) === 'One fact 3', 'the fact was not put back at its own place');
+    await page.getByTestId('proposal-row').nth(2).getByTestId('prop-delete').click();
+    await page.getByTestId('proposal-row').nth(2).getByTestId('prop-delete-yes').click();
+    await shot(page, 'edit');
+
+    // Nothing is saved yet, and the edits survive a reload.
+    assert(JSON.stringify(await stored()) === JSON.stringify(deck) && JSON.stringify(await savedCards()) === JSON.stringify(cards), 'the palace or its review cards changed before the edits were saved');
+    await page.reload({ waitUntil: 'load' });
+    await editor.waitFor();
+    assert((await text(page.getByTestId('draft-restored'))) === 'Draft restored.', 'no "Draft restored" line in the editor after a reload');
+    assert((await page.getByTestId('compose-title').inputValue()) === 'Edited palace' && (await page.getByTestId('proposal-row').count()) === 5 && (await page.getByTestId('prop-term').first().inputValue()) === 'A new term', 'the edits did not survive a reload');
+
+    // Save.
+    await placeWithKeys(page, 'compose-title');
+    await page.getByTestId('title').waitFor();
+    const after = await stored();
+    const was = Object.fromEntries(deck.items.map((it) => [it.id, it]));
+    assert(after.title === 'Edited palace' && after.id === deck.id && after.createdAt === deck.createdAt && after.surveyedAt === deck.surveyedAt && after.focus === 'process', 'the palace lost something that was not edited');
+    assert(JSON.stringify(specOf(after.layoutId)) === JSON.stringify({ kit: KITS[0].id, rooms: [{ id: 'r1', places: 3, name: 'Uno' }, { id: 'r2', places: 3, name: 'Two' }] }), `the palace after the edit: ${after.layoutId}`);
+    assert(JSON.stringify(after.items.map((it) => [it.id, it.locusId])) === JSON.stringify([[a, 'r1-1'], [b, 'r1-2'], [d, 'r2-1'], [e, 'r2-2'], [f, 'r2-3']]), `ids and places after the edit: ${JSON.stringify(after.items.map((it) => [it.id, it.locusId]))}`);
+    const now = Object.fromEntries(after.items.map((it) => [it.id, it]));
+    assert(now[a].term === 'A new term' && now[a].meaning === was[a].meaning && JSON.stringify(now[a].imago) === JSON.stringify(was[a].imago), 'the term was not changed, or more than the term was');
+    assert(now[b].imago.scene === 'A brand new picture for the second fact.' && now[b].imago.source === 'learner' && now[b].term === was[b].term && now[b].meaning === was[b].meaning, 'the image was not changed, or more than the image was');
+    assert(now[d].meaning === 'another meaning' && now[d].term === was[d].term, 'the meaning was not changed');
+    assert(JSON.stringify(now[e]) === JSON.stringify(was[e]) && JSON.stringify(now[f]) === JSON.stringify(was[f]), 'an item that was not touched is not identical');
+    assert(JSON.stringify(after.links) === JSON.stringify([deck.links[0], deck.links[2]]), `links after the edit: ${JSON.stringify(after.links)}`);
+    // Review progress: untouched and image-only keep their cards exactly; a changed fact and a deleted one have none.
+    const left = await savedCards();
+    assert(JSON.stringify(left[b]) === JSON.stringify(cards[b]) && JSON.stringify(left[e]) === JSON.stringify(cards[e]), 'the card of an item whose fact did not change was written');
+    assert(!(a in left) && !(d in left) && !(c in left) && Object.keys(left).length === 2, `cards after the edit: ${Object.keys(left)}`);
+    // In the palace: the changed facts are in ruins, the fact known in the survey stands, the emptied place stands, empty.
+    const view = await page.evaluate((id) => {
+      const v = window.__memoriaApp.viewOf(id);
+      return { integrity: v.integrity, tokens: v.tokens.map((tk) => tk.locusIndex) };
+    }, deck.id);
+    assert(JSON.stringify(view.integrity) === '[0,1,1,0,0,0]' && !view.tokens.includes(2), `the palace after the edit: ${JSON.stringify(view)}`);
+    assert((await text(deckRow(page, 'Edited palace').locator('.deck__line'))).startsWith(`${KITS[0].name} · 2 rooms · 5 places`), `the row after the edit: ${await text(deckRow(page, 'Edited palace').locator('.deck__line'))}`);
+    assert((await text(deckRow(page, 'Edited palace').getByTestId('deck-edit'))) === 'Edit', 'a saved edit left a draft behind');
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert(JSON.stringify(await stored()) === JSON.stringify(after) && (await page.getByTestId('storage-notice').count()) === 0, 'the edited palace did not survive a reload');
+
+    // An editor that is opened and left untouched leaves nothing behind; one with a change waits as a draft.
+    await deckRow(page, 'Edited palace').getByTestId('deck-edit').click();
+    await editor.waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByTestId('title').waitFor();
+    assert((await text(deckRow(page, 'Edited palace').getByTestId('deck-edit'))) === 'Edit' && !Object.keys((await savedDraft(page)).parked ?? {}).length, 'an untouched editor left a draft behind');
+    await deckRow(page, 'Edited palace').getByTestId('deck-edit').click();
+    await page.getByTestId('compose-title').fill('Edited again');
+    await page.keyboard.press('Escape');
+    await page.getByTestId('title').waitFor();
+    assert((await text(deckRow(page, 'Edited palace').getByTestId('deck-edit'))) === 'Edit (draft)' && (await stored()).title === 'Edited palace', 'an edit that was not saved changed the palace, or was lost');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'name, room name, term, meaning and image edited, one fact deleted: ids, places and the other links unchanged, the emptied place stands; untouched items and their cards identical; image-only keeps its card; changed facts lose theirs and are in ruins; kept over reloads; no editor on built-in decks';
+  },
+
   async v() {
     const { context, page, errors } = await open();
     await page.getByTestId('title').waitFor();
@@ -697,7 +853,9 @@ const cases = {
     await move('vivo', 'r3');
     assert((await where()).vivo === 'r3-4' && JSON.stringify(await counts()) === '[3,2,4]', `after moving vivo: ${JSON.stringify(await where())}`);
     assert(/^Moved to Future tense: it now sits at .+\.$/.test(await said('vivo')), `the card says: ${await said('vivo')}`);
-    assert(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'prop-room'), 'after a move the focus is not on the menu that made it');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-testid') === 'prop-room' && document.activeElement.closest('[data-room]')?.getAttribute('data-room') === 'r3', null, { timeout: 5000 }).catch(() => {
+      throw new Error('after a move the focus is not on the menu of the card in its new room');
+    });
     assert((await text(page.getByTestId('compose-rehoused'))).includes('Each image was written for the place its fact first had'), 'nothing says that the images were written for other places');
     await sceneShows(page, await proposal.getAttribute('data-layout'));
     await move('comí', 'r3');
@@ -817,6 +975,46 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return 'outline first, then room by room: the second room\'s cards are marked as drafts until its images arrive, the place button waits, a learner\'s edit made meanwhile is kept; kit with its reason, process focus and links shown';
+  },
+
+  async s() {
+    const architect = (body) =>
+      body.op === 'outline'
+        ? {
+            body: {
+              outline: {
+                title: 'Two rooms',
+                kind: 'list',
+                focus: 'facts',
+                categories: [{ name: 'Metals', shape: 'hall' }, { name: 'Gases', shape: 'hall' }],
+                items: ['Iron', 'Copper', 'Zinc', 'Neon', 'Argon', 'Xenon'].map((term, i) => ({ ref: `i${i + 1}`, term, category: i < 3 ? 0 : 1 })),
+                links: [],
+                overflow: [],
+                steps: [{ kind: 'plan', label: 'Sorted 6 facts into 2 rooms.' }],
+              },
+            },
+          }
+        : { wait: 60000, body: {} };
+    const { context, page, errors } = await open({ architect });
+    await page.getByTestId('title').waitFor();
+    await page.getByTestId('title-build').click();
+    await page.getByTestId('compose-text').fill(['Iron', 'Copper', 'Zinc', 'Neon', 'Argon', 'Xenon'].join('\n'));
+    await page.getByTestId('compose-design').click();
+    await page.getByTestId('proposal').waitFor();
+    assert((await page.getByTestId('prop-drawing').count()) === 6, 'every card should be marked as a draft while no room has been drawn');
+    assert((await page.getByTestId('prop-room').count()) === 0, 'facts can be moved between rooms while the Architect is drawing them');
+    await page.getByTestId('compose-stop-waiting').click();
+    const unfinished = 'The Architect did not finish drawing Metals, Gases: the images there are offline drafts. Rewrite them, or go back to your text and design again.';
+    assert((await text(page.getByTestId('compose-unfinished'))) === unfinished, `after stopping: ${await text(page.getByTestId('compose-unfinished'))}`);
+    assert((await page.getByTestId('prop-drawing').count()) === 0 && (await page.getByTestId('compose-stop-waiting').count()) === 0, 'the screen still waits after "Stop waiting"');
+    await page.getByTestId('compose-skip').click();
+    assert(!(await page.getByTestId('compose-place').isDisabled()), 'the drafts cannot be placed after "Stop waiting"');
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('proposal').waitFor();
+    assert((await text(page.getByTestId('compose-unfinished'))) === unfinished && (await page.getByTestId('proposal-row').count()) === 6, 'after a reload the screen no longer says which rooms hold drafts');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'outline only: every card marked as a draft; "Stop waiting" names the two rooms that hold offline drafts and frees the place button; the same after a reload';
   },
 
   async w() {
