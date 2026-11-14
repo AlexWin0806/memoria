@@ -3,32 +3,35 @@
 Agent-level tasks. Human tasks live in the Google Doc "To-Do List" tab.
 Status: `todo`, `doing`, `done`, `blocked`. Feature ids match `docs/plan-snapshot.md`.
 
-## Status at Sat 3:40 AM ET
+## Status at Sat 5:45 AM ET
 
-Vertical slice reached: the full loop (title, compose, familiarize, encode, recall, results,
-review, Judge Mode) runs on the real 12-locus palace in the Ink & Vellum style. Everything
-is merged to `main` and pushed. Smoke cases a, e, f, g pass on the real engine; b and c carry
-stale expectations (four fixture decks now) and are being fixed in round 2.
+Everything below is merged to `main` and pushed unless marked running.
 
-## Round 2 (in progress, three agents)
+| Area | State |
+|---|---|
+| Full loop on the real palace (title, compose, familiarize, encode, recall, results, review, Judge Mode, pitch variant) | done; smoke cases pass on greybox |
+| Ink & Vellum style: even first glaze, sparse hatching, inked tokens, instancing support, quality 1 default | done; not yet watched in motion or on a real GPU |
+| Sanguine variant, Theme Lab (`?lab`), theme-authoring skill | done; Lab buttons not clicked through; Sanguine blue vs teal unverified |
+| Engine: framing with the panel, rail safety, overview, loading veil, results tour, recall flourish, phone framing | done; flourish and tour seen as stills only |
+| Architect: server function, client, cache, offline planner, fixture alternates, progress callback | done; live path untested (no API key yet) |
+| QA review 1 (`docs/qa/review-1.md`) | done: C7 U6 Ch6 A7, 1 blocker, 9 majors |
+| App fixes from QA (draft persistence, pitch readability, recall cue, grading, resume, scheduling text, results layout) | running |
+| A/B list-versus-palace test (`?compare`) | running |
+| README, Devpost draft, pitch script, Google Doc sync | done at 4:40 AM; needs a refresh after this round |
+
+## Next
 
 | Task | Owner | Status | Notes |
 |---|---|---|---|
-| Due vs new semantics; smoke b/c; Judge timing and `?judge=pitch`; Architect timeouts; modal; small screens | App | doing | |
-| Framing with the 380 px panel; rail safety per leg; overview; golden hands; weak loci; loading state; perf numbers | Engine | doing | Owns `src/layouts` too |
-| Wash quality; motion stability; inked tokens; paper; `ink-sanguine`; Theme Lab; cost; theme-authoring skill | Art Director | doing | Owns `ImagoToken.tsx` this round |
-
-## After round 2
-
-| Task | Owner | Status | Notes |
-|---|---|---|---|
-| QA/Judge review 1 (fresh context) | QA | todo | |
-| Live Architect test with a real key | Lead | blocked | Needs Alex's Anthropic key |
-| Vercel deploy check | Lead | blocked | Needs Alex's Vercel import and the URL |
-| ChatOverflow connect | Lead | blocked | Needs Alex's choices and GitHub sign-in |
-| F-15 A/B mini-test | App | todo | |
-| README with screenshots; Devpost text; pitch timing pass | Scribe | todo | |
-| Sync Google Doc tabs with decisions D-10, D-11 and status | Scribe | todo | |
+| Merge app fixes and the A/B test; full smoke run | Lead | todo | |
+| QA/Judge review 2 (fresh context) | QA | todo | After the merge |
+| README GIF of the recall moment; offline-rendered demo footage as a video fallback | Lead | todo | Deterministic frame capture, ffmpeg |
+| Live Architect test with a real key | Lead | blocked | Needs Alex: "key ready" |
+| Vercel deploy check | Lead | blocked | Needs Alex's import and the URL |
+| ChatOverflow sign-in | Lead | blocked | CLI installed; needs Alex's GitHub approval code |
+| Frame-rate check on a real laptop (`?perf`), quality 1 vs 2 | Richard | todo | Cannot be measured in the build sandbox |
+| Watch one recall answer and one results tour on a real GPU | any human | todo | Seen as stills only |
+| Venue comparison test with 3 to 5 people | Eric W., Eric C. | todo | Uses `?compare` once merged |
 
 ## Earlier milestones
 
