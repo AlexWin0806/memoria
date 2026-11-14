@@ -28,7 +28,7 @@ export const CARPALS: Deck = {
     },
     {
       id: 'carpal-4', term: 'Pisiform', meaning: 'Pea-shaped (Latin pisum, a pea).', locusId: 'domus-04',
-      imago: { scene: 'Green peas pour out of the archway like hail and bounce off your head.', glyphs: ['🫛', '☔'], action: 'hop', reason: 'Pisiform means pea-shaped.', source: 'fixture' },
+      imago: { scene: 'Green peas pour out of the archway like hail and bounce off your head.', glyphs: ['🟢', '☔'], action: 'hop', reason: 'Pisiform means pea-shaped.', source: 'fixture' },
     },
     {
       id: 'carpal-5', term: 'Trapezium', meaning: 'From Greek trapezion, a little table; the word "trapeze" comes from it.', locusId: 'domus-05',
@@ -36,7 +36,7 @@ export const CARPALS: Deck = {
     },
     {
       id: 'carpal-6', term: 'Trapezoid', meaning: 'Trapezium-like: "-oid" means resembling.', locusId: 'domus-06',
-      imago: { scene: 'A lopsided android stands on the sundial and throws a crooked four-sided shadow.', glyphs: ['🤖', '📐'], action: 'pulse', reason: 'Android, trapezoid: "-oid" means shaped like.', source: 'fixture' },
+      imago: { scene: 'A lopsided android stands on the sundial and throws a crooked four-sided shadow.', glyphs: ['🤖', '📐'], action: 'spin', reason: 'Android, trapezoid: "-oid" means shaped like.', source: 'fixture' },
     },
     {
       id: 'carpal-7', term: 'Capitate', meaning: 'Headed (Latin caput, head): the largest carpal, with a rounded head.', locusId: 'domus-07',
