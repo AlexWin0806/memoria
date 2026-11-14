@@ -32,6 +32,13 @@
  *   recall         the same run, recording only one spot-check place: the end of the glide in,
  *                  the question, the right answer, the reveal and flourish, the glide out
  *   encode         the same run, recording only one encode place: glide in, image, panel
+ *   motion         the same run, recording only the moments where the camera or the scene can
+ *                  misbehave: the button and the first place, two legs with a wide turn of the
+ *                  head (to places 2 and 7), the start of the spot check, the results with the
+ *                  first 14 s of the tour, and the tour going round from its last stop to its
+ *                  first. Prints how long each leg took and how fast the view turned at most.
+ *                  `--part a` stops after the encode legs, `--part b` records only what follows,
+ *                  `--part timing` records nothing and stops at the spot-check screen.
  *   stills-walk    PNGs of a learner-paced walk: ui-encode, ui-recall, ui-results
  *   stills-compose PNG of the Architect's proposals for a pasted list: ui-compose (with no
  *                  Architect to reach, as under `vite preview`, these are the offline planner's)
@@ -68,12 +75,12 @@
  *
  * Two things the script does to the page, neither of which changes what is drawn in a
  * recorded frame:
- *   1. Resolution. The app lowers its pixel ratio when frames come slowly (drei's
- *      PerformanceMonitor reads `performance.now`), and a 15 fps virtual clock looks slow to
- *      it. With --zoom 0.75 or less the ratio has nowhere to go (the app's floor is 0.75), so
- *      one canvas pixel is one frame pixel. With a larger zoom the script first lets the
- *      monitor run down on the title screen (about a minute of virtual time, in big steps);
- *      after that it never changes again, and the next resize puts the ratio back to 1.
+ *   1. Resolution. The app lowers its pixel ratio when frames come slowly (it times its
+ *      frames, on the virtual clock here), and a 15 fps virtual clock looks slow to it. With
+ *      --zoom 0.75 or less the ratio has nowhere to go (the app's floor is 0.75), so one
+ *      canvas pixel is one frame pixel. With a larger zoom the script first lets the ratio
+ *      run down on the title screen (a few seconds of virtual time); it then stays at the
+ *      floor for as long as frames come at the capture rate, through resizes too.
  *   2. Fast-forward. While nothing is being recorded the canvas host is shrunk to a thumbnail,
  *      because software rendering is priced per pixel. It is restored two virtual seconds
  *      before the next recorded frame, long enough for the view inset to ease back.
@@ -123,7 +130,7 @@ const quality = num('quality', 90);
 const wrongAt = num('wrong', 3);
 const fastForward = !args.includes('--no-ff');
 /** Footage shows a pointer; stills do not. */
-const drawPointer = ['pitch', 'recall', 'encode'].includes(scenarioName) && !args.includes('--no-pointer');
+const drawPointer = ['pitch', 'recall', 'encode', 'motion'].includes(scenarioName) && !args.includes('--no-pointer');
 /** How long the drawn pointer takes to reach what it clicks. */
 const POINTER_SECONDS = 0.5;
 
@@ -131,7 +138,7 @@ const POINTER_SECONDS = 0.5;
 const LEAD_SECONDS = 2;
 /** The canvas host while nothing is recorded. */
 const THUMB = { width: 192, height: 120 };
-/** drei's PerformanceMonitor neither raises nor lowers the resolution between these rates. */
+/** At this frame rate or above the app's adaptive resolution (src/scene/PalaceCanvas.tsx) does not lower the pixel ratio. */
 const MONITOR_SLOW_FPS = 48;
 
 // The fixture is the answer key: which term sits at which named place.
@@ -217,8 +224,14 @@ function pageSide({ seed, thumb, pointer }) {
         if (!(id in ids)) ids[id] = (el.textContent ?? '').trim().slice(0, 160);
       }
       const veil = canvas?.parentElement?.parentElement?.nextElementSibling;
+      // With `debug` in the query the app exposes its camera and its results tour.
+      const q = window.__memoria?.camera?.quaternion;
+      const tour = window.__memoria?.tour;
       return {
         ids,
+        /** The direction the camera looks in. */
+        dir: q ? [-2 * (q.x * q.z + q.w * q.y), -2 * (q.y * q.z - q.w * q.x), -(1 - 2 * (q.x * q.x + q.y * q.y))] : null,
+        tour: tour ? { index: tour.index, at: tour.at } : null,
         ready: window.__MEMORIA_READY__ === true,
         /** Canvas pixels per CSS pixel. */
         ratio: canvas && canvas.clientWidth ? canvas.width / canvas.clientWidth : null,
@@ -265,6 +278,8 @@ class Recorder {
     this.wanted = [];
     this.marks = [];
     this.ratios = new Set();
+    /** Fastest turn of the view since it was last set to 0, in degrees per second. Frames under the veil do not count. */
+    this.peakTurn = 0;
     this.stats = { captured: 0, capturedMs: 0, kept: 0, passed: 0, passedMs: 0 };
     /** Resume: frames already on disk. The canvas stays small while every frame just ahead is among them. */
     this.existing = new Set(existsSync(outDir) ? readdirSync(outDir).filter((f) => /^f\d{6}\.jpg$/.test(f)).map((f) => Number(f.slice(1, 7))) : []);
@@ -284,7 +299,13 @@ class Recorder {
   async clock(ms) {
     await this.page.clock.fastForward(ms);
     this.clockMs += ms;
+    const before = this.s.dir;
     this.s = await this.page.evaluate((step) => window.__capture.tick(step), ms);
+    const now = this.s.dir;
+    if (before && now && ms > 0 && this.s.veil < 0.9) {
+      const dot = Math.min(1, Math.max(-1, before[0] * now[0] + before[1] * now[1] + before[2] * now[2]));
+      this.peakTurn = Math.max(this.peakTurn, ((Math.acos(dot) * 180) / Math.PI / ms) * 1000);
+    }
   }
 
   async setSmall(on) {
@@ -475,7 +496,7 @@ async function pitchRun(rec, hooks = {}) {
   await rec.until((s) => 'interstitial' in s.ids, { what: 'the spot-check screen' });
   rec.mark('spot-check screen');
   if ((await call('interstitial')) === 'stop') return;
-  await rec.wait(3); // its eighteen words
+  await rec.wait(hooks.interstitialWait ?? 3); // its eighteen words
   await rec.click('recall-start');
 
   for (let i = 1; i <= 4; i++) {
@@ -572,6 +593,81 @@ const SCENARIOS = {
             rec.clip(Math.max(glide + 1, shown - Math.round(2.2 * fps)), rec.frame);
             return 'stop';
           }
+        },
+      });
+    },
+  },
+
+  motion: {
+    query: 'judge=pitch&debug=stores',
+    async run(rec) {
+      const part = flag('part') ?? 'all';
+      const first = part === 'a' || part === 'all';
+      const second = part === 'b' || part === 'all';
+      let legFrom = 0;
+      const legBegins = () => {
+        legFrom = rec.t;
+        rec.peakTurn = 0;
+      };
+      const legEnds = (name) => console.log(`  leg   ${name}: ${(rec.t - legFrom).toFixed(2)} s, view turned at most ${rec.peakTurn.toFixed(0)} deg/s`);
+      let pressed = 0;
+      if (first) rec.on();
+      await pitchRun(rec, {
+        interstitialWait: 1,
+        encodeGlide(i) {
+          if (i === 1) pressed = rec.t;
+          legBegins();
+          if (first && (i === 2 || i === 7)) rec.on();
+        },
+        async encodeShown(i) {
+          legEnds(`to encode place ${i}`);
+          if (first && i === 1) {
+            await rec.wait(1.2); // the image lands, colour comes in around it
+            rec.off();
+            rec.arm();
+          }
+          if (first && (i === 2 || i === 7)) {
+            await rec.wait(0.6);
+            rec.off();
+            if (i === 7 && !second) return 'stop';
+          }
+          if (first && i === 6) rec.arm();
+          if (second && i === 8) rec.arm();
+        },
+        interstitial() {
+          console.log(`  encode walk: ${(rec.t - pressed).toFixed(1)} s from the first glide to the spot-check screen`);
+          if (part === 'timing') return 'stop';
+          if (second) rec.on();
+        },
+        spotGlide(i) {
+          legBegins();
+          if (second && i === 4) rec.arm();
+        },
+        async spotQuestion(i) {
+          legEnds(`to spot check ${i}`);
+          if (second && i === 1) {
+            await rec.wait(0.4);
+            rec.off();
+          }
+        },
+        spotAnswered(i) {
+          if (second && i === 4) rec.on();
+        },
+        async results() {
+          if (!second) return;
+          const stops = () => rec.page.evaluate(() => window.__memoria.session.getState().stops.length);
+          const last = (await stops()) - 1;
+          console.log(`  tour starts at stop ${rec.s.tour?.index} of 0..${last}`);
+          await rec.wait(14.5);
+          rec.off();
+          // Round the tour until it rests at its last stop, then watch it go round to the first.
+          await rec.until((s) => s.tour?.index === last && s.tour.at >= 0, { timeout: 90, what: 'the last stop of the tour' });
+          rec.arm();
+          await rec.wait(2);
+          rec.on();
+          rec.mark('tour wrap');
+          await rec.wait(3);
+          rec.off();
         },
       });
     },
@@ -735,6 +831,8 @@ function ffmpeg(argv, what) {
 }
 
 function encode(first, last) {
+  // Nothing to encode (a scenario that records several separate stretches is looked at frame by frame).
+  if (!flag('mp4') && !flag('gif')) return;
   const count = last - first + 1;
   for (let f = first; f <= last; f++) if (!existsSync(path.join(outDir, `f${String(f).padStart(6, '0')}.jpg`))) throw new Error(`frame ${f} is missing: run again to resume`);
   const input = ['-framerate', String(fps), '-start_number', String(first), '-i', path.join(outDir, 'f%06d.jpg'), '-frames:v', String(count)];
@@ -856,7 +954,7 @@ try {
       if (++steps > 600) throw new Error(`the adaptive resolution did not settle (canvas ratio ${rec.s.ratio})`);
       await rec.clock(300);
     }
-    console.log(`  resolution monitor run down in ${steps} steps (${Math.round((Date.now() - began) / 1000)} s); a resize now puts the ratio back to 1`);
+    console.log(`  resolution monitor run down in ${steps} steps (${Math.round((Date.now() - began) / 1000)} s); it stays there at this frame rate`);
   }
   if (scenario.recordAll) rec.arm();
   await rec.setSmall(!rec.needsFull(1));

@@ -2,8 +2,10 @@ import type { Deck, PalaceLayoutMeta, RecallResult } from '@/core/types';
 
 /**
  * The results tour: after a recall walk the camera does not sit at the overview (which
- * mostly shows places that were never tested) but strolls back through the places that
- * were just walked, so the learner sees each one with its outcome.
+ * mostly shows places that were never tested) but strolls through the places that were
+ * just walked, so the learner sees each one with its outcome. It starts at the place the
+ * camera is at, glides only from a place to the next one on the route, and cuts under the
+ * veil everywhere else (a gap between tested places, the wrap from the last to the first).
  */
 export interface Tour {
   /** Locus indices to visit, in route order. Never empty. */
@@ -16,6 +18,8 @@ export interface Tour {
 export const TOUR_LINGER = 2.5;
 /** How much longer than a walk a tour glide takes: it is a stroll, not a commute. */
 export const TOUR_PACE = 1.6;
+/** Fastest the view may turn on a tour glide, in radians per second (50°): slower than on a walk. */
+export const TOUR_TURN = (50 * Math.PI) / 180;
 /** Places closer than this (metres, anchor to anchor) share a picture and count as neighbours. */
 const NEIGHBOUR_RADIUS = 5.5;
 

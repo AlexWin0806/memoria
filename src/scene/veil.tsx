@@ -20,13 +20,17 @@ export interface Veil {
   hold: boolean;
   /** 0..1, raised by the camera around a cut. */
   dip: number;
+  /** True from the start of a dip until the camera has cut: what must change unseen waits for the cut. */
+  cutting: boolean;
+  /** Counts the cuts made under the veil. It goes up on the frame the veil is opaque. */
+  cuts: number;
   /** Opacity last written to the element. */
   shown: number;
 }
 
 export function createVeil(hidden: boolean, hold = false): Veil {
   const intro = hidden ? 0 : 1;
-  return { el: null, mark: null, rule: null, intro, ready: false, hold, dip: 0, shown: intro };
+  return { el: null, mark: null, rule: null, intro, ready: false, hold, dip: 0, cutting: false, cuts: 0, shown: intro };
 }
 
 const INTRO_SECONDS = 0.7;

@@ -20,6 +20,8 @@ declare global {
       tour?: { active: boolean; index: number; at: number };
       /** The flourish at the moment of recall. */
       flourish?: Flourish;
+      /** Adaptive resolution: the pixel ratio it wants and the 0..1 quality factor behind it. */
+      resolution?: { want: number; factor: number };
     };
   }
 }

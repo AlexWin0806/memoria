@@ -197,7 +197,79 @@ export function sampleRail(rail: Rail, t: number, outPos: Vector3, outLook: Vect
   outLook.copy(outPos).addScaledVector(_behind.normalize(), reach);
 }
 
-/** Seconds a glide takes: about 1.6 to 3 s by distance, longer for multi-stop trips, brisker in Judge Mode. */
+/** Fastest the view may turn during a walk glide, in radians per second (80°: a pan stays readable). */
+export const MAX_TURN = (80 * Math.PI) / 180;
+
+const PACE_STEPS = 96;
+
+/**
+ * The timetable of one journey: how many seconds in the camera reaches each rail time.
+ * It starts from the distance-based duration and gives more time to the stretches where
+ * the view would otherwise turn faster than `maxTurn`, so a leg that swings the gaze
+ * from one wall to the other takes as long as the turn needs, however short the walk.
+ * Only the timing changes: the path and the gaze at a given rail time stay those of
+ * `sampleRail`. Built once per journey into preallocated tables.
+ */
+export class Pace {
+  /** Seconds the journey takes. */
+  duration = 0;
+  /** Seconds at which rail time i / PACE_STEPS is reached. */
+  private readonly at = new Float32Array(PACE_STEPS + 1);
+  private readonly need = new Float32Array(PACE_STEPS);
+  private readonly soft = new Float32Array(PACE_STEPS);
+  private readonly pos = new Vector3();
+  private readonly look = new Vector3();
+  private readonly dir = new Vector3();
+  private readonly prev = new Vector3();
+
+  build(rail: Rail, base: number, maxTurn: number): this {
+    const { at, need, soft, pos, look, dir, prev } = this;
+    const step = base / PACE_STEPS;
+    for (let i = 0; i <= PACE_STEPS; i++) {
+      sampleRail(rail, i / PACE_STEPS, pos, look);
+      dir.subVectors(look, pos);
+      if (dir.lengthSq() < 1e-10) dir.copy(prev);
+      else dir.normalize();
+      // How many times longer this step must take for the turn inside it to stay under the limit.
+      if (i > 0) need[i - 1] = Math.max(1, prev.angleTo(dir) / (step * maxTurn));
+      prev.copy(dir);
+    }
+    // Round the shoulders of the slow stretches, so the body eases into and out of them.
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 0; i < PACE_STEPS; i++) {
+        const a = need[Math.max(0, i - 1)];
+        const b = need[Math.min(PACE_STEPS - 1, i + 1)];
+        soft[i] = Math.max(need[i], (a + 2 * need[i] + b) / 4);
+      }
+      need.set(soft);
+    }
+    at[0] = 0;
+    for (let i = 0; i < PACE_STEPS; i++) at[i + 1] = at[i] + step * need[i];
+    this.duration = at[PACE_STEPS];
+    return this;
+  }
+
+  /** Rail time (0..1) reached this many seconds into the journey. */
+  timeAt(seconds: number): number {
+    const { at } = this;
+    if (seconds >= this.duration) return 1;
+    if (seconds <= 0) return 0;
+    let lo = 0;
+    let hi = PACE_STEPS;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (at[mid] <= seconds) lo = mid;
+      else hi = mid;
+    }
+    const span = at[hi] - at[lo];
+    return (lo + (span > 1e-9 ? (seconds - at[lo]) / span : 1)) / PACE_STEPS;
+  }
+}
+
+/**
+ * Seconds a glide takes for its distance alone: about 1.6 to 3 s, longer for multi-stop trips,
+ * brisker in Judge Mode. `Pace` adds the time its turns need on top, at the same rate in every mode.
+ */
 export function railDuration(length: number, hops: number, judge: boolean): number {
   const base = Math.min(3, Math.max(1.6, 1 + 0.4 * length));
   const total = Math.min(4.2, base + Math.max(0, hops - 1) * 0.35);
