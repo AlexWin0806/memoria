@@ -1,6 +1,6 @@
 import type { DeckKind, Imago, Locus, MemoryItem, Room } from '@/core/types';
 import { cleanGlyphs, isImagoAction } from './glyphs';
-import { newId, planLocally, regenerateLocally } from './local';
+import { NO_STRONGER, newId, nextAlternate, planLocally, regenerateLocally } from './local';
 import { cacheKey, callArchitect, readCache, writeCache } from './remote';
 
 export { parseLine } from './parse';
@@ -174,11 +174,33 @@ export function planPalaceLocal(req: ArchitectRequest): ArchitectPlan {
 }
 
 /**
- * Asks for a different image for one item. The network is tried first so every
- * press gives something new; offline, the last answer to the same request is
- * reused, and failing that the local planner drafts one (`source: 'fallback'`).
+ * True when `regenerateImago` had nothing better to offer and handed the current image
+ * back unchanged (`source: 'fallback'`, reason starting "No stronger offline suggestion:").
+ * The UI should keep the image as it is and invite the learner to rewrite it by hand.
+ */
+export const isNoStrongerSuggestion = (imago: Imago): boolean => (imago.reason ?? '').startsWith(NO_STRONGER);
+
+/**
+ * Asks for a different image for one item.
+ *
+ * 1. A hand-written alternate on the item (`item.alternates`, shipped with every fixture
+ *    deck) is returned at once, with no network call: it is known to be strong, and the
+ *    demo path must not wait on venue Wi-Fi. A learner's hint skips this step.
+ * 2. Otherwise the network is tried, then the last cached answer to the same request.
+ * 3. Otherwise the local planner drafts one (`source: 'fallback'`), but only if the draft
+ *    is at least as well tied to the meaning as the current image and was not offered
+ *    before. If it has nothing, the current image comes back unchanged and flagged:
+ *    see `isNoStrongerSuggestion`. A press never makes the image worse.
  */
 export async function regenerateImago(req: RegenerateRequest): Promise<Imago> {
+  try {
+    if (!req.hint?.trim()) {
+      const alternate = nextAlternate(req);
+      if (alternate) return alternate;
+    }
+  } catch {
+    // Fall through to the network and the local draft.
+  }
   try {
     const body = {
       op: 'regenerate' as const,

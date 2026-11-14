@@ -37,7 +37,7 @@ const load = (path) => vite.ssrLoadModule(path);
 try {
   const { FIXTURE_DECKS, CONTROL_LIST, JUDGE_DECK_ID } = await load('/src/ai/fixtures/index.ts');
   const { DOMUS_META } = await load('/src/layouts/domus/meta.ts');
-  const { planPalace, planPalaceLocal, regenerateImago, parseLine } = await load('/src/ai/architect.ts');
+  const { planPalace, planPalaceLocal, regenerateImago, isNoStrongerSuggestion, parseLine } = await load('/src/ai/architect.ts');
   const { isSafeGlyph, wordCount, IMAGO_ACTIONS } = await load('/src/ai/glyphs.ts');
   const { LEXICON } = await load('/src/ai/lexicon.ts');
 
@@ -57,6 +57,8 @@ try {
     meaning: z.string().min(1),
     locusId: z.string().refine((id) => lociById.has(id), 'locus does not exist in Domus'),
     imago: Imago,
+    // "Strengthen this image" offline: one hand-written, bolder alternate per item.
+    alternates: z.array(Imago.extend({ scene: z.string().min(12).refine((s) => wordCount(s) <= 13, 'alternate scene is longer than about 12 words') })).min(1),
   });
   const Deck = z.object({
     id: z.string().regex(/^fixture-/),
@@ -91,7 +93,31 @@ try {
       for (const g of item.imago.glyphs) {
         if (!isSafeGlyph(g)) flag(`${deck.id}: ${item.id} uses ${g}, which is newer than Unicode 13 or is a sequence`);
       }
+      // Alternates are new content, so every deck (carpals included) must pass.
+      const place = lociById.get(item.locusId);
+      const feature = [...place.name.toLowerCase().split(/\s+/), ...place.hint.toLowerCase().split(/[^a-z]+/)].filter((w) => w.length > 3 && w !== 'with');
+      for (const alt of item.alternates) {
+        const where = `${deck.id}: ${item.id} alternate`;
+        for (const g of alt.glyphs) if (!isSafeGlyph(g)) fail(`${where} uses unsupported glyph ${g}`);
+        if (alt.scene === item.imago.scene) fail(`${where} repeats the first image`);
+        if (alt.action === item.imago.action) fail(`${where} has the same action as the first image`);
+        if (!feature.some((w) => alt.scene.toLowerCase().includes(w))) fail(`${where} does not name its place (${place.name}): ${alt.scene}`);
+        for (const j of [i - 1, i + 1]) {
+          const near = deck.items[j];
+          if (near && near.imago.action === alt.action) fail(`${where} shares the action "${alt.action}" with its neighbour ${near.id}`);
+          if (near && near.alternates.some((a) => a.action === alt.action)) fail(`${where} shares the action "${alt.action}" with the alternate of ${near.id}`);
+        }
+        if (deck.kind === 'pairs') {
+          // Vocabulary: the picture is the meaning and the scene carries the word itself.
+          if (!alt.scene.toLowerCase().includes(item.term.toLowerCase())) fail(`${where} does not carry the word "${item.term}"`);
+        } else {
+          if (alt.glyphs[0] === item.imago.glyphs[0]) fail(`${where} has the same hero glyph as the first image`);
+          if (deck.items.some((o) => o.imago.glyphs[0] === alt.glyphs[0])) fail(`${where} reuses the hero glyph of another image in the deck`);
+        }
+      }
     });
+    const altHeroes = deck.items.flatMap((it) => it.alternates.map((a) => a.glyphs[0]));
+    if (new Set(altHeroes).size !== altHeroes.length) fail(`${deck.id}: two alternates share a hero glyph`);
     console.log(`ok  ${deck.id.padEnd(26)} ${deck.kind.padEnd(5)} ${String(deck.items.length).padStart(2)} items  "${deck.title}"`);
   }
   if (!deckIds.has(JUDGE_DECK_ID)) fail('JUDGE_DECK_ID is not a registered fixture deck');
@@ -168,6 +194,43 @@ try {
   console.log(`\n[regenerate offline, missed]  ${target.term}: ${redo.glyphs.join('')} (${redo.action}) ${redo.scene}`);
   if (redo.scene === target.imago.scene) fail('offline regenerate returned the same scene');
   if (redo.source !== 'fallback') fail('offline regenerate is not labelled as a fallback');
+
+  // "Strengthen this image" on the demo path (QA review 1, issue 4): every fixture item
+  // gets its hand-written alternate, never a sound-alike, and then an honest "nothing stronger".
+  section('Strengthen offline (fixture decks)');
+  for (const deck of FIXTURE_DECKS) {
+    let good = 0;
+    for (const item of deck.items) {
+      const locus = lociById.get(item.locusId);
+      const others = deck.items.filter((o) => o.id !== item.id).map((o) => o.imago);
+      const first = await regenerateImago({ item, locus, others, missed: true });
+      const expected = item.alternates?.[0];
+      if (!expected || first.scene !== expected.scene || first.source !== 'fixture') {
+        fail(`strengthen ${item.id}: expected the hand-written alternate, got "${first.scene}" (${first.source})`);
+        continue;
+      }
+      // A copy saved before alternates existed (no `alternates` field) must behave the same.
+      const { alternates: _dropped, ...saved } = item;
+      const fromSaved = await regenerateImago({ item: saved, locus, others, missed: true });
+      if (fromSaved.scene !== expected.scene) fail(`strengthen ${item.id}: a saved copy without alternates did not get the alternate`);
+      // Once the alternate is the image, there is nothing stronger offline: unchanged and flagged.
+      const accepted = { ...item, imago: first };
+      const second = await regenerateImago({ item: accepted, locus, others, missed: true });
+      const third = await regenerateImago({ item: accepted, locus, others, missed: true });
+      for (const [n, r] of [['second', second], ['third', third]]) {
+        if (r.scene !== first.scene || r.glyphs.join() !== first.glyphs.join() || r.action !== first.action) fail(`strengthen ${item.id}: ${n} press changed the image to "${r.scene}"`);
+        if (r.source !== 'fallback' || !r.reason?.startsWith('No stronger offline suggestion:') || !isNoStrongerSuggestion(r)) fail(`strengthen ${item.id}: ${n} press is not flagged "No stronger offline suggestion:"`);
+      }
+      good++;
+    }
+    console.log(`${good === deck.items.length ? 'ok ' : 'BAD'} ${deck.id.padEnd(26)} ${good}/${deck.items.length} items: alternate first, then "No stronger offline suggestion:"`);
+  }
+  {
+    const scaphoid = FIXTURE_DECKS[0].items[0];
+    const s = await regenerateImago({ item: scaphoid, locus: lociById.get(scaphoid.locusId), others: [], missed: true });
+    console.log(`     Scaphoid, missed: ${s.glyphs.join('')} ${s.scene}  [${s.reason}]`);
+    if (/scarf/i.test(s.scene) || s.glyphs.includes('🧣')) fail('strengthen Scaphoid still offers the scarf');
+  }
 
   // ── 3. Handler guard rails (no network) ────────────────────────────────────
   section('API handler (offline checks)');

@@ -42,6 +42,8 @@ export interface MemoryItem {
   /** The answer or definition (pairs), or a short gloss (list). */
   meaning?: string;
   imago: Imago;
+  /** Other ready-made images for this item, offered when the learner asks for a stronger one. */
+  alternates?: Imago[];
   /** Locus this item lives at. Assigned by the Architect, changeable by the learner. */
   locusId: string;
 }
