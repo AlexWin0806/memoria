@@ -1,7 +1,8 @@
 # Plan / Outline (snapshot of the Google Doc "Plan/Outline" tab)
 
-Snapshot taken: Sat Nov 14, 1:00 PM ET (Scribe sync after the site was deployed and the live Architect verified; no human edits found in the tab).
+Snapshot taken: Sat Nov 14, 2:45 PM ET (Scribe sync that recorded Part 2; no human edits found in this tab since the 1:00 PM snapshot).
 The Google Doc tab is the source of truth; this file exists so changes can be diffed.
+Other tabs at this sync, not mirrored here: the team added three tabs, "Part 2" (Alex's direction, being edited during the sync), "Part 3" and "Part 4" (longer proposals). The To-Do List tab gained a "Part 2 (added Sat 2:45 PM)" section with five items.
 
 ## Defaults and decisions in force
 
@@ -26,7 +27,63 @@ The Google Doc tab is the source of truth; this file exists so changes can be di
 
 Status Sat 4:30 AM: about eight hours ahead of this plan; the remaining risks are the three human steps on the To-Do tab.
 
+## Part 2: the learner is the architect (from Sat 2:00 PM)
+
+Alex set this direction at about 2:00 PM ET on Sat Nov 14 and confirmed the open decisions at 2:27 PM. His own text is in the Part 2 tab. His reason: other memory-palace apps exist (he names Mnemorium and memoryOS), so Memoria has to differ. The learner becomes the architect: a first walk with no preparation finds what the learner does not know, those places fall into ruin, and learning each fact repairs its place. The core idea, as Alex put it, is to give the learner more options.
+
+Every item in this section is being built now and is not on the deployed site unless its row says so. The Features table further down describes the build from before Part 2 and has not been changed.
+
+### Part 2 scope
+
+Scope as set by the Lead from Alex's direction. Status is "building" unless the row says otherwise.
+
+| Item | Status | Scope |
+|---|---|---|
+| Survey (the diagnostic) | building | The first use of a deck is a walk of the route with one question per place and an "I don't know" button. Nothing is revealed. Each place answered wrong or "I don't know" collapses into ruin as you watch. A faint outline of the whole object stays, so the place is still a landmark. |
+| Repair | building | Three states per place: in ruins (unknown), under repair with scaffolding (studied), restored (recalled correctly). A later miss damages it again. Colour still follows review progress. |
+| Judge Mode | building. Decided by Alex (option a) | The palace starts in ruins and each place rebuilds as the judge studies it. No added time. Pitch timing to be re-measured. |
+| Generated palaces | building: Gothic library first, then Zen garden and castle. Styles decided by Alex (option a) | One room per category, up to 5 places a room, up to 6 rooms, 30 places. The category name is inscribed over each doorway. The handcrafted Roman house stays for the demo and for existing decks. |
+| Extending a palace | building | Append-only. New facts fill free spots in their category's room. Overflow opens a new room at the end ("Past II"). Nothing already placed ever moves. |
+| Relationships | building | The Architect extracts links between facts (becomes, needs, blocks, mirrors) only where the notes support them. The engine draws them between places. A cycle gets a round room. |
+| Score history | building | Every survey, recall and review walk is saved. A Progress view shows the trend, with the survey as the baseline, and the weakest places. |
+| PDF upload | building | The text is read in the browser (PDF.js, loaded only when used). Headings become rooms. Long PDFs let the learner choose pages. New dependency `pdfjs-dist`, logged in `CREDITS.md`. |
+| Showcase decks | building | One Spanish verb in three tense rooms. The citric acid cycle as a ring with links. |
+| Bug: scroll bar in the middle of the screen | fixed and live | The title column now spans the window, so the bar is at the edge. |
+| Bug: the statue flickers at its base | being fixed | |
+
+### Part 2 milestones (Eastern Time)
+
+These are added to the Milestones table above; nothing there is replaced. Submission (Sun 7:00 AM), the hard deadline (Sun 8:00 AM) and judging are unchanged.
+
+| When | Milestone |
+|---|---|
+| Sat 5:00 PM | First pieces merged: repair mechanic, survey, generator, Architect |
+| Sat 8:00 PM | Compose with styles, rooms, links and extension. Zen garden and castle |
+| Sat 10:00 PM | QA review 4 |
+| Sat 11:00 PM | Go or no-go on Part 2 for the demo |
+| Sun 12:00 to 3:00 AM | Pitch, README, Devpost and media updated |
+| Sun 3:00 AM | Code freeze |
+
+### Fallback
+
+The build that was demo-ready before Part 2 is commit `34d496c`. If Part 2 is not stable by about 11:00 PM ET on Saturday, the demo uses that build. In Vercel: open Deployments, pick the deployment of commit `34d496c`, and choose "Promote to Production".
+
+### Research and claims
+
+A research check is running on what we may claim about pretesting, diagnostics, spatial organization and the two competitors. Nothing about Part 2 goes into the README, the Devpost text, the pitch or the UI copy until it is in `docs/research.md`. Those documents are updated when the features are merged, not before.
+
+### Also in the Part 2 tab, not in the scope above
+
+Recorded here so they are not lost. Passed to the Lead at 2:45 PM for a decision.
+
+- A third bug report: vary which option holds the correct answer. In the Mohs hardness deck it was often the fourth.
+- "Make sure that each term has a good associated visual."
+- Different kinds of environment for memorizing terms and for learning processes. The Part 3 and Part 4 tabs hold longer proposals on this: an environment chosen by the kind of knowledge, and worlds the learner already knows.
+- Marked "do not worry about these right now": more camera modes, and combining sets.
+
 ## Features
+
+This list describes the build from before Part 2 (commit `34d496c`). Part 2 items are in the Part 2 section above.
 
 Priority: P0 = MVP, must ship. P1 = stretch, in order, only when P0 is green and deployed. P2 = roadmap, not built.
 Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = Charity, A = Avidity.
@@ -99,6 +156,13 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | D-21 | Sat 9:40 AM | Judge runs are a sandbox (never added to reviews, never change saved decks); pitch spot check cut to three places | Lead |
 | D-22 | Sat 12:50 PM | Extended thinking is off by default for the Architect's two calls: it cut a six-fact plan from about 26 s to about 11 s, and the self-check pass still reviews every image; `ARCHITECT_THINKING=adaptive` restores it | Lead |
 | D-23 | Sat 12:30 PM | Public demo address is memoria-five-kappa.vercel.app; the first address shared was behind a Vercel login | Alex, Lead |
+| D-24 | Sat 2:00 PM | Part 2: the learner is the architect. A survey walk first, ruin and repair, generated palaces with a room per category, links between places, score history, extension up to 30 places, PDF upload. Scope is in the Part 2 section; Alex's text is in the Part 2 tab | Alex |
+| D-25 | Sat 2:27 PM | Judge Mode starts with the palace in ruins and each place rebuilds as the judge studies it; no added time (option a). Pitch timing to be re-measured | Alex |
+| D-26 | Sat 2:27 PM | Palace styles: Gothic library first, then Zen garden and castle (option a). The handcrafted Roman house stays for the demo and existing decks | Alex |
+| D-27 | Sat 2:17 PM | Palaces are append-only: extending one never moves a place already used. Limits: up to 6 rooms, up to 5 places a room, 30 places | Lead |
+| D-28 | Sat 2:24 PM | Fallback: commit `34d496c` is the build that was demo-ready before Part 2. Go or no-go on Part 2 for the demo at Sat 11:00 PM (Alex) | Lead |
+| D-29 | Sat 2:29 PM | PDF upload (asked for by Alex at 2:27 PM) reads the text in the browser with PDF.js: new dependency `pdfjs-dist` 6.5.438, loaded only when used, logged in `CREDITS.md` | Alex, Lead |
+| D-30 | Sat 2:35 PM | No Part 2 claim goes into the README, Devpost text, pitch or UI copy until it is in `docs/research.md`; those documents change when the features are merged | Lead |
 
 ## Change log
 
@@ -111,3 +175,4 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | Sat 6:05 AM | Round three merged (QA 1 fixes, comparison test, offline Architect, results tour and recall flourish) | Lead |
 | Sat 7:55 AM | Round four merged (QA 2 fixes, motion fixes found in the first footage, counterbalanced comparison test); all suites pass. Sat 9:40 AM: QA review 3 (safe to demo with precautions; C8 U7 Ch6 A8) and round five merged (Judge runs are a sandbox, spot check of three, pause on every timed stop, archway image moved, images fade out); all suites pass again | Lead |
 | Sat 12:55 PM | Site deployed and public; live Architect verified and two defects from its first live runs fixed; ChatOverflow connected | Lead |
+| Sat 2:45 PM | Part 2 recorded: new Part 2 section (scope, milestones, fallback, research and claims), decisions D-24 to D-30, a note above the Features table. Nothing earlier was changed or removed. Human additions found: the Part 2, Part 3 and Part 4 tabs | Scribe, for the Lead |
