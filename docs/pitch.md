@@ -1,7 +1,7 @@
-# Memoria: 2-minute pitch (draft 3)
+# Memoria: 2-minute pitch (draft 4)
 
-Hard limit is 2:00. The demo itself takes about 85 seconds (measured 83 to 89), so there are
-only about 35 seconds of speech. Two plans follow. Rehearse both once, time them, and pick one.
+Hard limit is 2:00. The demo itself takes about 77 seconds (measured 74 to 79), so there are
+about 40 seconds of speech. Two plans follow. Rehearse both once, time them, and pick one.
 
 Before the judge arrives: open the site with `?judge=pitch` (it waits on the title screen with a
 "Try it in 90 seconds" button), clear the site's saved data first, and have Wi-Fi off or on;
@@ -14,13 +14,13 @@ The judge feels the method work on them. One person speaks; nobody else talks.
 | Time | Who | What |
 |---|---|---|
 | 0:00 | Speaker | "Can you name the eight bones of your wrist, in order? Anatomy students have to. Most of us cram lists like that and lose them in a week. Press the button, and just walk and look: one strange picture at each place." (about 14 s) |
-| 0:15 | Judge | **Encode walk**, eight places, about 47 s. Say nothing: talking over it makes the judge worse at it. |
-| 1:02 | Speaker | "Now the pictures are gone. Four places, from memory." (3 s, while the judge presses the button) |
-| 1:06 | Judge | **Spot check**, four of the eight places, multiple choice, about 34 s. Each place takes on colour when they get it right. |
-| 1:40 | Speaker | "That is the method of loci, about two thousand years old. The catch was always the setup. Memoria builds the palace from your own notes, tests you instead of letting you re-read, and schedules the reviews. It is free and runs from a link." (about 18 s) |
+| 0:15 | Judge | **Encode walk**, eight places, about 50 s. Say nothing: talking over it makes the judge worse at it. |
+| 1:05 | Speaker | "Now the pictures are gone. Three places, from memory." (3 s, while the judge presses the button) |
+| 1:09 | Judge | **Spot check**, three of the eight places, multiple choice, about 23 s. Each place takes on colour when they get it right. |
+| 1:32 | Speaker | "That is the method of loci, about two thousand years old. Two meta-analyses find it improves recall for lists like this, though the quality of that evidence is rated low. The catch was always the setup. Memoria builds the palace from your own notes, tests you instead of letting you re-read, and schedules the reviews. It is free and runs from a link." (about 25 s; if the judge was slow, drop the second sentence) |
 | 2:00 | | Stop, even mid-sentence. |
 
-What gets cut in Plan A: the research line and the roadmap. Keep them for questions.
+What gets cut in Plan A: the detail of the research and the roadmap. Keep them for questions.
 
 ## Plan B: the speaker drives (if the judge would rather watch)
 
@@ -31,14 +31,14 @@ does not feel it, so the "ah-ha" is weaker; in exchange there is time to say mor
 |---|---|---|
 | 0:00 | Speaker | The same opening, ending "Watch: one strange picture at each place." Driver presses the button. |
 | 0:15 | Speaker, over the encode walk | "This is the method of loci, written down about 2,100 years ago. You fix a route, and at each place you picture something vivid tied to the fact. Scaphoid means boat-shaped, so a sailboat circles the lamp. Two meta-analyses find a medium-to-large gain in recall for lists like this; both flag a high risk of bias, and a 2025 review grades the evidence low to very low." |
-| 1:02 | Speaker, over the spot check | "The pictures are gone now. The place is the cue. When the answer is right, the place takes on colour: the palace paints itself in as you learn it." Driver answers three right and one wrong on purpose. |
-| 1:40 | Speaker | "The catch was always the setup. Memoria builds the palace from your own notes, tests you instead of letting you re-read, and schedules reviews at growing intervals. It is free, it runs from a link, and next we want your own home to be the palace." |
+| 1:05 | Speaker, over the spot check | "The pictures are gone now. The place is the cue. When the answer is right, the place takes on colour: the palace paints itself in as you learn it." Driver answers two right and one wrong on purpose. |
+| 1:32 | Speaker | "The catch was always the setup. Memoria builds the palace from your own notes, tests you instead of letting you re-read, and schedules reviews at growing intervals. It is free, it runs from a link, and next we want your own home to be the palace." |
 | 2:00 | | Stop. |
 
 ## Timing notes
 
-- Measured on the build of Sat 8 AM: encode walk about 47 to 50 s, spot-check screen about 4 s,
-  spot check about 30 to 34 s depending on which four places are drawn.
+- Measured on the build of Sat 9:40 AM: encode walk about 50 s from the button, spot-check screen
+  about 4 s, spot check about 21 to 24 s depending on which three places are drawn.
 - To make the demo shorter, change the pitch constants in `src/flows/timing.ts`
   (`encodeSecondsPerStop` is 4; each half second off saves 4 s) and re-measure with
   `node scripts/smoke.mjs --only p --serial`. Below about 3.5 s per place the pictures cannot

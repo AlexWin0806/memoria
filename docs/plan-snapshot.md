@@ -42,7 +42,7 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | F-07 | Encode walk | P0 | done | App, Engine | U, C | At each locus the image appears in-world with term, meaning and scene. Learner-paced. |
 | F-08 | Recall walk | P0 | done | App | U | Images hidden. Typed or multiple-choice answer at each locus, then feedback and the image is revealed. Score at the end. The answer is never shown before the learner commits. |
 | F-09 | Review scheduling | P0 | done | App | U | Leitner boxes driven by recall results. A "due for review" view. "Review now" walks only the due loci. |
-| F-10 | Judge Mode | P0 | done (default about 2 min; pitch variant 83 to 89 s; runs offline; Pause control) | App, AI | C, U, A | One click. Preloaded 8-item list (the eight carpal bones of the wrist). Encode, then recall, then score. About 2 minutes by default; a pitch variant of about 85 seconds spot-checks four of the eight. Runs with the network off. |
+| F-10 | Judge Mode | P0 | done (default about 2 min; pitch variant 74 to 79 s with a spot check of three; runs offline; Pause control; a Judge run is a sandbox and is not added to reviews) | App, AI | C, U, A | One click. Preloaded 8-item list (the eight carpal bones of the wrist). Encode, then recall, then score. About 2 minutes by default; a pitch variant of about 85 seconds spot-checks four of the eight. Runs with the network off. |
 | F-11 | Theme system | P0 | done (Ink & Vellum; Sanguine variant) | Art | A, C | One polished theme plus one palette variant. Any layout works with any theme. |
 | F-12 | Overlay UI in the art direction | P0 | done | App, Art | A | 2D overlay styled from theme tokens; bespoke self-hosted type pairing; no stock component look. |
 | F-13 | Theme Lab | P0 | done (copy, download and reset verified by real clicks in the test suite) | Engine | A | `?lab` panel to live-tweak palette, light, fog and post; exports theme JSON for `src/themes/`. |
@@ -92,7 +92,7 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | D-14 | Sat 4:30 AM | Default render quality for the ink style will be the lighter setting until a real laptop frame-rate check says otherwise | Lead |
 | D-15 | Sat 5:05 AM | QA review 1 (C7 U6 Ch6 A7): one blocker (draft lost on refresh) and nine majors; fix round started | Lead |
 | D-16 | Sat 6:40 AM | QA review 2 (C8 U7 Ch6 A8): no blockers; four majors fixed and covered by tests | Lead |
-| D-17 | Sat 7:55 AM | Pitch variant shows each place for 4 s so it can be read; measured 83 to 89 s; button says 90 seconds. The team may shorten it in `src/flows/timing.ts` after rehearsal | Lead |
+| D-17 | Sat 7:55 AM | Pitch variant shows each place for 4 s so it can be read; measured 74 to 79 s once the spot check was cut from four places to three; button says 90 seconds. The team may shorten it in `src/flows/timing.ts` after rehearsal | Lead |
 | D-18 | Sat 7:50 AM | Comparison test is counterbalanced: two lists (carpal bones, citric acid cycle), each as a palace deck and as a plain list; list and order are swapped between volunteers | Lead |
 | D-19 | Sat 7:00 AM | Demo footage and GIFs are rendered offline on a virtual clock (`scripts/capture.mjs`), because the build sandbox cannot show motion in real time | Lead |
 | D-20 | Sat 5:50 AM | First correct recall is next due tomorrow; a miss is due again in 10 minutes | Lead |
@@ -106,4 +106,4 @@ Status: todo / doing / done / cut. Criterion: C = Creativity, U = Utility, Ch = 
 | Sat 3:40 AM | Vertical slice reached, full loop on the real palace, merged to main | Lead |
 | Sat 4:30 AM | Round two merged (app fixes, engine and palace polish, ink style, Theme Lab, theme-authoring skill); QA review 1 started | Lead |
 | Sat 6:05 AM | Round three merged (QA 1 fixes, comparison test, offline Architect, results tour and recall flourish) | Lead |
-| Sat 7:55 AM | Round four merged (QA 2 fixes, motion fixes found in the first footage, counterbalanced comparison test); all suites pass | Lead |
+| Sat 7:55 AM | Round four merged (QA 2 fixes, motion fixes found in the first footage, counterbalanced comparison test); all suites pass. Sat 9:40 AM: QA review 3 (safe to demo with precautions; C8 U7 Ch6 A8) and round five merged (Judge runs are a sandbox, spot check of three, pause on every timed stop, archway image moved, images fade out); all suites pass again | Lead |

@@ -20,12 +20,12 @@ React Three Fiber and three.js: a static site with one serverless function. Layo
 
 The Architect is a small agent loop on the Claude API, built to **plan** (which facts, which room), **act** (draft an image for each fact), **check** (a second, strict pass tests every image for concreteness, action, distinctness and a stated link to the meaning, and rewrites the ones that fail) and **adapt** (when you miss an item, it proposes a stronger image). The key stays on the server. If the function cannot be reached, a deterministic offline planner drafts the images instead, and says so. Judge Mode uses neither: it runs on built-in decks whose images we wrote by hand, so the demo never depends on the network. The model loop has been tested against a stand-in for the API, not yet against the live model. <!-- Before submitting: once the live model path has been run with a real key, replace the last sentence with what you saw (for example how long a twelve-item plan took). If it has not been run, leave the sentence as it is. -->
 
-The code was written with Claude Code agents under the team's direction during the hackathon window, and checked by two independent QA reviews and automated end-to-end tests. Not yet checked: frame rate and motion on a real laptop, and screen readers.
+The code was written with Claude Code agents under the team's direction during the hackathon window, and checked by three independent QA reviews and automated end-to-end tests. Not yet checked: frame rate and motion on a real laptop, and screen readers.
 
 ## Challenges we ran into
 
 - Hatching was anchored to the screen and crawled as the camera moved, so we anchored it to the world.
-- Our first Judge Mode ran 111 seconds against a 60 to 90 second plan. Its button now says "2 minutes", and a variant for live pitches (measured at 83 to 89 seconds) says "90 seconds".
+- Our first Judge Mode ran 111 seconds against a 60 to 90 second plan. Its button now says "2 minutes", and a variant for live pitches (measured at 74 to 79 seconds) says "90 seconds".
 - Our build machine draws only a few frames a second, so the demo footage is rendered offline, frame by frame on a virtual clock.
 - Several popular claims about memory did not check out, so we changed the design instead of repeating them.
 

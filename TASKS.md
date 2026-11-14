@@ -3,7 +3,7 @@
 Agent-level tasks. Human tasks live in the Google Doc "To-Do List" tab.
 Status: `todo`, `doing`, `done`, `blocked`. Feature ids match `docs/plan-snapshot.md`.
 
-## Status at Sat 8:00 AM ET
+## Status at Sat 9:45 AM ET
 
 Everything below is merged to `main` and pushed unless marked running. All three suites
 pass on the merged build: `scripts/smoke.mjs` 13 of 13, `scripts/ab-smoke.mjs` 3 of 3,
@@ -17,9 +17,10 @@ pass on the merged build: `scripts/smoke.mjs` 13 of 13, `scripts/ab-smoke.mjs` 3
 | Engine: framing, rail safety, results tour, turn-rate cap, adaptive resolution, loading veil | done; motion checked in offline-rendered frames only |
 | Architect: server function, cache, offline planner, alternates for every built-in item, five built-in decks | done; live path untested |
 | Comparison test (`?compare`), counterbalanced by list and order | done and covered by tests; never run with people |
-| QA reviews 1 and 2 (`docs/qa/`) | done: review 2 scored C8 U7 Ch6 A8, no blockers |
-| Capture tool and media (`scripts/capture.mjs`, `docs/media/`) | first set done; re-render from the final build running |
-| README, Devpost draft, pitch script, Google Doc | sync running |
+| QA reviews 1, 2 and 3 (`docs/qa/`) | done: review 3 judged it safe to demo with precautions (C8 U7 Ch6 A8, no blockers); its three majors are fixed |
+| Round five: Judge runs are a sandbox; pitch spot check of three (74 to 79 s); pause on every timed stop; comparison study times in the CSV; archway image moved; images fade out | done; all suites pass on the merged build |
+| Capture tool and media (`scripts/capture.mjs`, `docs/media/`) | final re-render running |
+| README, Devpost draft, pitch script (two plans), Google Doc | synced to the final numbers |
 
 ## Next
 
@@ -34,7 +35,7 @@ pass on the merged build: `scripts/smoke.mjs` 13 of 13, `scripts/ab-smoke.mjs` 3
 | Watch the app live on a real GPU | any human | todo | Motion seen only in offline frames |
 | Venue comparison test with 3 to 5 people | Eric W., Eric C. | todo | `docs/venue-test.md` |
 | Pitch rehearsal and timing decision | everyone | todo | Demo is about 85 of 120 seconds |
-| Known leftovers | Engine / App | todo | Image in the archway looms when walked under; images vanish in one frame at the spot-check start; 640×400 needs a scroll for the scene line; Cyanotype style unchecked for instancing; a second palace layout does not exist |
+| Known leftovers | Engine / App | todo | 640×400 needs a scroll for the scene line; the comparison test still reads a learner's edited copy of the carpal deck; a deck repaired below three facts is kept; a second palace layout does not exist |
 
 ## Earlier milestones
 

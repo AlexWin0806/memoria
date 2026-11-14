@@ -27,7 +27,7 @@ Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent foo
 
 Press "Try it in 2 minutes" on the title screen. That is Judge Mode: it loads the eight carpal bones of the wrist, walks you past one image per bone, then hides the images and asks what you left at each place. A run in which nothing is skipped measures about two minutes (120 seconds with two seconds of thought per answer); it takes longer if you think longer. Timed stops can be paused with the Pause button or the P key. It runs with the network off.
 
-For a live pitch, open `/?judge=pitch`. The button then reads "Try it in 90 seconds": each of the eight places is shown for 4 seconds, then four of the eight are spot-checked. Measured length: 83 to 89 seconds.
+For a live pitch, open `/?judge=pitch`. The button then reads "Try it in 90 seconds": each of the eight places is shown for 4 seconds, then three of the eight are spot-checked. Measured length: 74 to 79 seconds. A Judge run is a sandbox: it is not added to your reviews and never changes your saved decks.
 
 ## What it does
 
@@ -128,7 +128,7 @@ For the live Architect, copy `.env.example` to `.env.local` and set `ANTHROPIC_A
 | Parameter | Effect |
 |---|---|
 | `?judge` | Starts Judge Mode (about 2 minutes) |
-| `?judge=pitch` | The pitch variant, about 90 seconds (measured 83 to 89): waits on the title screen, shows each of eight places for 4 seconds, then spot-checks four of the eight |
+| `?judge=pitch` | The pitch variant, under 90 seconds (measured 74 to 79): waits on the title screen, shows each of eight places for 4 seconds, then spot-checks three of the eight |
 | `?compare` | The list-against-palace comparison test for volunteers (protocol in `docs/venue-test.md`). Order and material are drawn at random. |
 | `?compare=list-first`, `?compare=palace-first` | The same test with the order fixed |
 | `&palace=carpals`, `&palace=krebs` | Added to `?compare`: fixes which list is walked in the palace (the carpal bones or the citric acid cycle); the other one is the plain list |
@@ -167,7 +167,7 @@ Checked by automated tests on the merged build (Saturday 14 November, 7:55 AM ET
 
 - The end-to-end suite (`scripts/smoke.mjs`, 13 of 13 cases), the comparison-test suite (`scripts/ab-smoke.mjs`, 3 of 3) and the Architect suite (`scripts/architect-smoke.mjs`, without the live model call) all pass.
 - The Theme Lab's Copy JSON, Download JSON and Reset buttons are exercised with real clicks by the end-to-end suite.
-- Two QA reviews by reviewers with no knowledge of the build are in [`docs/qa/`](docs/qa/). The second found no blockers; its four major issues were fixed afterwards and are covered by tests.
+- Three QA reviews by reviewers with no knowledge of the build are in [`docs/qa/`](docs/qa/). The third judged it safe to demo with precautions and found no blockers; its three major issues were fixed afterwards and are covered by tests.
 
 Not verified:
 
