@@ -3,10 +3,28 @@ import { persist } from 'zustand/middleware';
 import type { Deck, RecallResult, ReviewCard } from '@/core/types';
 import { newCard, schedule } from '@/srs/leitner';
 
+/**
+ * What one recall walk has recorded so far. Each answer is scheduled from the card as it
+ * was before the walk, so recording the same answer twice changes nothing and a changed
+ * verdict ("I was right") replaces the earlier one instead of stacking on top of it.
+ */
+interface WalkLedger {
+  id: string;
+  /** The card of each answered item as it was before this walk; null = it had none. */
+  before: Record<string, ReviewCard | null>;
+  /** The verdict already recorded for each item. */
+  given: Record<string, boolean>;
+}
+
 interface ReviewState {
   cards: Record<string, ReviewCard>;
-  /** Apply the results of one recall walk. */
-  record: (deckId: string, results: RecallResult[], now?: number) => void;
+  walk: WalkLedger | null;
+  /**
+   * Record recall answers. Called once per answer as it is given and again at the end of
+   * the walk; with the same `walkId` the second call is a no-op. Without a `walkId` every
+   * call counts as a walk of its own.
+   */
+  record: (deckId: string, results: RecallResult[], opts?: { walkId?: string; now?: number }) => void;
   /** Forget all progress for a deck. */
   resetDeck: (deckId: string) => void;
 }
@@ -15,17 +33,26 @@ export const useReview = create<ReviewState>()(
   persist(
     (set) => ({
       cards: {},
-      record: (deckId, results, now = Date.now()) =>
+      walk: null,
+      record: (deckId, results, opts = {}) =>
         set((s) => {
+          const now = opts.now ?? Date.now();
+          const id = opts.walkId ?? `once-${now}-${Math.random().toString(36).slice(2, 8)}`;
+          const same = s.walk?.id === id ? s.walk : null;
+          const walk: WalkLedger = { id, before: { ...same?.before }, given: { ...same?.given } };
           const cards = { ...s.cards };
           for (const r of results) {
-            cards[r.itemId] = schedule(cards[r.itemId] ?? newCard(r.itemId, deckId), r, now);
+            if (walk.given[r.itemId] === r.correct) continue;
+            if (!(r.itemId in walk.before)) walk.before[r.itemId] = cards[r.itemId] ?? null;
+            cards[r.itemId] = schedule(walk.before[r.itemId] ?? newCard(r.itemId, deckId), r, now);
+            walk.given[r.itemId] = r.correct;
           }
-          return { cards };
+          return { cards, walk };
         }),
       resetDeck: (deckId) =>
         set((s) => ({
           cards: Object.fromEntries(Object.entries(s.cards).filter(([, c]) => c.deckId !== deckId)),
+          walk: null,
         })),
     }),
     { name: 'memoria.review.v1' },

@@ -19,7 +19,7 @@ export function Review() {
   return (
     <section className="screen" data-testid="review">
       <p className="label">Reviews</p>
-      <h2 className="question">{queue.length === 0 ? 'Nothing to review yet' : anyDue ? 'What is due' : 'Nothing is due right now'}</h2>
+      <h1 className="question">{queue.length === 0 ? 'Nothing to review yet' : anyDue ? 'What is due' : 'Nothing is due right now'}</h1>
       {queue.length === 0 ? (
         <p className="body" data-testid="review-empty">
           A palace appears here after its first recall walk. Walk one, recall it, and its places come back for review at

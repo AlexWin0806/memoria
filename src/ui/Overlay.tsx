@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { leave, requestLeave, startJudge, useFlow } from '@/flows/flow';
 import { useArrivedFallback, useReducedMotion } from '@/flows/hooks';
+import { draftIsUnsaved, hasDraft, useDraft } from '@/state/draft';
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
+import { syncStoresAcrossTabs } from '@/state/sync';
 import { useActiveTheme } from '@/themes/active';
 import { Compare } from '@/ab/Compare';
 import { Compose } from './Compose';
@@ -42,8 +44,17 @@ function OverlayRoot() {
     // `?judge` starts the run on load (for links and tests). `?judge=pitch` waits on the
     // title screen instead, because in a live pitch the judge presses the button.
     const judge = query().get('judge');
-    if (judge !== null && judge !== 'pitch') startJudge();
+    if (judge !== null) {
+      if (judge !== 'pitch') startJudge();
+      return;
+    }
+    // A reload while composing returns straight to the draft. A walk that was cut short
+    // takes precedence: the title offers it, and the draft waits behind "Build a palace".
+    const draft = useDraft.getState();
+    if (draft.open && hasDraft(draft) && !useFlow.getState().savedWalk) useSession.getState().toCompose();
   }, []);
+
+  useEffect(() => syncStoresAcrossTabs(), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -51,12 +62,23 @@ function OverlayRoot() {
       e.preventDefault();
       requestLeave();
     };
+    // The browser asks "leave site?" only while something typed is saved nowhere: a Compose
+    // draft that could not be written to storage, or an open Strengthen editor.
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (!draftIsUnsaved() && !useFlow.getState().unsavedEdits) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('beforeunload', onUnload);
+    };
   }, []);
 
   return (
-    <div className="ov" data-mode={mode} data-reduced-motion={reduced ? 'true' : 'false'}>
+    <main className="ov" data-mode={mode} data-reduced-motion={reduced ? 'true' : 'false'}>
       {mode === 'attract' ? (
         <Title />
       ) : (
@@ -69,18 +91,20 @@ function OverlayRoot() {
           {mode === 'review' && <Review />}
         </Panel>
       )}
-      {confirmLeave && <LeaveConfirm compose={mode === 'compose'} />}
+      {confirmLeave && <LeaveConfirm recall={mode === 'recall'} />}
       <Compare />
-    </div>
+    </main>
   );
 }
 
 /**
  * The one docked panel: a page margin on the right, a bottom sheet on narrow screens.
  * Reports the width (docked) or height (sheet) it covers so the engine can re-centre the view.
+ * The head comes after the body in the document (CSS draws it on top), so that the first
+ * Tab stop of every screen is that screen's own action, not Leave.
  */
 function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -102,16 +126,18 @@ function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
     };
   }, []);
   return (
-    <aside ref={ref} className={wide ? 'panel panel--wide' : 'panel'} aria-label="Memoria">
-      <header className="panel__head">
-        <span className="label">Memoria</span>
-        <button type="button" className="leave" onClick={requestLeave} data-testid="leave">
-          <span className="leave__word">Leave</span>
-          <span className="key">Esc</span>
-        </button>
-      </header>
+    <div ref={ref} className={wide ? 'panel panel--wide' : 'panel'}>
       <div className="panel__body">{children}</div>
-    </aside>
+      <div className="panel__head">
+        <span className="label">Memoria</span>
+        <button type="button" className="leave" onClick={requestLeave} aria-label="Leave" data-testid="leave">
+          <span className="leave__word">Leave</span>
+          <span className="key" aria-hidden="true">
+            Esc
+          </span>
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -120,7 +146,7 @@ function Panel({ wide, children }: { wide: boolean; children: ReactNode }) {
  * the box, Escape cancels (the overlay's Escape handler toggles it), and on closing focus
  * returns to whatever had it before. Walk shortcuts and Judge timers pause meanwhile.
  */
-function LeaveConfirm({ compose }: { compose: boolean }) {
+function LeaveConfirm({ recall }: { recall: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -156,9 +182,13 @@ function LeaveConfirm({ compose }: { compose: boolean }) {
         data-testid="leave-confirm"
       >
         <h2 id="leave-q" className="question">
-          {compose ? 'Leave without placing these?' : 'Leave this walk?'}
+          Leave this walk?
         </h2>
-        <p id="leave-d">{compose ? 'The proposal will be lost. Your pasted text is kept.' : 'It will not be recorded.'}</p>
+        <p id="leave-d">
+          {recall
+            ? 'The answers you have given so far are recorded. The places you have not reached stay as they were.'
+            : 'Nothing has been tested yet, so nothing is recorded. You can start the walk again from the title.'}
+        </p>
         <div className="actions">
           <button type="button" className="btn btn--primary" onClick={() => useFlow.setState({ confirmLeave: false })} data-testid="leave-stay">
             Stay

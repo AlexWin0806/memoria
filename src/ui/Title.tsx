@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { CompareLink } from '@/ab/CompareLink';
 import type { Deck, ReviewCard } from '@/core/types';
-import { judgeVariantFromUrl, startEncode, startJudge, startRecall } from '@/flows/flow';
+import { discardSavedWalk, judgeVariantFromUrl, resumeWalk, startEncode, startJudge, startRecall, useFlow } from '@/flows/flow';
 import { formatWhen, plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
 import { JUDGE_PROMISE } from '@/flows/timing';
-import { useAllDecks, useDecks } from '@/state/decks';
+import { getDeck, useAllDecks, useDecks } from '@/state/decks';
+import { hasDraft, useDraft } from '@/state/draft';
 import { deckProgress, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { useSettings, type RecallInput } from '@/state/settings';
@@ -33,6 +34,10 @@ export function Title() {
   // Only places that have been studied and are due again: a new learner has no reviews.
   const totalDue = decks.reduce((n, d) => n + deckProgress(d, cards, now).due, 0);
   const promise = JUDGE_PROMISE[judgeVariantFromUrl()].label;
+  // A walk that a reload cut short, and a Compose draft that is waiting to be placed.
+  const saved = useFlow((s) => s.savedWalk);
+  const savedDeck = saved ? getDeck(saved.deckId) : undefined;
+  const drafting = useDraft((d) => hasDraft(d));
 
   const remove = (deckId: string) => {
     useDecks.getState().remove(deckId);
@@ -41,15 +46,31 @@ export function Title() {
   };
 
   return (
-    <main className="title" data-testid="title">
+    <div className="title" data-testid="title">
       <h1 className="title__name">Memoria</h1>
       <p className="title__pitch">Paste what you need to learn. Walk it into memory.</p>
+      {saved && savedDeck && (
+        <div className="notice resume" role="status" data-testid="resume">
+          <p>
+            You were on a walk: {savedDeck.title}, {saved.mode === 'recall' ? 'recall, ' : ''}place {saved.step + 1} of{' '}
+            {saved.stops.length}.
+          </p>
+          <div className="actions">
+            <button type="button" className="btn btn--primary" autoFocus onClick={resumeWalk} data-testid="resume-walk">
+              Resume your walk
+            </button>
+            <button type="button" className="btn" onClick={discardSavedWalk} data-testid="resume-discard">
+              Start over
+            </button>
+          </div>
+        </div>
+      )}
       <div className="actions">
-        <button type="button" className="btn btn--primary" onClick={() => startJudge()} data-testid="title-judge">
+        <button type="button" className={saved && savedDeck ? 'btn' : 'btn btn--primary'} onClick={() => startJudge()} data-testid="title-judge">
           {promise}
         </button>
         <button type="button" className="btn" onClick={() => useSession.getState().toCompose()} data-testid="title-build">
-          Build a palace
+          {drafting ? 'Continue your draft' : 'Build a palace'}
         </button>
       </div>
 
@@ -101,7 +122,7 @@ export function Title() {
 
       <Settings />
       <CompareLink />
-    </main>
+    </div>
   );
 }
 

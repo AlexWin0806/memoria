@@ -11,8 +11,8 @@ export interface JudgeTiming {
   previewSecondsPerStop: number;
   /** Encode walk: seconds an image is shown, counted from arrival, before moving on. */
   encodeSecondsPerStop: number;
-  /** Seconds the "now recall" screen waits before the recall walk starts by itself. */
-  interstitialSeconds: number;
+  /** Seconds the "now recall" screen holds before the recall walk starts by itself. null = it waits for its button. */
+  interstitialSeconds: number | null;
   /** Recall walk: seconds the feedback is shown after an answer before moving on. */
   feedbackSeconds: number;
   /** Recall checks this many places, picked at random, in route order. null = all of them. */
@@ -22,17 +22,17 @@ export interface JudgeTiming {
 export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
   /** The title button and `?judge`. */
   default: {
-    previewSecondsPerStop: 0.8,
+    previewSecondsPerStop: 1.1,
     encodeSecondsPerStop: 4.5,
-    interstitialSeconds: 5,
+    interstitialSeconds: 6,
     feedbackSeconds: 1.5,
     spotCheckStops: null,
   },
   /** `?judge=pitch`: sized to sit inside a 2-minute live pitch. */
   pitch: {
     previewSecondsPerStop: 0,
-    encodeSecondsPerStop: 3.5,
-    interstitialSeconds: 3,
+    encodeSecondsPerStop: 4,
+    interstitialSeconds: null,
     feedbackSeconds: 1.5,
     spotCheckStops: 4,
   },
@@ -40,14 +40,15 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
 
 /**
  * What the title button promises, per variant: the measured length of a passive run (nothing
- * skipped, two seconds of thought per answer), rounded. Measured on the greybox theme with
- *   node scripts/smoke.mjs --only a --serial     default: 111 s
- *   node scripts/smoke.mjs --only p --serial     pitch:    69 s
+ * skipped, two seconds of thought per answer; in the pitch run, four seconds to read the
+ * spot-check screen before pressing its button), rounded. Measured on the greybox theme with
+ *   node scripts/smoke.mjs --only a --serial     default: 114 s
+ *   node scripts/smoke.mjs --only p --serial     pitch:    79 s (79 to 85 s: the four spot-check places are random)
  * Re-measure and update both the number and the wording after changing anything above.
  */
 export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; label: string }> = {
-  default: { measuredSeconds: 111, label: 'Try it in 2 minutes' },
-  pitch: { measuredSeconds: 69, label: 'Try it in 70 seconds' },
+  default: { measuredSeconds: 114, label: 'Try it in 2 minutes' },
+  pitch: { measuredSeconds: 79, label: 'Try it in 80 seconds' },
 };
 
 /** If the engine has not reported `arrived` after this long, the walk carries on anyway. */
