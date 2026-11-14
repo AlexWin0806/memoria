@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { JUDGE_DECK_ID } from '@/ai/fixtures';
 import type { Locus, MemoryItem } from '@/core/types';
 import type { PalaceLayout } from '@/layouts';
@@ -13,6 +13,7 @@ import { DevelopmentDriver } from './DevelopmentDriver';
 import { ImagoToken } from './ImagoToken';
 import { LocusLabel } from './LocusLabel';
 import { FlourishPulse, FlourishRing, createFlourish, holdFlourish, startFlourish } from './RecallFlourish';
+import { setIntegrity } from './integrity';
 import type { Qa } from './qa';
 import { resultsTour } from './tour';
 import type { Veil } from './veil';
@@ -89,6 +90,13 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
   }, [qa.dev, layout, view.development]);
 
   const still = qa.frozen || reduced;
+  // How whole each place is: read by the <LocusFeature>s inside the layout, frame by frame.
+  const integrity = useMemo(() => {
+    const forced = qa.integrity;
+    if (!forced) return view.integrity;
+    return layout.loci.map((_, i) => (forced.length === 1 ? forced[0] : (forced[i] ?? 1)));
+  }, [qa.integrity, layout, view.integrity]);
+  useLayoutEffect(() => setIntegrity(integrity, still, veil), [integrity, still, veil]);
   const shown = useMemo(
     () =>
       tokens.flatMap(({ locusIndex, item, visible }): Shown[] => {
@@ -104,15 +112,17 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
   const tour = useMemo(() => (mode === 'results' ? resultsTour(layout, deck, stops, results) : null), [mode, layout, deck, stops, results]);
 
   // The moment of recall: an answer has arrived for the place the learner is standing at.
+  // The survey is a walk of the same kind, except that a miss there (a wrong answer, or
+  // "I don't know") is answered by the place falling into ruin, not by the shake of the head.
   const flourish = useMemo(createFlourish, []);
   const answered = useRef(results);
   useEffect(() => {
     const before = answered.current;
     answered.current = results;
-    if (mode !== 'recall' || still) return;
+    if ((mode !== 'recall' && mode !== 'survey') || still) return;
     const given = results.find((r) => !before.includes(r));
     const here = layout.loci[stops[step]];
-    if (!given || !here) return;
+    if (!given || !here || (mode === 'survey' && !given.correct)) return;
     if (deck?.items.some((it) => it.locusId === here.id && it.id === given.itemId)) startFlourish(flourish, here.index, given.correct);
   }, [results, mode, still, layout, stops, step, deck, flourish]);
   useEffect(() => {

@@ -12,7 +12,11 @@ import type { Vec3 } from '@/core/types';
  * The uniforms below are shared by reference, so every material that spreads
  * `developmentUniforms` into its own uniforms updates together.
  */
-export const MAX_LOCI = 16;
+/**
+ * Most places a palace can have. It sizes the uniform arrays and bounds the shader loops;
+ * the loops stop at `uDevCount`, so a small palace pays for its own places only.
+ */
+export const MAX_LOCI = 32;
 
 export const developmentUniforms = {
   uDevPoints: { value: Array.from({ length: MAX_LOCI }, () => new Vector3()) },

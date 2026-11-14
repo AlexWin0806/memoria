@@ -116,37 +116,15 @@ export function wallGeometry(width: number, height: number, openings: Opening[] 
   return new ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 20 });
 }
 
-/** The face of an archway: two jambs and a round head, as one band. */
-export function archBandGeometry(r: number, spring: number, band: number, depth: number) {
+/** One stone of a round arch: the ring between radius `r` and `r + band`, from angle a0 to a1, extruded along +z. */
+export function archStoneGeometry(r: number, band: number, depth: number, a0: number, a1: number) {
   const s = new Shape();
-  s.moveTo(-(r + band), 0);
-  s.lineTo(-r, 0);
-  s.lineTo(-r, spring);
-  s.absarc(0, spring, r, Math.PI, 0, true);
-  s.lineTo(r, 0);
-  s.lineTo(r + band, 0);
-  s.lineTo(r + band, spring);
-  s.absarc(0, spring, r + band, 0, Math.PI, false);
-  s.lineTo(-(r + band), 0);
-  return new ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 24 });
-}
-
-/** A rectangular frame (outer minus inner), extruded along +z. */
-export function frameGeometry(x0: number, x1: number, y0: number, y1: number, w: number, depth: number) {
-  const s = new Shape();
-  s.moveTo(x0, y0);
-  s.lineTo(x1, y0);
-  s.lineTo(x1, y1);
-  s.lineTo(x0, y1);
+  s.moveTo(r * Math.cos(a0), r * Math.sin(a0));
+  s.absarc(0, 0, r, a0, a1, false);
+  s.lineTo((r + band) * Math.cos(a1), (r + band) * Math.sin(a1));
+  s.absarc(0, 0, r + band, a1, a0, true);
   s.closePath();
-  const p = new Path();
-  p.moveTo(x0 + w, y0 + w);
-  p.lineTo(x0 + w, y1 - w);
-  p.lineTo(x1 - w, y1 - w);
-  p.lineTo(x1 - w, y0 + w);
-  p.closePath();
-  s.holes.push(p);
-  return new ExtrudeGeometry(s, { depth, bevelEnabled: false });
+  return new ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 4 });
 }
 
 /** A strip of cloth: a polyline cross-section in XY given thickness, extruded along +z. */

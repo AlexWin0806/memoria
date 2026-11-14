@@ -1,12 +1,19 @@
 import { useMemo } from 'react';
 import { CylinderGeometry, ExtrudeGeometry, IcosahedronGeometry, Path, Shape, SphereGeometry } from 'three';
+import { LocusFeature } from '@/scene/LocusFeature';
 import { Surface } from '@/styles';
-import { GoldenHand, type Placement, Repeated, T, UNIT_BOX, archBandGeometry, frameGeometry, lathe, limb, ribbonGeometry } from './parts';
+import { GoldenHand, type Placement, Repeated, T, UNIT_BOX, archStoneGeometry, lathe, limb, ribbonGeometry } from './parts';
 
 /**
  * The twelve locus features. Each one has its own silhouette and carries its single accent
  * role; everything else in the house stays neutral.
+ *
+ * Each is wrapped in a <LocusFeature>, which takes it apart when its place is in ruins and
+ * puts it back as the learner repairs it. One mesh is one piece; a group marked PIECE falls
+ * as one; what is marked FIXED is part of the house and stays (the light outside a window).
  */
+const PIECE = { piece: true };
+const FIXED = { fixed: true };
 
 const TAU = Math.PI * 2;
 
@@ -134,7 +141,7 @@ function Amphora() {
       <Repeated items={AMPHORA_LEGS} make={AMPHORA_LEGS_GEOMETRY}>
         <Surface slot="wood" />
       </Repeated>
-      <group position={[0, 0.62, 0]} rotation={[0, 0, 0.2]}>
+      <group position={[0, 0.62, 0]} rotation={[0, 0, 0.2]} userData={PIECE}>
         <mesh geometry={jar} position={[0, -0.5, 0]} castShadow>
           <Surface slot="stone" accent="blue" />
         </mesh>
@@ -149,13 +156,33 @@ function Amphora() {
   );
 }
 
-/** 4. The Arch: the plum-painted face of the opening into the atrium. */
+const ARCH = { r: 1.1, spring: 2.0, band: 0.26, depth: T + 0.16, stones: 7 };
+
+/**
+ * 4. The Arch: the plum-painted face of the opening into the atrium. Built as an arch is:
+ * two jambs and a ring of voussoirs with the keystone in the middle, so that it can come
+ * down stone by stone. The stones meet face to face and read as one band.
+ */
 function Arch() {
-  const band = useMemo(() => archBandGeometry(1.1, 2.0, 0.26, T + 0.16), []);
+  const { r, spring, band, depth, stones } = ARCH;
+  const voussoirs = useMemo(
+    () => Array.from({ length: stones }, (_, i) => archStoneGeometry(r, band, depth, (Math.PI * i) / stones, (Math.PI * (i + 1)) / stones)),
+    [r, band, depth, stones],
+  );
   return (
-    <mesh geometry={band} position={[0, 0, -(T + 0.16) / 2]} castShadow receiveShadow>
-      <Surface slot="trim" accent="plum" />
-    </mesh>
+    <group>
+      {[-1, 1].map((s) => (
+        <mesh key={s} position={[s * (r + band / 2), spring / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[band, spring, depth]} />
+          <Surface slot="trim" accent="plum" />
+        </mesh>
+      ))}
+      {voussoirs.map((stone, i) => (
+        <mesh key={i} geometry={stone} position={[0, spring, -depth / 2]} castShadow receiveShadow>
+          <Surface slot="trim" accent="plum" />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
@@ -166,10 +193,11 @@ function Fountain() {
   const pool = useMemo(() => lathe([[0, 0], [1.72, 0], [1.62, 0.42], [1.4, 0.42], [1.4, 0.26], [0, 0.26]], 8, true), []);
   return (
     <group position={[0, 0, -6]}>
-      <mesh geometry={pool} castShadow receiveShadow>
+      {/* the basin is sunk into the floor of the house and keeps its water; what stands in it can fall */}
+      <mesh geometry={pool} castShadow receiveShadow userData={FIXED}>
         <Surface slot="stone" />
       </mesh>
-      <mesh position={[0, 0.34, 0]} receiveShadow>
+      <mesh position={[0, 0.34, 0]} receiveShadow userData={FIXED}>
         <cylinderGeometry args={[1.39, 1.39, 0.02, 8]} />
         <Surface slot="water" accent="teal" />
       </mesh>
@@ -197,8 +225,8 @@ function Fountain() {
         <coneGeometry args={[0.2, 0.14, 16]} />
         <Surface slot="water" accent="teal" />
       </mesh>
-      {/* inlaid border of the impluvium */}
-      <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      {/* inlaid border of the impluvium: part of the floor */}
+      <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow userData={FIXED}>
         <ringGeometry args={[2.05, 2.2, 8]} />
         <Surface slot="trim" />
       </mesh>
@@ -260,8 +288,13 @@ function Sundial() {
   );
 }
 
-/** Centre of the statue niche along the right wall, shared with the wall opening. */
-export const NICHE = { z: -7.2, half: 0.78, sill: 0.5, spring: 2.15 };
+/**
+ * The statue niche in the right wall, shared with the wall opening. `sill` is the top of the
+ * stone slab the figure stands on. The wall's opening is cut from `lap` below that: cut at
+ * `sill` itself, its lower face lay in the very plane of the slab's top, and the two surfaces
+ * fought for every pixel in front of the statue's feet as the camera moved.
+ */
+export const NICHE = { z: -7.2, half: 0.78, sill: 0.5, spring: 2.15, lap: 0.05 };
 
 // The figure, in its own frame: front +z, feet at y = 0. One arm raised, the other carrying the mantle.
 const FIG_Y = 0.08;
@@ -271,32 +304,26 @@ const R_HAND: [number, number, number] = [-0.47, FIG_Y + 1.52, 0.24];
 const L_SHOULDER: [number, number, number] = [0.21, FIG_Y + 1.27, 0];
 const L_ELBOW: [number, number, number] = [0.3, FIG_Y + 0.95, 0.03];
 const L_HAND: [number, number, number] = [0.25, FIG_Y + 0.93, 0.3];
-const FIGURE_LIMBS: Placement[] = [
-  limb(R_SHOULDER, R_ELBOW, 0.052),
-  limb(R_ELBOW, R_HAND, 0.042),
-  limb(L_SHOULDER, L_ELBOW, 0.056),
-  limb(L_ELBOW, L_HAND, 0.046),
-];
-const FIGURE_JOINTS: Placement[] = [
-  { p: R_ELBOW, s: [0.052, 0.052, 0.052] },
-  { p: R_HAND, s: [0.05, 0.062, 0.04] },
-  { p: L_ELBOW, s: [0.056, 0.056, 0.056] },
-  { p: L_HAND, s: [0.05, 0.05, 0.05] },
+// One arm is one piece of the figure: its two limbs and its two joints.
+const FIGURE_ARMS: { limbs: Placement[]; joints: Placement[] }[] = [
+  {
+    limbs: [limb(R_SHOULDER, R_ELBOW, 0.052), limb(R_ELBOW, R_HAND, 0.042)],
+    joints: [
+      { p: R_ELBOW, s: [0.052, 0.052, 0.052] },
+      { p: R_HAND, s: [0.05, 0.062, 0.04] },
+    ],
+  },
+  {
+    limbs: [limb(L_SHOULDER, L_ELBOW, 0.056), limb(L_ELBOW, L_HAND, 0.046)],
+    joints: [
+      { p: L_ELBOW, s: [0.056, 0.056, 0.056] },
+      { p: L_HAND, s: [0.05, 0.05, 0.05] },
+    ],
+  },
 ];
 
-/** 7. The Statue: an abstract draped figure standing in a round-headed niche, one arm raised. */
-function Statue({ wallX }: { wallX: number }) {
-  // Long robe to the shoulders; flattened front to back below so it reads as a body, not a turned post.
-  const body = useMemo(
-    () =>
-      lathe([
-        [0, 0], [0.205, 0], [0.215, 0.03], [0.185, 0.3], [0.165, 0.58], [0.185, 0.8], [0.2, 0.9], [0.175, 1.02],
-        [0.195, 1.14], [0.235, 1.24], [0.225, 1.29], [0.12, 1.345], [0.058, 1.375], [0.05, 1.43], [0, 1.43],
-      ], 18),
-    [],
-  );
-  // The end of the mantle falling from the forearm, drawn in plan as a zigzag so it hangs in folds.
-  const fall = useMemo(() => ribbonGeometry([[0.335, 0.0], [0.27, -0.08], [0.345, -0.16], [0.275, -0.24], [0.33, -0.32]], 0.03, 0.74), []);
+/** The niche itself: the hollow in the wall and the slab across its foot. Part of the house. */
+function Niche({ wallX }: { wallX: number }) {
   const r = NICHE.half + 0.03;
   const shellH = NICHE.spring - NICHE.sill;
   return (
@@ -313,6 +340,25 @@ function Statue({ wallX }: { wallX: number }) {
         <boxGeometry args={[1.1, 0.1, 1.74]} />
         <Surface slot="stone" />
       </mesh>
+    </group>
+  );
+}
+
+/** 7. The Statue: an abstract draped figure standing in a round-headed niche, one arm raised. */
+function Statue({ wallX }: { wallX: number }) {
+  // Long robe to the shoulders; flattened front to back below so it reads as a body, not a turned post.
+  const body = useMemo(
+    () =>
+      lathe([
+        [0, 0], [0.205, 0], [0.215, 0.03], [0.185, 0.3], [0.165, 0.58], [0.185, 0.8], [0.2, 0.9], [0.175, 1.02],
+        [0.195, 1.14], [0.235, 1.24], [0.225, 1.29], [0.12, 1.345], [0.058, 1.375], [0.05, 1.43], [0, 1.43],
+      ], 18),
+    [],
+  );
+  // The end of the mantle falling from the forearm, drawn in plan as a zigzag so it hangs in folds.
+  const fall = useMemo(() => ribbonGeometry([[0.335, 0.0], [0.27, -0.08], [0.345, -0.16], [0.275, -0.24], [0.33, -0.32]], 0.03, 0.74), []);
+  return (
+    <group position={[wallX, 0, NICHE.z]}>
       {/* turned a little towards the place the learner stands */}
       <group position={[0.16, NICHE.sill, 0]} rotation={[0, -Math.PI / 2 + 0.3, 0]}>
         <mesh position={[0, FIG_Y / 2, 0]} castShadow receiveShadow>
@@ -326,12 +372,16 @@ function Statue({ wallX }: { wallX: number }) {
           <sphereGeometry args={[0.1, 16, 12]} />
           <Surface slot="stone" accent="blue" />
         </mesh>
-        <Repeated items={FIGURE_LIMBS} make={FIGURE_LIMBS_GEOMETRY}>
-          <Surface slot="stone" accent="blue" />
-        </Repeated>
-        <Repeated items={FIGURE_JOINTS} make={FIGURE_JOINTS_GEOMETRY}>
-          <Surface slot="stone" accent="blue" />
-        </Repeated>
+        {FIGURE_ARMS.map((arm, i) => (
+          <group key={i} userData={PIECE}>
+            <Repeated items={arm.limbs} make={FIGURE_LIMBS_GEOMETRY}>
+              <Surface slot="stone" accent="blue" />
+            </Repeated>
+            <Repeated items={arm.joints} make={FIGURE_JOINTS_GEOMETRY}>
+              <Surface slot="stone" accent="blue" />
+            </Repeated>
+          </group>
+        ))}
         {/* the mantle: a band from the left shoulder across to the right hip */}
         <group position={[0, FIG_Y + 1.05, 0]} rotation={[0, 0, 0.62]}>
           <mesh rotation={[Math.PI / 2, 0, 0]} scale={[1, 0.72, 1]} castShadow>
@@ -387,8 +437,8 @@ const SHELF_ROWS = 3;
 const CELL = 0.415;
 const ROW = 0.44;
 
+const SHELF_PLINTH: Placement[] = [{ p: [0.22, 0.07, 0], s: [0.46, 0.14, 1.76] }];
 const SHELF_BOARDS: Placement[] = [
-  { p: [0.22, 0.07, 0], s: [0.46, 0.14, 1.76] }, // plinth
   { p: [0.02, 0.82, 0], s: [0.04, 1.36, 1.7] }, // back
   ...[0.16, 0.6, 1.04, 1.48].map((y): Placement => ({ p: [0.22, y, 0], s: [0.44, 0.04, 1.7] })),
   ...[-2, -1, 0, 1, 2].map((i): Placement => ({ p: [0.22, 0.82, i * CELL], s: [0.44, 1.36, 0.04] })),
@@ -397,10 +447,14 @@ const SHELF_BOARDS: Placement[] = [
 // How many scrolls lie in each pigeonhole (row by row from the bottom); uneven on purpose.
 const SCROLL_COUNTS = [5, 3, 4, 5, 3, 5, 2, 4, 4, 3, 5, 3];
 const SCROLL_SLOTS: [number, number][] = [[-0.115, 0.05], [0, 0.05], [0.115, 0.05], [-0.058, 0.148], [0.058, 0.148]];
-const SCROLLS: Placement[] = [];
-const CORDS: Placement[] = [];
-const CORD_TAILS: Placement[] = [];
+// Row by row: a row of scrolls with its cords is one piece of the shelf.
+const SHELF_ROW_ITEMS = Array.from({ length: SHELF_ROWS }, (): { scrolls: Placement[]; cords: Placement[]; tails: Placement[] } => ({
+  scrolls: [],
+  cords: [],
+  tails: [],
+}));
 for (let row = 0; row < SHELF_ROWS; row++) {
+  const { scrolls: SCROLLS, cords: CORDS, tails: CORD_TAILS } = SHELF_ROW_ITEMS[row];
   for (let col = 0; col < SHELF_COLS; col++) {
     const z = (col - 1.5) * CELL;
     const y = 0.18 + row * ROW;
@@ -421,18 +475,25 @@ for (let row = 0; row < SHELF_ROWS; row++) {
 function ScrollShelf({ wallX }: { wallX: number }) {
   return (
     <group position={[wallX, 0, -13.9]}>
+      <Repeated items={SHELF_PLINTH} make={UNIT_BOX}>
+        <Surface slot="wood" />
+      </Repeated>
       <Repeated items={SHELF_BOARDS} make={UNIT_BOX}>
         <Surface slot="wood" />
       </Repeated>
-      <Repeated items={SCROLLS} make={SCROLLS_GEOMETRY}>
-        <Surface slot="cloth" />
-      </Repeated>
-      <Repeated items={CORDS} make={CORDS_GEOMETRY}>
-        <Surface slot="cloth" accent="red" />
-      </Repeated>
-      <Repeated items={CORD_TAILS} make={UNIT_BOX}>
-        <Surface slot="cloth" accent="red" />
-      </Repeated>
+      {SHELF_ROW_ITEMS.map((row, i) => (
+        <group key={i} userData={PIECE}>
+          <Repeated items={row.scrolls} make={SCROLLS_GEOMETRY}>
+            <Surface slot="cloth" />
+          </Repeated>
+          <Repeated items={row.cords} make={CORDS_GEOMETRY}>
+            <Surface slot="cloth" accent="red" />
+          </Repeated>
+          <Repeated items={row.tails} make={UNIT_BOX}>
+            <Surface slot="cloth" accent="red" />
+          </Repeated>
+        </group>
+      ))}
     </group>
   );
 }
@@ -462,7 +523,7 @@ function Lectern() {
         <boxGeometry args={[0.1, 1.04, 0.1]} />
         <Surface slot="wood" />
       </mesh>
-      <group position={[0, 1.13, 0]} rotation={[0.45, 0, 0]}>
+      <group position={[0, 1.13, 0]} rotation={[0.45, 0, 0]} userData={PIECE}>
         <mesh castShadow>
           <boxGeometry args={[0.66, 0.05, 0.46]} />
           <Surface slot="wood" />
@@ -531,17 +592,6 @@ function Armillary() {
 /** The garden window's opening in the back wall of the study, shared with the wall. */
 export const WINDOW = { x0: -0.7, x1: 1.9, y0: 0.55, y1: 3.35 };
 
-const WINDOW_BARS: Placement[] = (() => {
-  const cx = (WINDOW.x0 + WINDOW.x1) / 2;
-  const cy = (WINDOW.y0 + WINDOW.y1) / 2;
-  const w = WINDOW.x1 - WINDOW.x0;
-  const h = WINDOW.y1 - WINDOW.y0;
-  return [
-    ...[-1, 1].map((s): Placement => ({ p: [cx + (s * w) / 6, cy, 0], s: [0.06, h, 0.06] })),
-    ...[-1, 0, 1].map((s): Placement => ({ p: [cx, cy + (s * h) / 4, 0], s: [w, 0.06, 0.06] })),
-  ];
-})();
-
 const GARDEN: Placement[] = [
   { p: [-0.25, 1.6, -22.0], s: [0.5, 1.75, 0.5] },
   { p: [1.8, 1.3, -22.4], s: [0.45, 1.45, 0.45] },
@@ -550,34 +600,66 @@ const GARDEN: Placement[] = [
   { p: [2.6, 0.85, -21.6], s: [0.6, 0.75, 0.5] },
 ];
 
-/** 12. The Garden Window: a tall green lattice with light and leaves beyond. */
-function GardenWindow({ wallZ }: { wallZ: number }) {
-  const frame = useMemo(
-    () => frameGeometry(WINDOW.x0 - 0.12, WINDOW.x1 + 0.12, WINDOW.y0 - 0.12, WINDOW.y1 + 0.12, 0.2, T + 0.1),
-    [],
-  );
+type Member = [x: number, y: number, width: number, height: number];
+
+/** The frame of the window, member by member: the two rails run the full width, the stiles stand between them. */
+const WINDOW_FRAME: Member[] = (() => {
+  const x0 = WINDOW.x0 - 0.12;
+  const x1 = WINDOW.x1 + 0.12;
+  const y0 = WINDOW.y0 - 0.12;
+  const y1 = WINDOW.y1 + 0.12;
+  const w = 0.2;
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  return [
+    [cx, y0 + w / 2, x1 - x0, w],
+    [x0 + w / 2, cy, w, y1 - y0 - 2 * w],
+    [x1 - w / 2, cy, w, y1 - y0 - 2 * w],
+    [cx, y1 - w / 2, x1 - x0, w],
+  ];
+})();
+const WINDOW_BARS: Member[] = (() => {
   const cx = (WINDOW.x0 + WINDOW.x1) / 2;
+  const cy = (WINDOW.y0 + WINDOW.y1) / 2;
+  const w = WINDOW.x1 - WINDOW.x0;
+  const h = WINDOW.y1 - WINDOW.y0;
+  return [...[-1, 1].map((s): Member => [cx + (s * w) / 6, cy, 0.06, h]), ...[-1, 0, 1].map((s): Member => [cx, cy + (s * h) / 4, w, 0.06])];
+})();
+
+/**
+ * 12. The Garden Window: a tall green lattice with light and leaves beyond. The woodwork is
+ * the feature; the garden and its light are outside the house and stay whatever happens to it.
+ */
+function GardenWindow({ wallZ }: { wallZ: number }) {
+  const cx = (WINDOW.x0 + WINDOW.x1) / 2;
+  const depth = T + 0.1;
   return (
     <group>
-      <mesh geometry={frame} position={[0, 0, wallZ - T - 0.04]} castShadow>
-        <Surface slot="wood" accent="green" />
-      </mesh>
-      <group position={[0, 0, wallZ - T / 2]}>
-        <Repeated items={WINDOW_BARS} make={UNIT_BOX}>
+      {WINDOW_FRAME.map(([x, y, w, h], i) => (
+        <mesh key={i} position={[x, y, wallZ - T - 0.04 + depth / 2]} castShadow>
+          <boxGeometry args={[w, h, depth]} />
           <Surface slot="wood" accent="green" />
-        </Repeated>
-      </group>
+        </mesh>
+      ))}
+      {WINDOW_BARS.map(([x, y, w, h], i) => (
+        <mesh key={i} position={[x, y, wallZ - T / 2]} castShadow receiveShadow>
+          <boxGeometry args={[w, h, 0.06]} />
+          <Surface slot="wood" accent="green" />
+        </mesh>
+      ))}
       <mesh position={[cx, WINDOW.y0 - 0.16, wallZ + 0.12]} castShadow receiveShadow>
         <boxGeometry args={[WINDOW.x1 - WINDOW.x0 + 0.5, 0.08, 0.36]} />
         <Surface slot="stone" />
       </mesh>
-      <mesh position={[cx, 3, wallZ - 3.4]}>
-        <planeGeometry args={[16, 12]} />
-        <Surface slot="glow" />
-      </mesh>
-      <Repeated items={GARDEN} make={GARDEN_GEOMETRY}>
-        <Surface slot="foliage" accent="green" />
-      </Repeated>
+      <group userData={FIXED}>
+        <mesh position={[cx, 3, wallZ - 3.4]}>
+          <planeGeometry args={[16, 12]} />
+          <Surface slot="glow" />
+        </mesh>
+        <Repeated items={GARDEN} make={GARDEN_GEOMETRY}>
+          <Surface slot="foliage" accent="green" />
+        </Repeated>
+      </group>
     </group>
   );
 }
@@ -585,21 +667,50 @@ function GardenWindow({ wallZ }: { wallZ: number }) {
 export function Features({ atriumX, studyX, studyBackZ }: { atriumX: number; studyX: number; studyBackZ: number }) {
   return (
     <>
-      <Lamp />
-      <CloakBench />
-      <Amphora />
-      <Arch />
-      <Fountain />
-      {/* fifth and tenth place: the golden hand, on the rim of the pool and beside the lectern */}
+      <LocusFeature index={0}>
+        <Lamp />
+      </LocusFeature>
+      {/* the bench stands against the wall: its pieces fall into the room in front of it */}
+      <LocusFeature index={1} ground={[2.05, 0, 4.6]}>
+        <CloakBench />
+      </LocusFeature>
+      <LocusFeature index={2}>
+        <Amphora />
+      </LocusFeature>
+      <LocusFeature index={3}>
+        <Arch />
+      </LocusFeature>
+      {/* the bowls fall into the basin and lie in the shallow water */}
+      <LocusFeature index={4} ground={[0, 0.26, -6]} reach={1.2}>
+        <Fountain />
+      </LocusFeature>
+      {/* fifth and tenth place: the golden hand, on the rim of the pool and beside the lectern. It counts the places, so it stays whole. */}
       <GoldenHand position={[-0.534, 0.42, -4.711]} facing={0.25} stem={0.1} />
       <GoldenHand position={[-1.92, 0, -16.33]} facing={0.84} />
-      <Sundial />
-      <Statue wallX={atriumX} />
-      <Laurel />
-      <ScrollShelf wallX={-studyX} />
-      <Lectern />
-      <Armillary />
-      <GardenWindow wallZ={studyBackZ} />
+      <LocusFeature index={5}>
+        <Sundial />
+      </LocusFeature>
+      <Niche wallX={atriumX} />
+      {/* the figure falls out of its niche onto the atrium floor */}
+      <LocusFeature index={6} ground={[atriumX - 0.8, 0, NICHE.z]}>
+        <Statue wallX={atriumX} />
+      </LocusFeature>
+      <LocusFeature index={7}>
+        <Laurel />
+      </LocusFeature>
+      <LocusFeature index={8} ground={[-studyX + 0.95, 0, -13.9]}>
+        <ScrollShelf wallX={-studyX} />
+      </LocusFeature>
+      <LocusFeature index={9}>
+        <Lectern />
+      </LocusFeature>
+      <LocusFeature index={10}>
+        <Armillary />
+      </LocusFeature>
+      {/* the woodwork falls into the study, under the window */}
+      <LocusFeature index={11} ground={[(WINDOW.x0 + WINDOW.x1) / 2, 0, studyBackZ + 0.85]}>
+        <GardenWindow wallZ={studyBackZ} />
+      </LocusFeature>
     </>
   );
 }

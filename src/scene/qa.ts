@@ -22,6 +22,8 @@ declare global {
       flourish?: Flourish;
       /** Adaptive resolution: the pixel ratio it wants and the 0..1 quality factor behind it. */
       resolution?: { want: number; factor: number };
+      /** How whole each place is, by locus index. A script may write `target` to watch a place fall or rise. */
+      integrity?: { target: Float32Array; snap: boolean };
     };
   }
 }
@@ -38,6 +40,8 @@ declare global {
  *   &flourish=<0..1>                     with shot=<locus index>: the right-answer flourish, held that far through
  *   &veil=hold                           keep the loading veil up (to look at it)
  *   &dev=0.2 | &dev=1,0.2,…              override development (one value for all, or per locus)
+ *   &integrity=0 | &integrity=1,0,0.6,…  override integrity the same way: 0 in ruins, 0.3 damaged,
+ *                                        0.6 under repair, 1 restored (places not listed are whole)
  *   &debug                               posts at the locus anchors; stores on window.__memoria
  *   &debug=stores                        the stores only, no posts (for clean screenshots of driven states)
  *   ?perf                                frame-time overlay
@@ -60,6 +64,8 @@ export interface Qa {
   flourish: number | null;
   holdVeil: boolean;
   dev: number[] | null;
+  /** Integrity override; one value means every place. */
+  integrity: number[] | null;
   debug: boolean;
   /** Posts and ground grid at the locus anchors. */
   posts: boolean;
@@ -74,17 +80,24 @@ function node(raw: string | null, lociCount: number): RailNode | null {
   return raw !== '' && Number.isInteger(i) && i >= 0 && i < lociCount ? i : 'overview';
 }
 
+/** A comma-separated list of numbers, each clamped to 0..1; null when there is none. */
+function unitList(raw: string | null): number[] | null {
+  const list = (raw ?? '')
+    .split(',')
+    .filter((v) => v.trim() !== '')
+    .map(Number)
+    .filter((v) => Number.isFinite(v))
+    .map((v) => Math.min(1, Math.max(0, v)));
+  return list.length ? list : null;
+}
+
 export function readQa(lociCount: number, search = location.search): Qa {
   const q = new URLSearchParams(search);
   const shot = node(q.get('shot'), lociCount);
   const from = q.has('rail') ? node(q.get('rail'), lociCount - 1) : null;
   const rail = from !== null && from !== 'overview' ? { from, t: Math.min(1, Math.max(0, Number(q.get('t') ?? 0.5) || 0)) } : null;
-  const dev = q
-    .get('dev')
-    ?.split(',')
-    .map(Number)
-    .filter((v) => Number.isFinite(v))
-    .map((v) => Math.min(1, Math.max(0, v)));
+  const dev = unitList(q.get('dev'));
+  const integrity = unitList(q.get('integrity'));
   return {
     shot,
     rail,
@@ -95,7 +108,8 @@ export function readQa(lociCount: number, search = location.search): Qa {
     insetBottom: Math.max(0, Number(q.get('insetBottom')) || 0),
     flourish: q.has('flourish') ? Math.min(1, Math.max(0, Number(q.get('flourish')) || 0)) : null,
     holdVeil: q.get('veil') === 'hold',
-    dev: dev && dev.length ? dev : null,
+    dev,
+    integrity,
     debug: q.has('debug'),
     posts: q.has('debug') && q.get('debug') !== 'stores',
     perf: q.has('perf'),
