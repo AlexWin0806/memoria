@@ -27,6 +27,13 @@
   {"name": "gen6-r5-4", "query": "layout=gen%3Agothic%3Br1~5~hall~Present%3Br2~5~hall~Preterite%3Br3~5~hall~Imperfect%3Br4~5~hall~Future%3Br5~5~hall~Conditional%3Br6~5~hall~Subjunctive&shot=23&inset=380&tokens=all&deck=qa-places&debug=stores"},
   {"name": "gen6-r6-1", "query": "layout=gen%3Agothic%3Br1~5~hall~Present%3Br2~5~hall~Preterite%3Br3~5~hall~Imperfect%3Br4~5~hall~Future%3Br5~5~hall~Conditional%3Br6~5~hall~Subjunctive&shot=25&inset=380&tokens=all&deck=qa-places&debug=stores"},
   {"name": "gen6-r6-5", "query": "layout=gen%3Agothic%3Br1~5~hall~Present%3Br2~5~hall~Preterite%3Br3~5~hall~Imperfect%3Br4~5~hall~Future%3Br5~5~hall~Conditional%3Br6~5~hall~Subjunctive&shot=29&inset=380&tokens=all&deck=qa-places&debug=stores"},
-  {"name": "gen6-perf-entry", "query": "layout=gen%3Agothic%3Br1~5~hall~Present%3Br2~5~hall~Preterite%3Br3~5~hall~Imperfect%3Br4~5~hall~Future%3Br5~5~hall~Conditional%3Br6~5~hall~Subjunctive&shot=entry&perf"},
-  {"name": "gen6-perf-r3-1", "query": "layout=gen%3Agothic%3Br1~5~hall~Present%3Br2~5~hall~Preterite%3Br3~5~hall~Imperfect%3Br4~5~hall~Future%3Br5~5~hall~Conditional%3Br6~5~hall~Subjunctive&shot=10&perf"}
+  {"name": "gen6-perf-entry", "query": "layout=gen%3Agothic%3Br1~5~hall~Present%3Br2~5~hall~Preterite%3Br3~5~hall~Imperfect%3Br4~5~hall~Future%3Br5~5~hall~Conditional%3Br6~5~hall~Subjunctive&shot=entry&perf", "waitMs": 15000},
+  {"name": "gen6-perf-r3-1", "query": "layout=gen%3Agothic%3Br1~5~hall~Present%3Br2~5~hall~Preterite%3Br3~5~hall~Imperfect%3Br4~5~hall~Future%3Br5~5~hall~Conditional%3Br6~5~hall~Subjunctive&shot=10&perf", "waitMs": 15000},
+  {"name": "genring-into", "query": "layout=gen%3Agothic%3Br1~3~hall~Glycolysis%3Br2~5~ring~Krebs%2520cycle%3Br3~2~hall~Electron%2520transport&rail=2&t=0.7"},
+  {"name": "genring-1", "query": "layout=gen%3Agothic%3Br1~3~hall~Glycolysis%3Br2~5~ring~Krebs%2520cycle%3Br3~2~hall~Electron%2520transport&shot=3&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "genring-2", "query": "layout=gen%3Agothic%3Br1~3~hall~Glycolysis%3Br2~5~ring~Krebs%2520cycle%3Br3~2~hall~Electron%2520transport&shot=4&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "genring-3", "query": "layout=gen%3Agothic%3Br1~3~hall~Glycolysis%3Br2~5~ring~Krebs%2520cycle%3Br3~2~hall~Electron%2520transport&shot=5&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "genring-4", "query": "layout=gen%3Agothic%3Br1~3~hall~Glycolysis%3Br2~5~ring~Krebs%2520cycle%3Br3~2~hall~Electron%2520transport&shot=6&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "genring-5", "query": "layout=gen%3Agothic%3Br1~3~hall~Glycolysis%3Br2~5~ring~Krebs%2520cycle%3Br3~2~hall~Electron%2520transport&shot=7&inset=380&tokens=all&deck=qa-places&debug=stores"},
+  {"name": "genring-out", "query": "layout=gen%3Agothic%3Br1~3~hall~Glycolysis%3Br2~5~ring~Krebs%2520cycle%3Br3~2~hall~Electron%2520transport&rail=7&t=0.3"}
 ]

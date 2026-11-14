@@ -204,7 +204,7 @@ function buildRing(props: KitRoomProps): Parts {
   };
 
   // The six sides that are not doorways. The plots stand before five; the sixth (the last
-  // before the circle closes, on the right unless the room is mirrored) has the window.
+  // before the circle closes, right of the entrance) has the window.
   const windowAt = mirrored ? 45 : 315;
   for (const degrees of [45, 90, 135, 225, 270, 315]) {
     const [x, z] = round(degrees, R);
@@ -226,7 +226,7 @@ function buildRing(props: KitRoomProps): Parts {
     const [x0, z0] = round(22.5 + 45 * k, corner + 0.05);
     const [x1, z1] = round(67.5 + 45 * k, corner + 0.05);
     // Wound to face down into the room.
-    cells.push(...apex, x1, RING_EAVES, z1, x0, RING_EAVES, z0);
+    cells.push(...apex, x0, RING_EAVES, z0, x1, RING_EAVES, z1);
     const [hx, hz] = round(22.5 + 45 * k, corner - 0.1);
     const hip = limb([hx, RING_EAVES - 0.12, hz], [apex[0], apex[1] - 0.2, apex[2]], 0.1);
     parts.stone.push(at(new CylinderGeometry(1, 1, 1, 6), hip.p, hip.r, hip.s));
@@ -244,7 +244,7 @@ function buildRing(props: KitRoomProps): Parts {
 }
 
 export function GothicRoom(props: KitRoomProps) {
-  const { index, shape, plan, mirrored, open } = props;
-  const make = useCallback(() => (shape === 'ring' ? buildRing : buildHall)({ index, shape, plan, mirrored, open }), [index, shape, plan, mirrored, open]);
+  const { index, shape, plan, plots, mirrored, open } = props;
+  const make = useCallback(() => (shape === 'ring' ? buildRing : buildHall)({ index, shape, plan, plots, mirrored, open }), [index, shape, plan, plots, mirrored, open]);
   return <Welded build={make} />;
 }

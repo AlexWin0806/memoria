@@ -11,4 +11,4 @@ export function getKit(id: string | null | undefined): KitDef {
 }
 
 export { DEFAULT_KIT_ID, KIT_LIST, type KitInfo } from './list';
-export type { FeatureDef, KitDef, KitRoomProps, RoomPlan } from './types';
+export type { FeatureDef, KitDef, KitRoomProps, RoomPlan, RoomPlot } from './types';

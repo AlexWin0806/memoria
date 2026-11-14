@@ -1,7 +1,7 @@
 import type { AccentKey, CameraPose, Locus, PalaceLayoutMeta, PalaceRoomSpec, PalaceSpec, Room, Vec3 } from '@/core/types';
 import { getKit } from '@/layouts/kits';
 import { KIT_LIST } from '@/layouts/kits/list';
-import type { FeatureDef, KitDef, RoomPlan } from '@/layouts/kits/types';
+import type { FeatureDef, KitDef, RoomPlan, RoomPlot } from '@/layouts/kits/types';
 import { PROPS } from '@/layouts/props';
 import { ROOM_CAPACITY, normalizeSpec, palaceLayoutId, placeId } from '@/layouts/spec';
 
@@ -97,13 +97,15 @@ function hallSlots(plan: RoomPlan): Slot[] {
 
 /**
  * A ring: places before the sides 45, 90 and 135 degrees round from the entrance, then, past
- * the far doorway, 225 and 270. Each view stands a little past the middle of the room.
+ * the far doorway, 225 and 270. Each view stands near the middle of the room, a step towards
+ * the place before: that one then leaves the picture on the left, and the next one stands
+ * at its right edge, where the walk panel is.
  */
 function ringSlots(plan: RoomPlan): Slot[] {
   const r = plan.halfWidth;
   return [45, 90, 135, 225, 270].map((degrees): Slot => {
     const a = (degrees * Math.PI) / 180;
-    return { x: -r * Math.sin(a), z: -r + r * Math.cos(a), nx: Math.sin(a), nz: -Math.cos(a), standoff: 1, margin: 0.15, swing: 0.3, turn: 0.2 };
+    return { x: -r * Math.sin(a), z: -r + r * Math.cos(a), nx: Math.sin(a), nz: -Math.cos(a), standoff: 1, margin: 0.15, swing: 0.15, turn: 0.1 };
   });
 }
 
@@ -139,6 +141,8 @@ export interface RoomSite {
   /** World position of the room's origin (the threshold of its entrance doorway). */
   origin: Vec3;
   mirrored: boolean;
+  /** The five plots in the room's own frame, mirroring applied: what the kit's Room is given. */
+  plots: RoomPlot[];
 }
 
 /** One built place: what stands there and where, in world coordinates. */
@@ -249,10 +253,17 @@ export function roomSites(spec: PalaceSpec, kit: KitDef): RoomSite[] {
   return spec.rooms.map((room, index) => {
     // A kit that draws no ring room gets a hall: the plots of a ring would stand in mid-air in one.
     const shape = room.shape === 'ring' && kit.rings ? 'ring' : 'hall';
-    const { plan } = SHAPES[shape];
+    const { plan, slots } = SHAPES[shape];
     const origin: Vec3 = [0, 0, round(z)];
     z -= plan.length + plan.partition;
-    return { index, spec: room, shape, plan, origin, mirrored: index % 2 === 1 };
+    // Every second hall is mirrored. A ring never is: its route always turns the same way.
+    const mirrored = shape === 'hall' && index % 2 === 1;
+    const m = mirrored ? -1 : 1;
+    const plots = slots.map((slot): RoomPlot => {
+      const [gx, gz] = slotGround(slot);
+      return { wall: [round(m * slot.x), round(slot.z)], normal: [round(m * slot.nx), round(slot.nz)], ground: [round(m * gx), round(gz)] };
+    });
+    return { index, spec: room, shape, plan, origin, mirrored, plots };
   });
 }
 
@@ -273,12 +284,8 @@ export function planLayout(input: PalaceSpec): PalacePlan {
   const via: Record<string, Vec3[]> = {};
 
   for (const room of rooms) {
-    const m = room.mirrored ? -1 : 1;
     const { slots } = SHAPES[room.shape];
-    for (const slot of slots) {
-      const [x, z] = slotGround(slot);
-      plots.push(v3(room.origin[0] + m * x, 0, room.origin[2] + z));
-    }
+    for (const plot of room.plots) plots.push(v3(room.origin[0] + plot.ground[0], 0, room.origin[2] + plot.ground[1]));
     const count = Math.min(room.spec.places, ROOM_CAPACITY, slots.length);
     for (let slot = 0; slot < count; slot++) {
       const n = room.index * ROOM_CAPACITY + slot;
