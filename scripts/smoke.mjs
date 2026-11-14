@@ -2204,7 +2204,7 @@ const cases = {
     await page.getByTestId('encode-term').waitFor();
     const krebs = await page.getByTestId('encode-links').locator('li').allTextContents();
     assert(
-      JSON.stringify(krebs) === JSON.stringify(['Comes from a step further along the route: joins acetyl-CoA.', 'It becomes the step at the next place.', 'Held back by Succinyl-CoA: inhibits citrate synthase.']),
+      JSON.stringify(krebs) === JSON.stringify(['Comes from a step further along the route: joins acetyl-CoA (citrate synthase).', 'It becomes the step at the next place.', 'Held back by Succinyl-CoA: inhibits citrate synthase.']),
       `the citric acid cycle's first step connects as ${JSON.stringify(krebs)}`,
     );
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
