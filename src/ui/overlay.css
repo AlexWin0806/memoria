@@ -59,6 +59,8 @@
   border-bottom: 1px solid var(--rule);
 }
 .panel__body {
+  /* A pasted sentence can be long and unbroken: it wraps inside the panel, never past it. */
+  overflow-wrap: break-word;
   --pad-x: 36px;
   --pad-bottom: 44px;
   flex: 1;
@@ -361,13 +363,26 @@ textarea.field { resize: vertical; }
 .results[data-long='true'] .results__actions,
 .dock {
   position: sticky;
-  bottom: 0;
+  /* Sticky offsets are measured from the scroller's content box: reach down over its padding. */
+  bottom: calc(-1 * var(--pad-bottom));
   z-index: 1;
   margin: 22px calc(-1 * var(--pad-x)) calc(-1 * var(--pad-bottom));
   padding: 14px var(--pad-x) 18px;
   border-top: 1px solid var(--rule-strong);
   background: var(--ui-panel);
 }
+/*
+ * Walk screens: the buttons stay in view however long the meaning or the scene is. In its
+ * own place the bar is invisible (panel colour, no rule); it only shows when text scrolls under it.
+ */
+.pin {
+  position: sticky;
+  bottom: calc(-1 * var(--pad-bottom));
+  z-index: 1;
+  padding-bottom: 18px;
+  background: var(--ui-panel);
+}
+.pin + .hint { margin-top: 4px; }
 /* First in the document and in the Tab order; drawn last, where a pinned bar belongs. */
 .results[data-long='true'] .results__actions { order: 1; }
 .dock .actions { margin-top: 0; }

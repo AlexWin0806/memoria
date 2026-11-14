@@ -106,13 +106,15 @@ export function Familiarize() {
           <p className="muted">Walking there.</p>
         )}
       </div>
-      <div className="actions">
-        <button type="button" className="btn btn--primary" ref={nextRef} disabled={!arrived} onClick={advance} data-testid="walk-next">
-          {last ? 'Check the route' : 'Next place'}
-        </button>
-        <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
-          Back
-        </button>
+      <div className="pin">
+        <div className="actions">
+          <button type="button" className="btn btn--primary" ref={nextRef} disabled={!arrived} onClick={advance} data-testid="walk-next">
+            {last ? 'Check the route' : 'Next place'}
+          </button>
+          <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
+            Back
+          </button>
+        </div>
       </div>
       <p className="hint">{ADVANCE_KEYS}: next. Left arrow: back.</p>
     </section>
@@ -294,14 +296,17 @@ export function Encode() {
           <p className="muted">Walking to {locus.name}.</p>
         )}
       </div>
-      {judge && <ProgressBar value={arrived ? progress : 0} label="Time at this place" />}
-      <div className="actions">
-        <button type="button" className="btn btn--primary" ref={nextRef} disabled={!arrived} onClick={advanceEncode} data-testid="walk-next">
-          {last ? 'I can see it. Finish' : 'I can see it'}
-        </button>
-        <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
-          Back
-        </button>
+      {/* Pinned to the bottom edge when a long meaning or scene would push the buttons out of view. */}
+      <div className="pin">
+        {judge && <ProgressBar value={arrived ? progress : 0} label="Time at this place" />}
+        <div className="actions">
+          <button type="button" className="btn btn--primary" ref={nextRef} disabled={!arrived} onClick={advanceEncode} data-testid="walk-next">
+            {last ? 'I can see it. Finish' : 'I can see it'}
+          </button>
+          <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
+            Back
+          </button>
+        </div>
       </div>
       <p className="hint">
         {judge

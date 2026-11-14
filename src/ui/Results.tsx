@@ -6,6 +6,7 @@ import { withDeadline } from '@/flows/deadline';
 import { itemAt, leave, startRecall, useFlow } from '@/flows/flow';
 import { formatDuration, formatWhen, numberWord } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
+import { isNoStrongerSuggestion, NO_MORE_OFFLINE } from '@/flows/suggest';
 import { JUDGE_REGENERATE_TIMEOUT_MS, REGENERATE_TIMEOUT_MS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDeck, useDecks } from '@/state/decks';
@@ -18,7 +19,7 @@ import { useSession } from '@/state/session';
  */
 type Draft =
   | { status: 'busy' }
-  | { status: 'draft'; imago: Imago; scene: string; glyphs: string; by: 'architect' | 'offline' | 'hand'; late?: boolean }
+  | { status: 'draft'; imago: Imago; scene: string; glyphs: string; by: 'architect' | 'written' | 'offline' | 'hand'; late?: boolean; spent?: boolean }
   | { status: 'saved' };
 
 const sameScene = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -84,21 +85,22 @@ export function Results() {
     const others = deck.items.filter((o) => o.id !== item.id).map((o) => o.imago);
     // The Architect must never block the learner. With no usable answer in time (none, an
     // error, or the same image again) the old image opens for rewriting by hand instead.
-    const byHand = (late: boolean) =>
-      setDraft(item.id, { status: 'draft', imago: item.imago, scene: item.imago.scene, glyphs: item.imago.glyphs.join(' '), by: 'hand', late });
+    const byHand = (late: boolean, spent = false) =>
+      setDraft(item.id, { status: 'draft', imago: item.imago, scene: item.imago.scene, glyphs: item.imago.glyphs.join(' '), by: 'hand', late, spent });
     try {
       const imago = await withDeadline(
         regenerateImago({ item, locus, others, missed: true }),
         judge ? JUDGE_REGENERATE_TIMEOUT_MS : REGENERATE_TIMEOUT_MS,
       );
-      if (sameScene(imago.scene, item.imago.scene)) byHand(false);
+      if (isNoStrongerSuggestion(imago) || sameScene(imago.scene, item.imago.scene)) byHand(false, imago.source === 'fallback');
       else
         setDraft(item.id, {
           status: 'draft',
           imago,
           scene: imago.scene,
           glyphs: imago.glyphs.join(' '),
-          by: imago.source === 'fallback' ? 'offline' : 'architect',
+          // A fixture's alternate was written by hand for this item: it is not the Architect's work.
+          by: imago.source === 'fallback' ? 'offline' : imago.source === 'fixture' ? 'written' : 'architect',
         });
     } catch {
       byHand(true);
@@ -175,14 +177,14 @@ export function Results() {
               </div>
               {!ok && d?.status !== 'draft' && d?.status !== 'saved' && (
                 <button type="button" className="link" disabled={d?.status === 'busy'} onClick={() => strengthen(item, locus)} data-testid="strengthen">
-                  {d?.status === 'busy' ? 'The Architect is drawing a stronger image' : 'Strengthen this image'}
+                  {d?.status === 'busy' ? 'Looking for a stronger image' : 'Strengthen this image'}
                 </button>
               )}
               {d?.status === 'draft' && (
                 <div className="draft" data-testid="strengthen-draft" data-by={d.by}>
                   {d.by === 'hand' && (
                     <p className="notice" data-testid="strengthen-guide">
-                      {d.late ? 'The Architect did not answer, so this one is yours to rewrite. ' : ''}
+                      {d.late ? 'The Architect did not answer, so this one is yours to rewrite. ' : d.spent ? `${NO_MORE_OFFLINE} ` : ''}
                       Make it more distinct from its neighbours, and still tied to the meaning.
                     </p>
                   )}
@@ -221,6 +223,11 @@ export function Results() {
                     </p>
                   )}
                   {d.by === 'architect' && <p className="hint">Edit it until it is vivid to you, then keep it.</p>}
+                  {d.by === 'written' && (
+                    <p className="hint" data-testid="strengthen-written">
+                      A hand-written alternative. Edit it until it is vivid to you, then keep it.
+                    </p>
+                  )}
                   <div className="actions">
                     <button
                       type="button"

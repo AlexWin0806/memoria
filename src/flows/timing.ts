@@ -40,14 +40,15 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
 
 /**
  * What the title button promises, per variant: the measured length of a passive run (nothing
- * skipped, two seconds of thought per answer), rounded. Measured on the greybox theme with
- *   node scripts/smoke.mjs --only a --serial     default: 111 s
- *   node scripts/smoke.mjs --only p --serial     pitch:    69 s
+ * skipped, two seconds of thought per answer; in the pitch run, four seconds to read the
+ * spot-check screen before pressing its button), rounded. Measured on the greybox theme with
+ *   node scripts/smoke.mjs --only a --serial     default: 114 s
+ *   node scripts/smoke.mjs --only p --serial     pitch:    79 s (79 to 85 s: the four spot-check places are random)
  * Re-measure and update both the number and the wording after changing anything above.
  */
 export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; label: string }> = {
-  default: { measuredSeconds: 111, label: 'Try it in 2 minutes' },
-  pitch: { measuredSeconds: 69, label: 'Try it in 70 seconds' },
+  default: { measuredSeconds: 114, label: 'Try it in 2 minutes' },
+  pitch: { measuredSeconds: 79, label: 'Try it in 80 seconds' },
 };
 
 /** If the engine has not reported `arrived` after this long, the walk carries on anyway. */

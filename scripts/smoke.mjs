@@ -725,7 +725,7 @@ const cases = {
       await page.getByTestId('regenerate').nth(3).click();
       await page.waitForFunction(() => !document.querySelector('[data-testid=regenerate]').disabled);
     }
-    assert((await text(spent)).includes('No more offline alternatives. Rewrite it in your own words.'), 'Regenerate never said it had run out');
+    assert((await text(spent)) === 'No more offline suggestions. Rewrite it in your own words.', `Regenerate never said it had run out: ${await spent.count() ? await text(spent) : 'no note'}`);
 
     // Discard draft is explicit and final.
     await page.getByTestId('draft-discard').click();

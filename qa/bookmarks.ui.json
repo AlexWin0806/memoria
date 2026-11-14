@@ -3,9 +3,9 @@
   { "name": "ui-title-1024", "query": "", "width": 1024, "height": 700 },
   { "name": "ui-title-tablet", "query": "", "width": 768, "height": 1024 },
   { "name": "ui-title-narrow", "query": "", "width": 390, "height": 800 },
-  { "name": "ui-judge-preview", "query": "judge", "waitMs": 800 },
-  { "name": "ui-judge-encode", "query": "judge", "waitMs": 14500 },
-  { "name": "ui-judge-encode-narrow", "query": "judge", "waitMs": 14500, "width": 390, "height": 800 },
-  { "name": "ui-pitch-encode", "query": "judge=pitch", "waitMs": 4000 },
+  { "name": "ui-judge-preview", "query": "judge", "waitMs": 1500 },
+  { "name": "ui-judge-encode", "query": "judge", "waitMs": 17000 },
+  { "name": "ui-judge-encode-narrow", "query": "judge", "waitMs": 17000, "width": 390, "height": 800 },
+  { "name": "ui-pitch-encode", "query": "judge=pitch", "waitMs": 6500 },
   { "name": "ui-hidden-for-shot", "query": "shot=overview" }
 ]

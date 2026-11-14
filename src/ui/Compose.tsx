@@ -6,6 +6,7 @@ import { DeadlineError, withDeadline } from '@/flows/deadline';
 import { startEncode } from '@/flows/flow';
 import { plural } from '@/flows/format';
 import { cleanPaste, droppedNote, MIN_ITEMS, restLines } from '@/flows/paste';
+import { isNoStrongerSuggestion, NO_MORE_OFFLINE } from '@/flows/suggest';
 import { PLAN_TIMEOUT_MS, REGENERATE_TIMEOUT_MS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDecks } from '@/state/decks';
@@ -181,9 +182,10 @@ export function Compose() {
       if (!alive.current) return;
       const d = useDraft.getState();
       const seen = [...(d.shown[item.id] ?? []), item.imago.scene];
-      // An image that has been on this card before is not a new one: say so instead of cycling.
-      if (seen.some((scene) => sameScene(scene, imago.scene))) {
-        setSpent({ id: item.id, offline: imago.source === 'fallback' });
+      // The planner had nothing stronger, or offered an image this card has already shown:
+      // that is not a new image, so the card is left alone and says so instead of cycling.
+      if (isNoStrongerSuggestion(imago) || seen.some((scene) => sameScene(scene, imago.scene))) {
+        setSpent({ id: item.id, offline: imago.source !== 'architect' });
         return;
       }
       d.patchItem(item.id, { imago });
@@ -576,8 +578,7 @@ export function Compose() {
               )}
               {spent?.id === it.id && (
                 <p className="notice" role="status" data-testid="regenerate-spent">
-                  {spent.offline ? 'No more offline alternatives.' : 'The Architect offered an image you have already seen.'} Rewrite
-                  it in your own words.
+                  {spent.offline ? NO_MORE_OFFLINE : 'The Architect offered an image you have already seen. Rewrite it in your own words.'}
                 </p>
               )}
             </li>
