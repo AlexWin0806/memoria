@@ -1,6 +1,6 @@
 # Plan / Outline (snapshot of the Google Doc "Plan/Outline" tab)
 
-Snapshot taken: Sat Nov 14, 2:50 AM ET (initial population by the Lead).
+Snapshot taken: Sat Nov 14, 3:00 AM ET (initial population by the Lead).
 The Google Doc tab is the source of truth; this file exists so changes can be diffed.
 
 ## Defaults and decisions in force
