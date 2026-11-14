@@ -80,15 +80,14 @@ function node(raw: string | null, lociCount: number): RailNode | null {
   return raw !== '' && Number.isInteger(i) && i >= 0 && i < lociCount ? i : 'overview';
 }
 
-/** A comma-separated list of numbers, each clamped to 0..1; null when there is none. */
+/** A comma-separated list of numbers, each clamped to 0..1; null when the parameter is absent. */
 function unitList(raw: string | null): number[] | null {
-  const list = (raw ?? '')
-    .split(',')
-    .filter((v) => v.trim() !== '')
+  const list = raw
+    ?.split(',')
     .map(Number)
     .filter((v) => Number.isFinite(v))
     .map((v) => Math.min(1, Math.max(0, v)));
-  return list.length ? list : null;
+  return list && list.length ? list : null;
 }
 
 export function readQa(lociCount: number, search = location.search): Qa {
