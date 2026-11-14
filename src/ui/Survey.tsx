@@ -44,6 +44,7 @@ function SurveyWalk() {
   const nextRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLHeadingElement>(null);
+  const answersRef = useRef<HTMLDivElement>(null);
 
   // When the stop is ready, focus goes to the answer field, or (multiple choice) to the
   // question, so that the next Tab is the first option and no stray key press can answer.
@@ -52,8 +53,11 @@ function SurveyWalk() {
     arrivedAt.current = Date.now();
     setTyped('');
     if (answered) return;
-    if (inputRef.current) inputRef.current.focus();
+    if (inputRef.current) inputRef.current.focus({ preventScroll: true });
     else questionRef.current?.focus({ preventScroll: true });
+    // On a short sheet (a phone) the place and its description fill the view: bring the answers into it.
+    // Where they are already in view, as in the docked panel, nothing moves.
+    answersRef.current?.scrollIntoView({ block: 'nearest' });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when a stop becomes ready, not when it is answered
   }, [arrived, step]);
 
@@ -130,76 +134,78 @@ function SurveyWalk() {
           <h2 className="question survey__question" tabIndex={-1} ref={questionRef} data-testid="survey-question" data-place={locus.name} data-form={q.form}>
             {q.prompt}
           </h2>
-          {input === 'choice' ? (
-            <ol className="choices">
-              {choices.map((c, i) => (
-                <li key={c}>
+          <div ref={answersRef}>
+            {input === 'choice' ? (
+              <ol className="choices">
+                {choices.map((c, i) => (
+                  <li key={c}>
+                    <button
+                      type="button"
+                      className="choice"
+                      // The pick is marked as the learner's own, never as right or wrong.
+                      data-state={result && !result.unknown && result.given === c ? 'picked' : undefined}
+                      data-testid="survey-choice"
+                      disabled={answered}
+                      onClick={() => commit(c)}
+                    >
+                      <span className="choice__key">{i + 1}</span>
+                      <span>{c}</span>
+                    </button>
+                  </li>
+                ))}
+                {/* An answer like the others, in the same list, with a key of its own. */}
+                <li>
                   <button
                     type="button"
                     className="choice"
-                    // The pick is marked as the learner's own, never as right or wrong.
-                    data-state={result && !result.unknown && result.given === c ? 'picked' : undefined}
-                    data-testid="survey-choice"
+                    data-state={result?.unknown ? 'picked' : undefined}
+                    data-testid="survey-unknown"
                     disabled={answered}
-                    onClick={() => commit(c)}
+                    onClick={dontKnow}
                   >
-                    <span className="choice__key">{i + 1}</span>
-                    <span>{c}</span>
+                    <span className="choice__key">0</span>
+                    <span>I don&rsquo;t know</span>
                   </button>
                 </li>
-              ))}
-              {/* An answer like the others, in the same list, with a key of its own. */}
-              <li>
-                <button
-                  type="button"
-                  className="choice"
-                  data-state={result?.unknown ? 'picked' : undefined}
-                  data-testid="survey-unknown"
-                  disabled={answered}
-                  onClick={dontKnow}
-                >
-                  <span className="choice__key">0</span>
-                  <span>I don&rsquo;t know</span>
-                </button>
-              </li>
-            </ol>
-          ) : (
-            !result && (
-              <form className="typed" onSubmit={onSubmit}>
-                <label htmlFor="survey-input" className="label">
-                  Your answer
-                </label>
-                <input
-                  id="survey-input"
-                  ref={inputRef}
-                  className="field"
-                  value={typed}
-                  onChange={(e) => setTyped(e.target.value)}
-                  // A question mark in an empty field is "I don't know", so the key works here too.
-                  onKeyDown={(e) => {
-                    if (e.key !== '?' || typed.trim() !== '') return;
-                    e.preventDefault();
-                    dontKnow();
-                  }}
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  data-testid="survey-input"
-                />
-                <div className="actions">
-                  <button type="submit" className="btn btn--primary" disabled={!typed.trim()} data-testid="survey-submit">
-                    Answer
-                  </button>
-                  <button type="button" className="btn" onClick={dontKnow} data-testid="survey-unknown">
-                    I don&rsquo;t know
-                    <span className="key" aria-hidden="true">
-                      ?
-                    </span>
-                  </button>
-                </div>
-              </form>
-            )
-          )}
+              </ol>
+            ) : (
+              !result && (
+                <form className="typed" onSubmit={onSubmit}>
+                  <label htmlFor="survey-input" className="label">
+                    Your answer
+                  </label>
+                  <input
+                    id="survey-input"
+                    ref={inputRef}
+                    className="field"
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                    // A question mark in an empty field is "I don't know", so the key works here too.
+                    onKeyDown={(e) => {
+                      if (e.key !== '?' || typed.trim() !== '') return;
+                      e.preventDefault();
+                      dontKnow();
+                    }}
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-testid="survey-input"
+                  />
+                  <div className="actions">
+                    <button type="submit" className="btn btn--primary" disabled={!typed.trim()} data-testid="survey-submit">
+                      Answer
+                    </button>
+                    <button type="button" className="btn" onClick={dontKnow} data-testid="survey-unknown">
+                      I don&rsquo;t know
+                      <span className="key" aria-hidden="true">
+                        ?
+                      </span>
+                    </button>
+                  </div>
+                </form>
+              )
+            )}
+          </div>
         </>
       )}
 
