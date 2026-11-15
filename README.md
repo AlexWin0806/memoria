@@ -9,7 +9,7 @@
 
 ## What is new (Part 2, Saturday 14 November)
 
-On Saturday afternoon the team changed direction: the learner is the architect. This section is the state at Sat 9:30 PM ET. Everything in it is written as it stands on the deployed site. The last batch of the evening was still under test at that hour; what was in it, and whether it has been confirmed on the live site, is under [Status](#status).
+On Saturday afternoon the team changed direction: the learner is the architect. This section is the state at Sat 9:30 PM ET. Everything in it is written as it stands on the deployed site. The last batch of the evening was still under test at that hour; what was in it, and whether it has been confirmed on the live site, is under [Status](#status). Since then, in the early hours of Sunday: a short demo of about 75 seconds on the five stages of the cell cycle (see [Try it](#try-it)), which also replaced the citric acid cycle as the process showcase, and four smaller changes listed under [Status](#status).
 
 **The loop in three lines**
 
@@ -29,23 +29,23 @@ A legend names the states wherever they appear: in ruins, under repair, restored
 | Compose | Paste notes or upload a PDF. Choose the architecture or let the Architect choose. Read the proposals room by room, choose facts or process, check the links under "How these connect", and save. |
 | Add to this palace | New facts go into free places or into a new room at the end. Nothing already placed moves, and only the new places are surveyed and studied. |
 | Edit | A saved palace is edited in place: its name, a room's name, a term, a meaning, an image. Nothing moves. Changing a fact sends its place back for repair, and the facts you did not touch keep their progress. |
-| Process decks | When the notes describe a process, each place of the walk also asks what happens to that step next ("What happens to citrate next?": it is rearranged) and never shows the next place's answer. The walk ends with an ordering task. Both are scored apart from the places. |
+| Process decks | When the notes describe a process, each place of the walk also asks what happens to that step next ("What happens to Interphase next?": the chromosomes coil up) and never shows the next place's answer. The walk ends with an ordering task. Both are scored apart from the places. |
 | Links drawn on the floor | Lines between related places, in four kinds told apart by the line alone. |
 | Upload a PDF | The text is read in your browser with PDF.js and becomes the notes. The file never leaves your device. Headings are marked, a list stays a list, a slide bullet that wraps is one line, and a table row is one fact. For a long PDF you choose the pages that fit the Architect's 12,000-character limit. Scans, locked files and damaged files are refused, each with its own sentence. |
 | Larger palaces | Up to 30 places. Within a palace no object stands twice, so 30 places are 30 different objects. |
 | Exam Mode | A quiz on a plain sheet, with the palace and the images hidden and the questions shuffled, from term to meaning or from meaning to term. Afterwards you walk back to exactly the places you missed. An exam is recorded in Progress and changes no review schedule. |
 | Progress view | A chart per palace of every finished walk, and the weakest places. Exams are listed in its table and kept off the chart's line, because they are asked without the palace. |
 | Offline copy | After one visit online, a reload with the network off still opens the app, and Judge Mode runs. Tested in headless Chromium only. |
-| Two showcase decks | "Comer: one verb, three tenses" (three rooms) and "The citric acid cycle, as a cycle" (a process with links, in the Workshop). Both were fact-checked; see [Status](#status). |
+| Two showcase decks | "Comer: one verb, three tenses" (three rooms) and "The five stages of the cell cycle" (a process with links, in one hall of the Workshop; also the short demo). The Spanish deck was fact-checked (see [Status](#status)); the cell cycle deck, added early on Sunday, has not been. |
 
 | | | |
 |---|---|---|
 | ![A generated palace in the Gothic library style, with PRESENT TENSE inscribed over a doorway](docs/media/palace-gothic-library.png) | ![The same deck in the Zen garden style](docs/media/palace-zen-garden.png) | ![A process deck in the Workshop style, with a channel running along the floor](docs/media/palace-workshop.png) |
 | Gothic library. | Zen garden. | Workshop. |
 
-![A hall of the Workshop seen from above: lanes with arrowheads run along the floor from station to station, one of them labelled "rearranged", and a red line crosses the hall](docs/media/palace-links-process.png)
+![The cell cycle's hall in the Workshop seen from above: lanes with arrowheads run along the floor from station to station, and the last leads back to the first](docs/media/palace-links-process.png)
 
-*Links drawn on the floor of a process deck: each step is joined to the next by a lane with its label, and the red line is the feedback link.*
+*Links drawn on the floor of a process deck: each stage of the cell cycle is joined to the next by a lane with its label, and the last lane leads from telophase back to interphase.*
 
 **Honest limits of Part 2**
 
@@ -67,9 +67,11 @@ Press "Try it in 2 minutes" on the title screen. That is Judge Mode: it loads th
 
 For a live pitch, open `/?judge=pitch`. The button then reads "Try it in 90 seconds": each of the eight places is shown for 4 seconds, then three of the eight are spot-checked. Measured by the fourth QA review, with a script giving each answer within 2 seconds on a loaded test machine: 69.9 seconds in all (the study walk 47.2 seconds from the button, 3 seconds on the screen between, the spot check 19.6 seconds). Earlier runs the same day under heavier load took 80 to 94 seconds. Timing on a quiet machine with a person answering: (to fill in). A Judge run is a sandbox: it is not added to your reviews and never changes your saved decks.
 
+For a shorter demo, open `/?judge=short`. The button reads "Try it in 75 seconds". It loads the five stages of the cell cycle, in order (interphase, prophase, metaphase, anaphase, telophase), into one hall of the Workshop as a process: five stations (the screw press, the grindstone, the alembic still, the hopper and chute, the water wheel), each stage linked to the next on the floor and the last back to the first. The hall starts in ruins; each station is rebuilt as it is studied (3.5 seconds an image), then all five are asked. To keep it short, this Judge run asks no questions about the links and has no ordering task; walked from the list of palaces, the same deck asks both. Measured with a script giving two seconds of thought per answer, with the network off, on a loaded test machine: 67 seconds from the button to the results. Timing on the demo laptop with a person answering: (to fill in).
+
 To see the survey, press "Walk" on any palace you have not opened before, or build one with "Build a palace".
 
-Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent footage of the whole pitch run, 80.6 seconds: the palace in ruins at the start, each place rebuilt as it is studied, the spot check, and the results with the legend. Re-rendered from the Part 2 build on Saturday night. It was rendered offline, frame by frame on a virtual clock, by `scripts/capture.mjs`, with WebGL drawn in software; it is not a screen recording from a laptop, so it shows the right speed but not a real GPU's frame rate.
+Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent footage of the whole pitch run, 80.6 seconds: the palace in ruins at the start, each place rebuilt as it is studied, the spot check, and the results with the legend. Re-rendered from the Part 2 build on Saturday night. It was rendered offline, frame by frame on a virtual clock, by `scripts/capture.mjs`, with WebGL drawn in software; it is not a screen recording from a laptop, so it shows the right speed but not a real GPU's frame rate. Footage of the short run, `docs/media/demo-short.mp4`: (to fill in when rendered).
 
 ## What it does
 
@@ -85,9 +87,9 @@ Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent foo
 10. **Exam Mode.** Once a deck has been studied, "Exam" asks its facts on a plain sheet: no palace, no images, the order shuffled, from term to meaning or from meaning to term. Nothing is marked until the paper is handed in. Afterwards you walk back to exactly the places you missed. An exam is recorded in Progress and changes no review schedule and no place.
 11. **Progress.** Every finished survey, recall and review walk is saved. The Progress view plots them per palace, with the survey as the score before study, and lists the weakest places.
 
-There are two kinds of palace. The handcrafted one, "Domus", has twelve places in three rooms (the Vestibule, the Atrium, the Study); Judge Mode and five built-in decks use it: the eight carpal bones (Judge Mode), the twelve cranial nerves, the Mohs hardness scale, Spanish in the kitchen (term-and-meaning pairs) and the citric acid cycle. Generated palaces are built from the categories of your material, up to 30 places in 6 rooms, in one of three styles; the two showcase decks use them.
+There are two kinds of palace. The handcrafted one, "Domus", has twelve places in three rooms (the Vestibule, the Atrium, the Study); Judge Mode and four of the built-in decks on the list use it: the eight carpal bones (Judge Mode), the twelve cranial nerves, the Mohs hardness scale and Spanish in the kitchen (term-and-meaning pairs). The citric acid cycle list of the comparison test is kept there too, off the list of palaces. Generated palaces are built from the categories of your material, up to 30 places in 6 rooms, in one of three styles; the two showcase decks use them: the five stages of the cell cycle in the Workshop (the deck of the short demo) and a Spanish verb in three rooms of the Gothic library.
 
-Everything is stored in your browser's localStorage. There are no accounts. Saved data that is malformed is repaired or set aside, never shown as a blank page, and if something does go wrong an error page offers Reload and a guarded Reset.
+Everything is stored in your browser's localStorage. There are no accounts. Saved data that is malformed is repaired or set aside, never shown as a blank page, and if something does go wrong an error page offers Reload and a guarded Reset. If the browser's storage is full when a palace is saved, Compose says that nothing was saved and keeps the notes and images; the palaces already stored stay as they were.
 
 The clips and screenshots below were re-rendered from the Part 2 build on Saturday night, in the same way as the demo video.
 
@@ -108,7 +110,7 @@ The clips and screenshots below were re-rendered from the Part 2 build on Saturd
 | The survey: one question per place, "I don't know" always there. | Study: "In the survey you said: I don't know.", then the term, meaning and image. |
 | ![Results screen with the legend of the states of a place](docs/media/ui-results.png) | ![The proposal grouped by room, with the generated palace behind it](docs/media/ui-compose.png) |
 | Results: before study against now, place by place, with the legend. | Build a palace: the proposal by room, the palace already standing behind it. |
-| ![The citric acid cycle in the Workshop: "What happens to Oxaloacetate next?"](docs/media/ui-process.png) | ![The Progress view: a chart of walks with the survey marked before study](docs/media/ui-progress.png) |
+| ![The cell cycle in the Workshop, at its last station: a question about what happens to the stage next](docs/media/ui-process.png) | ![The Progress view: a chart of walks with the survey marked before study](docs/media/ui-progress.png) |
 | A process deck: after the place, what happens to the step next. Links on the floor. | Progress: every walk, the survey as "before study". (Seeded history: the numbers are made up.) |
 | ![An exam question on a plain sheet, the palace hidden](docs/media/ui-exam.png) | ![The atrium of the Domus, fully learned](docs/media/palace-overview.png) |
 | Exam Mode: no palace, shuffled order. | The atrium of the Domus with every place recalled. |
@@ -171,7 +173,7 @@ The default look, Ink & Vellum, is a custom non-photorealistic pipeline: flat wa
 
 **The development field.** Every material can ask `developmentAt(worldPosition)`, a value from 0 to 1 that says how well the nearest place has been learned. Styles draw low values as unfinished and high values as complete. In the ink style an unlearned place is line on bare vellum, a place that holds an image carries a light first glaze, and a correct recall brings the full washes and pigment in around it, with an ink ring spreading on the floor.
 
-**Camera.** The camera glides on a spline rail. Its turn rate is capped so that wide turns of the head stay calm, and the adaptive render resolution survives window resizes.
+**Camera.** The camera glides on a spline rail. Its turn rate is capped so that wide turns of the head stay calm, and the adaptive render resolution survives window resizes. Since Sunday 2:52 AM ET the view follows the rail with a short damping (about a tenth of a second of lag), so the corners of the route reach the screen as rounded turns; a cut and reduced motion still snap, and the glides take as long as before. Measured on a virtual clock, the sharpest change of turning speed in each glide of the pitch run fell by between a fifth and a half; it has not been seen on a real GPU.
 
 **The Palace Architect.** The server function works in steps, and the app shows each step to the learner in plain words:
 
@@ -182,9 +184,9 @@ The default look, Ink & Vellum, is a custom non-photorealistic pipeline: flat wa
 5. *Adapt*: when you miss an item in a recall walk, you can ask for a stronger image for that item.
 6. *Extend*: new facts are added to a palace without changing any image or place that already stands ("Add to this palace").
 
-A large palace is planned as several short requests in parallel, each well under 30 seconds. The Anthropic key is read from the server environment and never reaches the browser. Results are cached. This live path has been run on the deployed site; what was measured is under [Status](#status).
+A large palace is planned as several short requests in parallel, each well under 30 seconds. The Anthropic key is read from the server environment and never reaches the browser. Since Sunday 2:52 AM ET the function accepts JSON requests only and answers anything else with 415: a page on another site could otherwise have made its visitors' browsers send it plain-text requests, which need no preflight, and spend the key. Results are cached. This live path has been run on the deployed site; what was measured is under [Status](#status).
 
-**Process decks.** A link has a kind (becomes, needs, blocks, mirrors) and may carry a label and a note. A question about a link is asked at the place of the step it is about, unless it names a step the walk reaches only later; then it waits until after the last place. A link that describes regulation is worded from its label or note, never from its kind: the cycle deck reads "Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate."
+**Process decks.** A link has a kind (becomes, needs, blocks, mirrors) and may carry a label and a note. A question about a link is asked at the place of the step it is about, unless it names a step the walk reaches only later; then it waits until after the last place. A link that describes regulation is worded from its label or note, never from its kind; the Compose test checks this with "Succinyl-CoA inhibits citrate synthase". The built-in process deck, the five stages of the cell cycle, links each stage to the next and the last back to the first, because each new cell starts interphase again.
 
 **Exam Mode.** A sheet in the overlay covers the scene; the engine is not involved. The questions are shuffled once, nothing is marked until the paper is handed in, and the result is one record of kind `exam` in the walk history. It never writes a review card and never changes the state of a place.
 
@@ -192,7 +194,7 @@ A large palace is planned as several short requests in parallel, each well under
 
 **The offline planner.** If the function is unreachable or has no key, the app falls back to a deterministic offline planner, so composing a palace still works without a network. From notes it keeps each whole sentence as the meaning and names the card with a noun phrase that is unique in the deck. A `term - meaning` line is one fact, and `label: a -> b -> c` on one line is a chain of linked steps. It never repeats a picture within a deck. For vocabulary, the image depicts the meaning and quotes the word, in several sentence patterns. Its drafts are labelled as offline drafts in the app, and it says how many lines it left out.
 
-**Offline demo path.** Judge Mode and the built-in decks run from fixtures. Nothing on the demo path makes a network request.
+**Offline demo path.** Judge Mode, its short run and the built-in decks run from fixtures. Nothing on the demo path makes a network request.
 
 **The offline copy.** A hand-written service worker (`src/sw.js`, no new dependency) saves the page and the files Judge Mode needs the first time the site is opened online. After that a reload with the network off shows the app, and on a network that never answers it is shown after about three seconds. The page itself is always asked of the network first, so a new deployment is picked up. PDF.js is saved the first time a PDF is read. `/?nosw` removes the worker and everything it saved. `scripts/offline-smoke.mjs` covers this in headless Chromium; no other browser has been tried.
 
@@ -231,6 +233,7 @@ For the live Architect, copy `.env.example` to `.env.local` and set `ANTHROPIC_A
 |---|---|
 | `?judge` | Starts Judge Mode (about 2 minutes), with the palace in ruins |
 | `?judge=pitch` | The pitch variant, under 90 seconds: waits on the title screen, shows each of eight places for 4 seconds, then spot-checks three of the eight. Measured 69.9 seconds with scripted answers on a loaded machine; 80 to 94 under heavier load |
+| `?judge=short` | The short demo, "Try it in 75 seconds": waits on the title screen, then the five stages of the cell cycle in one Workshop hall, each shown for 3.5 seconds, and all five asked; no questions about the links. Measured 67 seconds with scripted answers on a loaded machine |
 | `?compare` | The list-against-palace comparison test for volunteers (protocol in `docs/venue-test.md`). Order and material are drawn at random. |
 | `?compare=list-first`, `?compare=palace-first` | The same test with the order fixed |
 | `&palace=carpals`, `&palace=krebs` | Added to `?compare`: fixes which list is walked in the palace (the carpal bones or the citric acid cycle); the other one is the plain list |
@@ -254,7 +257,7 @@ For the live Architect, copy `.env.example` to `.env.local` and set `ANTHROPIC_A
 
 ![The three art directions we prototyped; we chose Ink & Vellum](docs/media/art-directions.png)
 
-A theme is the look (ink, paper, pigment). A palace style, or kit, is the architecture (Gothic library, Zen garden, Workshop). Kits name surfaces by role, as every layout does, so a kit takes its colours from whichever theme is active.
+A theme is the look (ink, paper, pigment). A palace style, or kit, is the architecture (Gothic library, Zen garden, Workshop). Kits name surfaces by role, as every layout does, so a kit takes its colours from whichever theme is active. Since Sunday 2:52 AM ET two kits also carry a tone of their own: the theme's neutral colours are mixed toward darker grey stone in the Gothic library and toward brown wood in the Workshop. Accents, paper, ink and the overlay stay the theme's, and the Roman house and the Zen garden are unchanged.
 
 To add a palette variant, copy the nearest JSON file in `src/themes/`, change its `id` and `name`, and edit the tokens. Themes are discovered automatically, so there is no code to write. A new style module is only needed when the way the picture is made changes. The full procedure, including the screenshot checks, is in [`.claude/skills/palace-theme-authoring/SKILL.md`](.claude/skills/palace-theme-authoring/SKILL.md).
 
@@ -298,6 +301,11 @@ The last batch, under test at 9:30 PM ET and written on this page as live:
 
 Confirmed on the live site after the last deployment: (to fill in).
 
+Since Saturday night (Sunday 15 November, ET):
+
+- **Live since 2:52 AM**: the smoothed camera; darker grey stone for the Gothic library and brown wood for the Workshop; the Architect endpoint accepts JSON requests only; saving a palace with the browser's storage full says that nothing was saved instead of failing silently. A break test of the build with the new camera and palettes (`docs/qa/break-test.md`, 2:05 to 2:40 AM) found no blocker; its one major issue was that silent failure, fixed after it.
+- **Deployed at about 3:30 AM, after its tests, and written on this page as live**: the short demo, `/?judge=short`, on the five stages of the cell cycle in the Workshop; the cell cycle as the process showcase, walked from the list as a full process deck; both citric acid cycle decks off the list of palaces (the comparison test still uses the citric acid cycle as its second list). Confirmed on the live site: (to fill in).
+
 Checked on the deployed site, single runs, not averages:
 
 - **The live Architect (Saturday evening).** A 12-fact palace was proposed in 6 to 14 seconds. A 30-fact palace in 6 rooms took 16 to 17 seconds as eight short parallel requests. A six-step process was recognised as a process and laid out as stations in the Workshop in 11 to 13 seconds. Extending a palace with two facts took 7 to 9 seconds, and nothing that already stood was touched. Regenerate took 1 to 2 seconds. In one of the 30-fact runs, late on Saturday afternoon, the self-check rewrote 19 of the 30 first drafts.
@@ -305,7 +313,7 @@ Checked on the deployed site, single runs, not averages:
 
 Fact-checked:
 
-- **The two showcase decks.** Every statement in the two showcase decks was checked against standard references: Berg and colleagues' *Biochemistry* (8th edition) and the IUBMB enzyme list for the cycle, the Real Academia Española's model conjugation for the verb, and Merriam-Webster and Etymonline for word origins. We checked search extracts of those sources, not the full texts. Nothing was wrong. Nine English glosses in the Spanish deck fitted more than one verb form ("you ate"); each now names the person it means. The deck leaves out vosotros, and its first room is the preterite, one of several past tenses. The cycle deck states its feedback link as "Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate."
+- **The two showcase decks of Saturday night** ("Comer: one verb, three tenses" and "The citric acid cycle, as a cycle"). The cell cycle deck, which replaced the second of them on Sunday, has not been through this check. Every statement in the two showcase decks was checked against standard references: Berg and colleagues' *Biochemistry* (8th edition) and the IUBMB enzyme list for the cycle, the Real Academia Española's model conjugation for the verb, and Merriam-Webster and Etymonline for word origins. We checked search extracts of those sources, not the full texts. Nothing was wrong. Nine English glosses in the Spanish deck fitted more than one verb form ("you ate"); each now names the person it means. The deck leaves out vosotros, and its first room is the preterite, one of several past tenses. The cycle deck stated its feedback link as "Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate."
 
 Bugs fixed in Part 2:
 
@@ -322,6 +330,8 @@ Not verified:
 - **Screen readers.** Not tested.
 - **The offline copy in any browser but Chromium.** Headless Chromium only.
 - **A timing of the pitch run on a quiet machine with a person answering.** (to fill in)
+- **A timing of the short run on the demo laptop with a person answering.** (to fill in)
+- **A reload of `/?judge=short` with the network off.** The short run has been run to its results with the network off after the page had loaded; the offline-copy test reloads `/`, `/?judge` and `/?judge=pitch`, not `/?judge=short`.
 
 Also:
 

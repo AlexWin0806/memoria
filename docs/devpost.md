@@ -30,11 +30,13 @@ The state of a place follows your graded answers, not your own rating. If you ov
 
 You can add facts later with "Add to this palace": nothing that already stands moves, and only the new places are surveyed and studied. "Edit" changes a saved palace in place, and a changed fact sends its place back for repair. When your notes describe a process, the walk also asks what happens to each step next and has you put the steps in order; that is scored apart from the places, and the links between the steps are drawn on the floor. Every new palace is furnished differently, so two palaces in one style share the architecture and are not the same route.
 
-<!-- Confirm on the live site (batch under test at Sat 9:30 PM): (1) the last sentence above: build two palaces in the Gothic library and check that the first places hold different objects; if they are the same, delete the sentence. (2) "what happens to each step next": walk "The citric acid cycle, as a cycle" and check that the question reads "What happens to citrate next?" and that no feedback names the next place; if it still asks "What does citrate become?", write "asks what each step becomes" instead. -->
+<!-- Confirm on the live site (batch under test at Sat 9:30 PM): (1) the last sentence above: build two palaces in the Gothic library and check that the first places hold different objects; if they are the same, delete the sentence. (2) "what happens to each step next": walk "The five stages of the cell cycle" and check that the question reads "What happens to Interphase next?" and that no feedback names the next place; if it still asks "What does Interphase become?", write "asks what each step becomes" instead. -->
 
 Exam Mode asks the same facts the way an exam does: on a plain sheet, with the palace and the images hidden and the questions shuffled, from term to meaning or from meaning to term. Afterwards you walk back to exactly the places you missed. An exam is recorded in Progress and changes no review schedule.
 
-Judge Mode shows the loop in about two minutes with the eight carpal bones of the wrist: the palace starts in ruins, each place is rebuilt as you study it, and a right answer restores it. It runs with the network off. Two showcase decks show generated palaces: a Spanish verb in three tense rooms, and the citric acid cycle as a process with links between its steps. A built-in comparison test has a volunteer learn one list as plain text and another in the palace, with the lists and the order swapped between volunteers.
+Judge Mode shows the loop in about two minutes with the eight carpal bones of the wrist: the palace starts in ruins, each place is rebuilt as you study it, and a right answer restores it. A shorter run for live demos, `/?judge=short`, does the same with the five stages of the cell cycle in one hall of the Workshop, where each station is linked to the next on the floor and the last back to the first; to stay short it asks the five places and not the links. It measured 67 seconds with a script answering on a loaded test machine, and its button says 75. Both run with the network off. Two showcase decks show generated palaces: a Spanish verb in three tense rooms, and the five stages of the cell cycle as a process with links between its steps; walked from the list of palaces, the cell cycle asks what happens to each stage next and has you put the stages in order. A built-in comparison test has a volunteer learn one list as plain text and another in the palace, with the lists and the order swapped between volunteers.
+
+<!-- Confirm on the live site (deployed at about 3:30 AM Sun): open `/?judge=short` and look for the "Try it in 75 seconds" button, and check that the list of palaces shows "The five stages of the cell cycle" and no citric acid cycle deck. If the short run is not there, delete the three sentences from "A shorter run" to "Both run with the network off" and write "It runs with the network off." instead; in the next sentence write "the citric acid cycle as a process with links between its steps" in place of the cell cycle, and delete everything after its semicolon. -->
 
 ## How we built it
 
@@ -58,6 +60,8 @@ After one visit online the site keeps an offline copy (a service worker we wrote
 
 <!-- Confirm on the live site (batch under test at Sat 9:30 PM): the offline copy. On the demo laptop: open the site once on Wi-Fi in a normal window, wait ten seconds, turn Wi-Fi off, reload. The title screen must appear. If it does not, delete the paragraph above. If it does, you may replace "in headless Chromium only" with the browser you used. -->
 
+In the last hours before submission we smoothed the camera's turns (the view follows the rail with about a tenth of a second of damping, so corners reach the screen as rounded turns; glides take as long as before), gave the Gothic library darker grey stone and the Workshop brown wood, made the Architect's endpoint accept JSON requests only, so that a page on another site cannot have its visitors' browsers spend our key with plain-text requests, and made a full browser storage say that nothing was saved when a palace is placed, where it used to fail silently. A break test of the build with the new camera and palettes found no blocker; the silent failure to save was its one major finding, and the fix came after it.
+
 The code was written with Claude Code agents under the team's direction during the hackathon window, and checked by automated end-to-end tests and by four independent QA reviews. On the evening's builds the walk-through suite passed 20 of 20 cases, the Compose suite 11 of 11, the PDF suite 7 of 7 and the comparison-test suite 3 of 3. The fourth review judged Part 2 safe to demo with precautions and found no blocker; it found twelve major issues, nine of which we addressed in code the same evening and three in our own documents. The agents used ChatOverflow throughout: they searched it when they hit tooling problems and posted short, generic field notes back. Not yet checked: frame rate and motion on a real laptop, real lecture PDFs, screen readers, and the offline copy in any browser but Chromium.
 
 ## Challenges we ran into
@@ -68,9 +72,9 @@ The code was written with Claude Code agents under the team's direction during t
 - The research did not support several things we wanted to say about Part 2, for example that watching a palace rebuild keeps you motivated. We say instead that the repair display, the rooms and the links are our design and are untested.
 - A reviewer with no knowledge of the build caught us saying that "nothing is revealed" during the survey. The place stands or falls as you answer, so the verdict is shown. What is not shown is the right answer, and that is what we now say.
 - The same review found that every palace in one style had the same objects in the same order, against our own rule of one topic per route. Each new palace is now furnished from its own seed. We have not tested whether that is enough to keep two topics apart.
-- The fact-check of our own showcase decks found nothing wrong, but nine English glosses in the Spanish deck fitted more than one verb form ("you ate"). The gloss is the quiz question, so each now names the person it means.
+- The fact-check of our two showcase decks of Saturday night (the Spanish verb and the citric acid cycle) found nothing wrong, but nine English glosses in the Spanish deck fitted more than one verb form ("you ate"). The gloss is the quiz question, so each now names the person it means.
 - Hatching was anchored to the screen and crawled as the camera moved, so we anchored it to the world.
-- Our first Judge Mode ran 111 seconds against a 60 to 90 second plan. Its button now says "2 minutes", and a variant for live pitches says "90 seconds". With the palace starting in ruins that variant measured 69.9 seconds with a script answering within two seconds on a loaded test machine, and 80 to 94 seconds in earlier runs under heavier load.
+- Our first Judge Mode ran 111 seconds against a 60 to 90 second plan. Its button now says "2 minutes", and a variant for live pitches says "90 seconds". With the palace starting in ruins that variant measured 69.9 seconds with a script answering within two seconds on a loaded test machine, and 80 to 94 seconds in earlier runs under heavier load. For the live pitch we then added a shorter run, the five stages of the cell cycle in the Workshop with every station asked, which measured 67 seconds in the same way; its button says "75 seconds".
 - Our build machine draws only a few frames a second, so the demo footage is rendered offline, frame by frame on a virtual clock, and nothing has been seen in motion on a real GPU.
 
 <!-- Confirm on the live site (batch under test at Sat 9:30 PM): the seed, for the sixth bullet above. If it is not live, end the bullet after "one topic per route" and add "That is not fixed yet." -->
@@ -83,7 +87,7 @@ The code was written with Claude Code agents under the team's direction during t
 - A palace that shows what your answers showed: ruins where you did not know, a scaffold where you have studied, the finished place where you have recalled.
 - Palaces built from the categories in the learner's own notes or PDF, up to 30 places, that can be extended and edited without moving what already stands.
 - Process decks that ask how each step leads on, and an Exam Mode that asks the facts with the palace hidden.
-- Every claim we make traces to a source in our research brief, with its caveats, and both showcase decks were fact-checked against standard references through search extracts.
+- Every claim we make traces to a source in our research brief, with its caveats, and the Spanish showcase deck and the citric acid cycle deck it was first paired with were fact-checked against standard references through search extracts. The cell cycle deck, added early on Sunday, has not been checked that way yet.
 
 ## What we learned
 
@@ -125,9 +129,12 @@ TypeScript, React, three.js, React Three Fiber, drei, postprocessing, GLSL, WebG
 - Repo: https://github.com/AlexWin0806/memoria
 - Live demo: https://memoria-five-kappa.vercel.app
 - Demo footage (silent, rendered offline): https://github.com/AlexWin0806/memoria/blob/main/docs/media/demo-pitch.mp4
+- Footage of the short run (silent, rendered offline): https://github.com/AlexWin0806/memoria/blob/main/docs/media/demo-short.mp4 (to fill in when rendered)
 - Video: <!-- add the YouTube link -->
 
 <!-- media: re-rendered from the Part 2 build on Saturday night: `demo-pitch.mp4` (80.6 s, the true pitch run), `survey-collapse.gif`/`.mp4`, `repair.gif`/`.mp4`, `encode.gif`, `recall.gif`/`.mp4`, and the stills `ui-title`, `ui-survey`, `ui-encode`, `ui-recall`, `ui-results`, `ui-compose`, `ui-process`, `ui-progress` (seeded history), `ui-exam`. Best gallery picks: survey-collapse.gif, repair.gif, palace-gothic-library.png, palace-links-process.png, ui-compose.png, ui-process.png. For the gallery, the stills that already show Part 2 are docs/media/place-in-ruins.png, place-under-repair.png, palace-repair-mix.png, palace-gothic-library.png, palace-zen-garden.png, palace-workshop.png and palace-links-process.png. -->
+
+<!-- media, Sun 3:00 AM: `ui-process.png` and `palace-links-process.png` showed the citric acid cycle deck, which is no longer on the list of palaces; they are being re-rendered for the cell cycle under the same file names. Check that the copies you upload show the cell cycle. `demo-pitch.mp4` shows the eight-bone pitch run, which is still true of `/?judge=pitch`. `demo-short.mp4`, footage of `/?judge=short`: (to fill in when rendered). -->
 
 ## Before submitting (delete this section)
 
@@ -136,7 +143,7 @@ TypeScript, React, three.js, React Three Fiber, drei, postprocessing, GLSL, WebG
    1. Judge screens say what the ruins mean: open `/?judge` and `/?judge=pitch` and look for "In ruins: you have not learned these yet. Each place is rebuilt as you study it." (Nothing in this text depends on it; the pitch does.)
    2. The survey moves on by itself after each answer: one press per place. (Nothing in this text depends on it.)
    3. "I was right" leaves its place under repair, and a place answered right in the survey is "standing", not "restored" (What it does).
-   4. Process questions ask what happens to a step next ("What happens to citrate next?") and never show the next place's answer; the cycle deck's inhibition link reads "Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate." (What it does).
+   4. Process questions ask what happens to a step next ("What happens to Interphase next?", walking "The five stages of the cell cycle" from the list) and never show the next place's answer (What it does).
    5. Two new palaces in one style are furnished differently (What it does, How we built it, Challenges).
    6. The offline copy: on the demo laptop, open the site once on Wi-Fi, wait ten seconds, turn Wi-Fi off, reload; the title screen must appear (How we built it).
    7. PDF: a slide footer with a page number is left out, and a table row is one fact (How we built it).
@@ -149,4 +156,5 @@ TypeScript, React, three.js, React Three Fiber, drei, postprocessing, GLSL, WebG
 8. Links: video link.
 9. Read the whole text once against `docs/research.md` sections 8.5 and 9.5 ("must not say"). No "first", no "only", no "proven", and no "nothing is revealed".
 10. On Devpost itself: track Education; special tracks Amazon Best Practical AI Innovation and ChatOverflow Agent Leaderboard; all four Discord usernames.
-11. Delete every comment and this section.
+11. Open `/?judge=short` on the demo laptop once on Wi-Fi after the last deployment; time one run.
+12. Delete every comment and this section.
