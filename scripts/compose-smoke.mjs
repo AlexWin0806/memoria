@@ -583,7 +583,7 @@ const cases = {
     }
     await page.getByTestId('survey-summary').waitFor();
     const summary = { label: await text(page.getByTestId('survey-summary-label')), score: await text(page.getByTestId('survey-score')), next: await text(page.getByTestId('survey-study')) };
-    assert(summary.label === `Survey · ${DECK_TITLE} · 3 new places` && summary.score === 'You knew 0 of 3.' && summary.next === 'Check the route', `the section's summary: ${JSON.stringify(summary)}`);
+    assert(summary.label === `Survey · ${DECK_TITLE} · 3 new places` && summary.score === 'You knew 0 of 3 new places.' && summary.next === 'Check the route', `the section's summary: ${JSON.stringify(summary)}`);
     await shot(page, 'extend-summary');
     await page.getByTestId('survey-study').click();
     // The route of the new places is checked before their images are placed.
