@@ -1,0 +1,203 @@
+/*
+ * Exam Mode: a sheet over the whole window. An exam has no palace, so the sheet is opaque
+ * and the scene, the title and the docked panel are all out of sight behind it.
+ * Like overlay.css: every colour, face and radius comes from the CSS variables written by
+ * applyThemeVars(). No literal colours in this file. The sheet is the panel's own surface
+ * (the one --ui-fg and --ui-muted are chosen to be read on), ruled like an exam paper:
+ * a double rule across the top, a margin line down the left, one ink stroke per question.
+ * Selectors that restate a shared property name two classes, so that the order in which the
+ * stylesheets load does not matter.
+ */
+
+/* While the sheet is up nothing under it can be seen, clicked, focused or read out. */
+.ov:has(> .exam) > .title,
+.ov:has(> .exam) > .panel {
+  display: none;
+}
+
+.exam {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-panel);
+}
+.exam__head {
+  /* After the body in the document, so that Leave is the last Tab stop; drawn on top. */
+  order: -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 20px 36px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+.exam__head .label { min-width: 0; overflow-wrap: anywhere; }
+.exam__head .leave { flex: none; }
+.exam__body {
+  /* The same names as the docked panel, so that anything pinned inside measures the same way. */
+  --pad-x: 36px;
+  --pad-bottom: 56px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-wrap: break-word;
+  padding: 40px var(--pad-x) var(--pad-bottom);
+}
+/* The paper: one column, a double rule above it and the margin line of a ruled sheet beside it. */
+.exam__page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 22px 0 8px 30px;
+  border-top: 3px double var(--rule-strong);
+  border-left: 1px solid var(--ui-accent);
+}
+.exam .question:focus { outline: none; }
+
+/* One stroke per question, as a tally kept in ink: faint until answered, taller where the learner is. */
+.exam__tally {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 6px;
+  min-height: 22px;
+  margin: 8px 0 20px;
+}
+.exam__tally span {
+  width: 3px;
+  height: 14px;
+  background: var(--rule);
+}
+.exam__tally span[data-state='done'] { background: var(--ui-fg); }
+.exam__tally span[data-state='here'] {
+  height: 22px;
+  background: var(--ui-accent);
+}
+
+/*
+ * The question is one heading: what it is about, set in the display face like a line quoted
+ * from the notes, and under it the question in words.
+ */
+.exam .exam__question { margin: 0 0 12px; }
+.exam__cue {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 34px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.exam__cue[data-length='long'] { font-size: 26px; line-height: 1.25; }
+.exam__cue[data-length='very-long'] { font-size: 21px; line-height: 1.35; }
+.exam__prompt {
+  display: block;
+  font-size: 22px;
+  color: var(--ui-muted);
+}
+/* A question by position has no line above it: the question itself is the main line. */
+.exam__question[data-form='position'] .exam__prompt {
+  font-size: 30px;
+  color: var(--ui-fg);
+}
+.exam__ack {
+  min-height: 1.5em;
+  margin: 14px 0 0;
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+.exam .exam__handin { margin: 22px 0 0; }
+.exam__handin .actions { margin-top: 12px; }
+/* A chosen mark, and "I don't know" once it is the typed answer: filled, like the primary button (and under the pointer too). */
+.exam .btn[aria-pressed='true'],
+.exam .btn[aria-pressed='true']:hover:not(:disabled) {
+  background: var(--ui-fg);
+  color: var(--ui-panel);
+}
+
+/* ───────── Setup: the two choices, ruled like the fields of a form ───────── */
+
+.exam__set {
+  min-width: 0;
+  margin: 20px 0 0;
+  padding: 6px 0 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+.exam__set legend { padding: 0 12px 0 0; }
+.exam .exam__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+}
+.exam .exam__option input {
+  flex: none;
+  margin-top: 5px;
+}
+.exam__gloss {
+  display: block;
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+.exam__note {
+  margin: 6px 0 0;
+  font-size: 16px;
+  color: var(--ui-muted);
+}
+
+/* ───────── Marking and results ───────── */
+
+.exam__pair {
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.exam__pair .label { margin-right: 6px; }
+.exam .exam__marks { margin-top: 10px; }
+/* Where a missed fact lives, and its image: a note in the margin of the row, not a fault. */
+.exam__place,
+.exam__image {
+  display: block;
+  padding-left: 12px;
+  border-left: 3px solid var(--rule-strong);
+}
+.exam__place { margin-top: 10px; }
+.exam__image { padding-top: 2px; }
+.exam__glyphs {
+  margin-right: 8px;
+  font-size: 22px;
+  font-style: normal;
+}
+.exam__scene { font-style: italic; }
+
+/* ───────── Where an exam is offered and listed ───────── */
+
+/* Reviews: "Review now" and "Exam" side by side under the palace's line. */
+.place__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+/* Progress: one line under the palace's state. */
+.palace .palace__exam { margin: 0 0 8px; }
+.palace__exam .muted { margin: 0; }
+/* Progress chart: an exam is an open square (drawn only for a palace that has nothing but exams). */
+.chart__mark.chart__mark--exam {
+  fill: var(--ui-panel);
+  stroke: var(--ui-fg);
+  paint-order: normal;
+}
+
+@media (max-width: 719px) {
+  .exam__head { padding: 10px 20px 8px; }
+  .exam__body {
+    --pad-x: 20px;
+    --pad-bottom: 28px;
+    padding-top: 20px;
+  }
+  .exam__page { padding: 16px 0 4px 16px; }
+  .exam__cue { font-size: 26px; }
+  .exam__cue[data-length='long'] { font-size: 22px; }
+  .exam__cue[data-length='very-long'] { font-size: 19px; }
+  .exam__question[data-form='position'] .exam__prompt { font-size: 24px; }
+}
