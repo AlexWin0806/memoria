@@ -14,10 +14,13 @@
  *      30), then a six-step process (offered the real kits, so that it can choose the one
  *      that suits a process), then an extension of it. Reports the rooms, the links,
  *      what the Architect says it did, and for every request when it started, how long it
- *      took and the server's own timing of each model call. Fails if the palace is not from
- *      the live Architect, if a room did not answer, if it took more than 30 s, if any room
- *      of a palace of more than one fact has a single place, or if a kit comes back that
- *      does not exist.
+ *      took and the server's own timing of each model call. Prints the first glyph of every
+ *      image, room by room. Fails if the palace is not from the live Architect, if a room did
+ *      not answer, if it took more than 30 s, if any room of a palace of more than one fact
+ *      has a single place, if a kit comes back that does not exist, if two images of one
+ *      room share a first glyph, or if a scene sentence has an emoji in it (as the server
+ *      sent it, or as the client kept it). Each image is given the feature of its place and
+ *      the names of all the places, as in the app, when the palace generator loads here.
  *      `--no-browser` stops here.
  *   3. In a real browser: the title screen appears and the scene renders.
  *   4. In a real browser: "Build a palace" with a short list. Reports whether the plan came
@@ -151,6 +154,8 @@ async function palaceCheck(facts) {
   const realFetch = globalThis.fetch;
   const store = new Map();
   const calls = [];
+  /** The scene sentences of each room exactly as the server sent them, before the client cleans anything. */
+  const sent = [];
   globalThis.window = globalThis;
   globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, String(v)), removeItem: (k) => void store.delete(k), key: (i) => [...store.keys()][i] ?? null, get length() { return store.size; } };
   globalThis.fetch = async (url, init) => {
@@ -164,6 +169,10 @@ async function palaceCheck(facts) {
       call.status = res.status;
       call.timing = res.headers.get('server-timing') ?? '';
       if (!res.ok) call.error = (await res.clone().text()).slice(0, 160);
+      else if (op === 'images') {
+        const answer = await res.clone().json().catch(() => null);
+        sent.push({ room, scenes: (Array.isArray(answer?.images) ? answer.images : []).map((im) => String(im?.scene ?? '')), worded: Number(answer?.review?.worded) || 0 });
+      }
       return res;
     } catch (e) {
       call.error = String(e?.cause?.code ?? e?.message ?? e).slice(0, 160);
@@ -184,6 +193,18 @@ async function palaceCheck(facts) {
   try {
     const { designPalace, extendPalace } = await vite.ssrLoadModule('/src/ai/architect.ts');
     const { parsePalaceId } = await vite.ssrLoadModule('/src/layouts/spec.ts');
+    const { hasEmoji } = await vite.ssrLoadModule('/src/ai/glyphs.ts');
+    // What stands at each place, as the app tells the Architect (getLayout(layoutId).loci): each image
+    // then acts on the feature of its place, and every room is given the names of all the places.
+    let placesOf;
+    try {
+      const { planLayout } = await vite.ssrLoadModule('/src/layouts/generated/plan.ts');
+      placesOf = (layoutId) => planLayout(parsePalaceId(layoutId)).meta.loci.map((l) => ({ id: l.id, name: l.name, hint: l.hint }));
+      placesOf('gen:gothic;r1~3~hall~Check');
+    } catch (e) {
+      placesOf = undefined;
+      note(`the palace generator did not load here (${String(e?.message ?? e).split('\n')[0].slice(0, 80)}): images are drawn without the features of their places`);
+    }
     // The kits that exist, as the app offers them: the Architect must choose one of these and no other.
     const { KIT_LIST } = await vite.ssrLoadModule('/src/layouts/kits/list.ts');
     const kitIds = KIT_LIST.map((k) => k.id);
@@ -194,6 +215,40 @@ async function palaceCheck(facts) {
       if (!kitIds.includes(spec.kit)) bad(`${label}: the kit "${spec.kit}" does not exist (the kits are ${kitIds.join(', ')})`);
     };
     const termIn = (items) => (id) => items.find((it) => it.id === id)?.term ?? '?';
+    const roomOf = (locusId) => locusId.slice(0, locusId.lastIndexOf('-'));
+    /** The word a scene ends on before a closing quotation ('shouting "…"'), or nothing. */
+    const quotedEnding = (scene) => scene.match(/(\p{L}+)[,:]?\s+["“][^"”]{1,60}["”][.!?]?$/u)?.[1]?.toLowerCase() ?? '';
+    /**
+     * QA review 4, issue 15. Prints the first glyph of every image, room by room, and fails on
+     * a first glyph used twice in one room, or on an emoji inside a scene sentence.
+     */
+    const checkImages = (label, spec, items) => {
+      let faults = 0;
+      for (const room of spec.rooms) {
+        const here = items.filter((it) => roomOf(it.locusId) === room.id);
+        const heroes = here.map((it) => it.imago.glyphs[0]);
+        note(`  heroes in ${room.name}: ${here.map((it) => `${it.imago.glyphs[0]} ${it.term}`).join(', ') || 'none'}`);
+        const twice = [...new Set(heroes.filter((g, i) => heroes.indexOf(g) !== i))];
+        if (twice.length) {
+          faults++;
+          bad(`${label}: two images in ${room.name} share the first glyph ${twice.join(' ')}`);
+        }
+        const endings = here.map((it) => quotedEnding(it.imago.scene)).filter(Boolean);
+        const same = [...new Set(endings.filter((e, i) => endings.indexOf(e) !== i))];
+        if (same.length) note(`  in ${room.name}, ${endings.filter((e) => same.includes(e)).length} scenes end the same way (${same.map((e) => `${e} "…"`).join(', ')})`);
+      }
+      const kept = items.filter((it) => it.imago.source === 'architect' && hasEmoji(it.imago.scene)).map((it) => `${it.term}: ${it.imago.scene}`);
+      const fromServer = sent.flatMap((r) => r.scenes.filter((scene) => hasEmoji(scene)).map((scene) => `${r.room}: ${scene}`));
+      if (kept.length || fromServer.length) {
+        faults++;
+        bad(`${label}: ${fromServer.length} scene ${fromServer.length === 1 ? 'sentence' : 'sentences'} came from the server with emoji inside, and the client kept ${kept.length}: ${[...fromServer, ...kept].slice(0, 3).join(' | ')}`);
+      }
+      // Not a failure (the sentences arrive clean), but it says whether the prompt holds by itself.
+      const worded = sent.reduce((n, r) => n + r.worded, 0);
+      if (worded) note(`  the server took emoji out of ${worded} scene ${worded === 1 ? 'sentence' : 'sentences'} that the model wrote with them (${sent.filter((r) => r.worded).map((r) => r.room).join(', ')})`);
+      if (!faults) ok(`${label}: no two images of a room share a first glyph, and every scene sentence is words only`);
+      sent.length = 0;
+    };
     const describe = (plan, items) => {
       const spec = parsePalaceId(plan.layoutId ?? plan.deck.layoutId);
       note(`  rooms: ${spec.rooms.map((r) => `${r.name} (${r.places}${r.shape === 'ring' ? ', ring' : ''})`).join(', ')}; kit ${spec.kit}${plan.kit?.reason ? ` (${plan.kit.chosenBy}: ${plan.kit.reason})` : ''}`);
@@ -206,7 +261,7 @@ async function palaceCheck(facts) {
     // (a) vocabulary under headings: categories become rooms.
     let started = Date.now();
     const arrivals = [];
-    const plan = await designPalace({ text: vocabulary(facts), kits: KIT_LIST }, { onProgress: (p) => arrivals.push(`${((Date.now() - started) / 1000).toFixed(1)} s: ${p.items.filter((it) => it.imago.source === 'architect').length} images`) });
+    const plan = await designPalace({ text: vocabulary(facts), kits: KIT_LIST }, { places: placesOf, onProgress: (p) => arrivals.push(`${((Date.now() - started) / 1000).toFixed(1)} s: ${p.items.filter((it) => it.imago.source === 'architect').length} images`) });
     let wall = Date.now() - started;
     let longest = report(`${facts} facts`, started, wall);
     const drawn = plan.items.filter((it) => it.imago.source === 'architect').length;
@@ -224,14 +279,18 @@ async function palaceCheck(facts) {
       else if (wall > 30_000) bad(`the ${facts}-fact palace took ${(wall / 1000).toFixed(1)} s of wall time; the target is well under 30 s`);
       else ok(`a ${plan.items.length}-fact palace in ${spec.rooms.length} rooms with ${plan.links.length} links, every image from the live Architect, in ${(wall / 1000).toFixed(1)} s`);
       if (longest > 29_000) bad(`one request took ${(longest / 1000).toFixed(1)} s: a network that cuts requests at 30 s would lose it`);
-      if (new Set(plan.items.map((it) => it.imago.glyphs[0])).size !== plan.items.length) note('  two images share a first glyph (see the "revise" step)');
+      checkImages(`the ${plan.items.length}-fact palace`, spec, plan.items);
+      if (new Set(plan.items.map((it) => it.imago.glyphs[0])).size !== plan.items.length) note('  two images in different rooms share a first glyph (see the "revise" step)');
+      if (!/^[a-z0-9]{1,8}$/.test(spec.seed ?? '') || plan.spec.seed !== spec.seed) bad(`the palace has no seed, or its spec and its layoutId disagree: ${plan.spec.seed} / ${plan.layoutId.split(';')[0]}`);
+      else note(`  seed ${spec.seed} (${plan.layoutId.split(';')[0]})`);
       if (plan.lowConfidence.length) note(`  flagged for a better picture: ${plan.lowConfidence.length}`);
     }
 
     // (b) a process: the steps are chained, and the palace says so.
     calls.length = 0;
     started = Date.now();
-    const bread = await designPalace({ text: BREAD, kits: KIT_LIST });
+    sent.length = 0;
+    const bread = await designPalace({ text: BREAD, kits: KIT_LIST }, { places: placesOf });
     wall = Date.now() - started;
     report('a six-step process', started, wall);
     if (bread.source === 'api') {
@@ -243,12 +302,13 @@ async function palaceCheck(facts) {
       const chain = bread.items.slice(0, -1).every((it, i) => bread.links.some((l) => l.kind === 'becomes' && l.from === it.id && l.to === bread.items[i + 1].id));
       if (bread.focus === 'process' && chain) ok(`the six steps came back as a process, each step linked to the next (${(wall / 1000).toFixed(1)} s)`);
       else bad(`the bread notes came back as focus "${bread.focus}" with ${chain ? 'a whole' : 'a broken'} chain of steps`);
+      checkImages('the process', breadSpec, bread.items);
 
       // (c) extend it: nothing that stands may move.
       calls.length = 0;
       started = Date.now();
       const deck = { id: 'live-check', title: bread.title, kind: bread.kind, layoutId: bread.layoutId, items: bread.items, createdAt: Date.now(), links: bread.links, focus: bread.focus };
-      const grown = await extendPalace(deck, 'Slicing: the cooled loaf is cut with a serrated knife. Cooling leads to slicing.\nToasting: a slice is browned until crisp. Slicing leads to toasting.');
+      const grown = await extendPalace(deck, 'Slicing: the cooled loaf is cut with a serrated knife. Cooling leads to slicing.\nToasting: a slice is browned until crisp. Slicing leads to toasting.', { places: placesOf });
       wall = Date.now() - started;
       report('extending it with two notes', started, wall);
       const kept = deck.items.every((it) => grown.deck.items.includes(it));
@@ -261,6 +321,8 @@ async function palaceCheck(facts) {
         const opened = grown.spec.rooms.filter((r) => !breadSpec.rooms.some((old) => old.id === r.id));
         if (grown.added.length > 1 && opened.some((r) => r.places === 1)) bad(`extension: ${grown.added.length} new facts, and a new room of a single place (${opened.map((r) => `${r.name}: ${r.places}`).join(', ')})`);
         checkRooms('the extended palace', grown.spec, grown.deck.items.length, grown.spec.rooms.map((r) => r.id));
+        checkImages('the extended palace', grown.spec, grown.deck.items);
+        if (grown.spec.seed !== breadSpec.seed) bad(`the extension changed the palace's seed: ${breadSpec.seed} then ${grown.spec.seed}`);
       }
       if (grown.source === 'api' && grown.added.length >= 1 && kept) ok(`extended the palace with ${grown.added.length} new ${grown.added.length === 1 ? 'fact' : 'facts'}; nothing that stood was touched (${(wall / 1000).toFixed(1)} s)`);
       else bad(`extension: source ${grown.source}, ${grown.added.length} added, existing items ${kept ? 'kept' : 'CHANGED'}`);

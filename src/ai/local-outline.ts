@@ -103,8 +103,8 @@ const COURSE_LINE = /^(?:lecture|chapter|unit|week|module|lesson|topic|session)\
 
 /**
  * A first line with no heading mark that is still the title: a short plain name followed by
- * lines of another kind (every one a "term - meaning", a link or chain, a heading or a
- * sentence). "Photosynthesis" above an arrow chain is the title, not the first step; "Mercury"
+ * at least three lines of another kind (every one a "term - meaning", a link or chain, a
+ * heading or a sentence), or by an arrow chain. "Photosynthesis" above an arrow chain is the title, not the first step; "Mercury"
  * above "Venus" and "Earth" is the first item of a list.
  */
 function plainTitle(lines: readonly string[]): string | null {
@@ -115,7 +115,8 @@ function plainTitle(lines: readonly string[]): string | null {
   const others = rest.filter((l) => !HEADING.test(l));
   const plain = (l: string): boolean => !parseLine(l)?.meaning && !readLinkLine(l) && !labelledChain(l) && !looksLikeProse(l);
   if (others.length === 0 || others.some(plain)) return null;
-  return others.length >= 2 || others.some((l) => readLinkLine(l) || labelledChain(l)) ? first : null;
+  // Three lines after it at least (or a chain), so that a short list never loses its first item to a guess.
+  return others.length >= 3 || others.some((l) => readLinkLine(l) || labelledChain(l)) ? first : null;
 }
 
 interface ReadSections {

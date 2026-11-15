@@ -9,12 +9,17 @@
  *     Krebs-cycle prose, "Element n - name" lines), on the card names and vocabulary
  *     variety asked for in QA review 2 (issue 7), and on offline "Strengthen".
  *     Then generated palaces offline: rooms from headings, links from arrows and plain
- *     phrases, the 30-place limit, extension, and the link rules.
+ *     phrases, the 30-place limit, extension, and the link rules. And the faults of QA
+ *     review 4: a "term - meaning" line with a relation word in it, a labelled arrow chain
+ *     on one line, a title line, table rows, the count of what was left out, room names
+ *     shortened at a boundary, the note on a link, the seed of a new palace.
  *  3. Exercises the API handler's guard rails without a network (405, 400, 503, 429),
  *     then its plan/regenerate logic, and the outline / room images / link check of a
  *     generated palace, against canned answers from a localhost stand-in for the Messages
  *     API (no real model involved). Then the client end to end: a 30-fact palace drawn
- *     room by room in parallel, the cache, a room that fails, a process, an extension.
+ *     room by room in parallel, the cache, a room that fails, a process, an extension; and
+ *     the image rules of QA review 4 (words-only scenes, the places of the palace, no two
+ *     images of a room with one first glyph, whatever the model answers).
  *  4. Only when ANTHROPIC_API_KEY is set (environment or .env.local): calls the real
  *     `plan` and `regenerate` paths once each.
  *
@@ -742,6 +747,10 @@ try {
       if (lecture.title !== 'Lecture 7: The nephron' || lecture.items.length !== 3 || lecture.items.some((it) => /Lecture/.test(it.term))) fail(`offline: "Lecture 7: The nephron" is a title, not the fact "Lecture 7 = The nephron": "${lecture.title}", ${factsOf(lecture)}`);
       const planets = designPalaceLocal({ text: 'Mercury\nVenus\nEarth\nMars' });
       if (planets.items.length !== 4 || planets.items[0].term !== 'Mercury') fail(`offline: the first item of a plain list is not a title: ${factsOf(planets)}`);
+      const headed = designPalaceLocal({ text: 'Cardiac drugs\ncaptopril - cough\nlisinopril - once daily\nenalapril - prodrug' });
+      if (headed.title !== 'Cardiac drugs' || headed.items.length !== 3) fail(`offline: a plain line above three lines of "term - meaning" is the title: "${headed.title}", ${factsOf(headed)}`);
+      const shortList = designPalaceLocal({ text: 'apple\nbanana - yellow\ncherry - red' });
+      if (shortList.items.length !== 3 || shortList.items[0].term !== 'apple') fail(`offline: a short list never loses its first item to a guessed title: ${factsOf(shortList)}`);
 
       // What was read and not placed is counted: one line with no words, one second meaning for a name, one exact repeat.
       const silly = designPalaceLocal({ text: 'asdf\nqwerty\n🙂🙂🙂\nasdf - again\nbanana banana banana\n42\nfoo - bar\nfoo - baz\nzzz\nqwerty' });
@@ -1350,6 +1359,7 @@ try {
         ['furosemide [i1]: the scene sentence has emoji characters in it', 'spironolactone [i2] and furosemide both show 🍌', 'captopril [i3]: the scene uses the object of another place of this palace (The Hourglass)', 'furosemide [i1], spironolactone [i2], captopril [i3] end the same way (shouting "…")'].every((f) => fCritic.includes(f)) && !fCritic.includes('amiloride [i4]: the scene uses the object of another place'),
         fCritic.split('Measured problems')[1]?.slice(0, 700),
       );
+      check('images (quality): the review counts the sentences it took emoji out of', r.json.review?.worded === 1 && r.json.review.checked === true, JSON.stringify(r.json.review));
       check('images (quality): a scene sentence leaves in words only, and the trace says so', r.json.images[1].scene === 'A safe swallows the lectern\'s chain and clicks shut.' && r.json.images.every((im) => !hasEmoji(im.scene)) && r.json.steps.some((st) => st.kind === 'revise' && st.label === 'Took the emoji out of 1 scene sentence in Diuretics: the glyphs carry the picture.'), r.json.images.map((im) => im.scene).join(' | '));
       expect('images with 31 place names', await call({ ...faultyBody, places: Array.from({ length: 31 }, (_, i) => `Place ${i}`) }), 400);
       queue.push(answer(JSON.stringify({ scene: 'A pear 🍐 drums on the bench 🥁.', glyphs: ['🍐', '🥁'], action: 'shake', reason: 'Because.' })));

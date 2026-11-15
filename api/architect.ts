@@ -1440,7 +1440,7 @@ Give a verdict for all ${drawn.length} images, and a revision for each one that 
   return {
     images: drawn.map((image) => ({ ref: image.ref, ...image.imago, glyphs: image.imago.glyphs.length ? image.imago.glyphs : ['❓'] })),
     steps,
-    review: { checked, rewritten },
+    review: { checked, rewritten, worded },
   };
 }
 

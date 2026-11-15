@@ -256,6 +256,8 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
   const unchecked: string[] = [];
   const rewritten: string[] = [];
   let checked = 0;
+  /** Scene sentences the server took emoji out of: the prompt asks for words only, and this counts where it did not hold. */
+  let worded = 0;
   const standingHeroes = job.standing.flatMap((s) => s.imago.glyphs[0] ?? []);
 
   const drawRoom = async (room: RoomJob): Promise<void> => {
@@ -305,6 +307,7 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
           if (review.checked === true) checked += got;
           else unchecked.push(room.name);
           if (Array.isArray(review.rewritten)) rewritten.push(...review.rewritten.flatMap((r) => cleanText(r, 120) ?? []));
+          if (typeof review.worded === 'number' && review.worded > 0) worded += Math.min(Math.round(review.worded), got);
           toSteps(answer.steps).forEach(job.say);
         }
       }
@@ -439,6 +442,7 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
     }
     if (rewritten.length > 0) steps.push({ kind: 'revise', label: `Rewrote ${rewritten.length}: ${rewritten.join('; ')}.`.slice(0, 200) });
     if (unchecked.length > 0) steps.push({ kind: 'check', label: `The self-check did not finish in ${unchecked.join(', ')}: those images are unchecked first drafts.`.slice(0, 200) });
+    if (worded > 0) steps.push({ kind: 'revise', label: `Took the emoji out of ${plural(worded, 'scene sentence')}: the glyphs carry the picture.` });
   }
   if (clashes.length > 0) {
     // Only what is still shared is handed to the learner; what a redraw or another glyph settled is not.
