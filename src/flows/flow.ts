@@ -9,7 +9,7 @@ import { isLastStop, useSession, type SessionState, type WalkResult } from '@/st
 import { useSettings } from '@/state/settings';
 import { cleanWalk, STORE_KEYS } from '@/state/storage';
 import { shuffle } from './answers';
-import { isProcessDeck, linkQuestions, orderTask, type LinkAnswer, type LinkQuestion, type StepOrder } from './process';
+import { isProcessDeck, orderTask, walkLinkQuestions, type LinkAnswer, type LinkQuestion, type StepOrder } from './process';
 import { JUDGE_TIMING, type JudgeTiming, type JudgeVariant } from './timing';
 
 /**
@@ -500,12 +500,15 @@ function walkedItems(deck: Deck, s: Pick<SessionState, 'stops'>): MemoryItem[] {
 
 /**
  * The questions about links at the current stop of a recall walk: none unless the deck is a
- * process (see ./process). A Judge run asks about places only.
+ * process (see ./process). The last stop also has the ones that had to wait for every place
+ * to be answered. A Judge run asks about places only.
  */
 export function linkQuestionsHere(): LinkQuestion[] {
   const s = useSession.getState();
   const deck = s.judge || s.mode !== 'recall' ? undefined : getDeck(s.deckId);
-  return deck ? linkQuestions(deck, itemAt(deck, getLayout(deck.layoutId).loci[s.stops[s.step]])) : [];
+  const here = deck ? itemAt(deck, getLayout(deck.layoutId).loci[s.stops[s.step]]) : undefined;
+  if (!deck || !here) return [];
+  return walkLinkQuestions(deck, walkedItems(deck, s).map((it) => it.id)).get(here.id) ?? [];
 }
 
 /** The ordering task that follows the recall walk in progress, if its deck is a process with steps to put in order. */
@@ -562,8 +565,8 @@ export function markLinkRight(questionId: string): void {
 }
 
 /**
- * On from an answered recall stop. In a process deck the questions about the step's links
- * come first, one at a time; then the next place. After the last place the walk is recorded,
+ * On from an answered recall stop. In a process deck the questions about links that are asked
+ * at this place come first, one at a time; then the next place. After the last place the walk is recorded,
  * and the results follow, or first the ordering task. Every answer about a place was recorded
  * when it was given.
  */
@@ -613,7 +616,7 @@ function recallRecord(deck: Deck, s: SessionState, at: number): WalkRecord {
   const f = useFlow.getState();
   const record = walkRecord(f.recallScope === 'due' ? 'review' : 'recall', deck, s, at);
   if (!isProcessDeck(deck)) return record;
-  const asked = walkedItems(deck, s).flatMap((item) => linkQuestions(deck, item));
+  const asked = [...walkLinkQuestions(deck, walkedItems(deck, s).map((it) => it.id)).values()].flat();
   if (!asked.length) return record;
   const right = new Set(f.linkAnswers.filter((a) => a.correct).map((a) => a.id));
   return { ...record, relations: { total: asked.length, correct: asked.filter((q) => right.has(q.id)).length } };

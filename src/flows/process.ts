@@ -5,8 +5,15 @@ import { answerOf, dealSlot, normalize, shuffle, typedMatches } from './answers'
  * What a process deck adds to its walks. A deck is a process when its items are the steps of
  * something that runs in order or in a cycle (`focus: 'process'`) and it says how they are
  * connected (`links`). Its study walk says how each step connects; its recall walk asks, after
- * the place itself, what the step becomes, holds back or needs; and the steps are put in order
- * once at the end. A facts deck with links (matched pairs) is walked as any other deck.
+ * the place itself, what happens to the step next, what it holds back and what it needs; and
+ * the steps are put in order once at the end. A facts deck with links (matched pairs) is
+ * walked as any other deck.
+ *
+ * One rule binds every question about a link (research principle 6): neither the question nor
+ * its feedback names a step whose own place the walk has still to ask. So what a step turns
+ * into is asked as what happens to it (answered with the link's label, never with the next
+ * step's name), and a question that has to name a step further along waits until after the
+ * last place. The sequence itself is tested by the ordering task.
  *
  * Pure functions only: the flow controllers and the screens both use them.
  */
@@ -28,6 +35,33 @@ const termOf = (deck: Deck, itemId: string): string => {
 
 /** "Comes from Citrate: rearranged." A link without a label is said without one. */
 const said = (text: string, label: string | undefined): string => (label?.trim() ? `${text}: ${label.trim()}.` : `${text}.`);
+
+const labelOf = (l: ItemLink): string => l.label?.trim() ?? '';
+
+/** The different labels of the deck's `becomes` links, each as it is first written. */
+function stepLabels(deck: Deck): string[] {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const l of linksOf(deck)) {
+    const key = normalize(labelOf(l));
+    if (l.kind !== 'becomes' || !key || seen.has(key)) continue;
+    seen.add(key);
+    labels.push(labelOf(l));
+  }
+  return labels;
+}
+
+/** With fewer different labels than this, "what happens next?" has too few options to be a question. */
+const MIN_STEP_LABELS = 3;
+
+/**
+ * How a `becomes` link is asked about on the recall walk. Forwards, at the step it leaves:
+ * "What happens to Citrate next?", answered with the link's label, which names no step. That
+ * needs a label on the link and enough different labels in the deck to choose among. Failing
+ * either, backwards, at the step it arrives at: "What did Isocitrate come from?", whose answer
+ * is a place already asked.
+ */
+const asksWhatHappens = (deck: Deck, l: ItemLink): boolean => l.kind === 'becomes' && labelOf(l) !== '' && stepLabels(deck).length >= MIN_STEP_LABELS;
 
 /*
  * How a `blocks` link is worded for the learner. Such a link usually stands for regulation:
@@ -78,74 +112,119 @@ export function studyLines(deck: Deck, item: MemoryItem, walk: string[]): string
 
 /**
  * What led to a step, for the recall walk, said once the step's own place has been answered:
- * the links that arrive at it from steps the learner has already answered on this walk (or
- * that are not on it). It is where a missed question about a link gets its answer: the
- * question was asked at the earlier step, and naming this one there would have given away a
- * place that had not been asked yet. Nothing about a step still ahead is said.
+ * the `becomes` links that arrive at it from steps already answered on this walk (or not on
+ * it). The question at the earlier step asked what happens to it and was answered with the
+ * label alone, so that this place was not given away; here, with both places answered, the
+ * two are joined. A link that is asked about backwards ("What did it come from?"), and what a
+ * step needs or holds back, are not said here: each is a question of its own, still to come.
  */
 export function arrivalLines(deck: Deck, item: MemoryItem, behind: (itemId: string) => boolean): string[] {
   if (!isProcessDeck(deck)) return [];
-  const into = linksOf(deck).filter((l) => l.to === item.id && behind(l.from));
-  return [
-    ...into.filter((l) => l.kind === 'becomes').map((l) => said(`Comes from ${termOf(deck, l.from)}`, l.label)),
-    ...into.filter((l) => l.kind === 'needs').map((l) => said(`${termOf(deck, l.from)} needs it`, l.label)),
-    ...into.filter((l) => l.kind === 'blocks').map((l) => said(`${HELD_BACK_BY} ${termOf(deck, l.from)}`, l.label)),
-  ];
+  const lines = linksOf(deck)
+    .filter((l) => l.to === item.id && behind(l.from) && asksWhatHappens(deck, l))
+    .map((l) => said(`Comes from ${termOf(deck, l.from)}`, l.label));
+  return [...new Set(lines)];
 }
 
-/** The kinds of link the recall walk asks about, in the order they are asked. Never `mirrors`. */
-const ASKED: readonly Exclude<LinkKind, 'mirrors'>[] = ['becomes', 'blocks', 'needs'];
-/** The question about each kind, and the verb of the sentence that answers it (for `blocks`: see HOLDS_BACK). */
-const WORDING: Record<Exclude<LinkKind, 'mirrors'>, { ask: (term: string) => string; tell: string }> = {
-  becomes: { ask: (term) => `What does ${term} become?`, tell: 'becomes' },
-  blocks: { ask: (term) => `Which step does ${term} hold back?`, tell: HOLDS_BACK },
-  needs: { ask: (term) => `What does ${term} need?`, tell: 'needs' },
-};
-/** Most questions about links at one place. */
+/** The kinds of link the recall walk asks about. Never `mirrors`. */
+type AskedKind = Exclude<LinkKind, 'mirrors'>;
+/** Most questions about links that belong to one place. */
 export const LINK_QUESTIONS_PER_STOP = 2;
 
 export interface LinkQuestion {
-  /** `<item id>:<kind>`: one question for each kind of link that leaves an item. */
+  /** `<item id>:<what is asked>`: one of a kind for each item. */
   id: string;
-  from: string;
-  kind: Exclude<LinkKind, 'mirrors'>;
-  /** "What does Citrate become?", "Which step does Succinyl-CoA hold back?", "What does Stream need?" */
+  /** The step the question is about. It is asked at this step's place, unless it has to wait (see `names`). */
+  about: string;
+  kind: AskedKind;
+  /** What answers it: what happens to a step, in the few words of a link's label, or a step of the deck. */
+  asks: 'label' | 'term';
+  /** "What happens to Citrate next?", "What did Stream come from?", "Which step does Sea hold back?", "What does Stream need?" */
   prompt: string;
+  /** Every right answer, and the sentence shown with it once the question has been answered. */
+  answers: { text: string; fact: string }[];
   /**
-   * Every right answer: the term at the other end of each such link, with what the link says
-   * (`sentence`: "Citrate becomes Isocitrate: rearranged."). `held` says the same without the
-   * term, for a step the walk has still to ask about at its own place (see LinkStop).
+   * Every step the question or its answers name. On a walk that has still to ask one of them
+   * at its own place, the question waits until after the last place (walkLinkQuestions).
    */
-  answers: { itemId: string; term: string; label?: string; sentence: string; held: string }[];
+  names: string[];
 }
 
 /**
- * The questions about the links that leave an item: what it becomes first, then what it holds
- * back (`blocks`), then what it needs, two at most. An item with several links of one kind (a
- * branch) gets one question for that kind, and any of their ends is a right answer.
+ * The questions that belong to an item: what happens to it next (or, failing a label, what it
+ * came from), then what it holds back (`blocks`), then what it needs, two at most. An item
+ * with several links of one kind (a branch) gets one question for that kind, and any of them
+ * is a right answer.
  */
-export function linkQuestions(deck: Deck | undefined, item: MemoryItem | undefined): LinkQuestion[] {
-  if (!isProcessDeck(deck) || !item) return [];
-  const out = linksOf(deck).filter((l) => l.from === item.id);
+function questionsAbout(deck: Deck, item: MemoryItem): LinkQuestion[] {
+  const links = linksOf(deck);
+  const term = answerOf(item);
   const questions: LinkQuestion[] = [];
-  for (const kind of ASKED) {
+  const ask = (what: string, kind: AskedKind, asks: LinkQuestion['asks'], prompt: string, answers: LinkQuestion['answers'], ends: string[]) => {
     const seen = new Set<string>();
-    const answers = out
-      .filter((l) => l.kind === kind && !seen.has(l.to) && seen.add(l.to))
-      .map((l) => {
-        const term = termOf(deck, l.to);
-        const start = `${answerOf(item)} ${WORDING[kind].tell}`;
-        return {
-          itemId: l.to,
-          term,
-          ...(l.label?.trim() ? { label: l.label.trim() } : {}),
-          sentence: said(`${start} ${term}`, l.label),
-          held: said(`${start} a step further along the route`, l.label),
-        };
-      });
-    if (answers.length) questions.push({ id: `${item.id}:${kind}`, from: item.id, kind, prompt: WORDING[kind].ask(answerOf(item)), answers });
-  }
+    const unique = answers.filter((a) => !seen.has(normalize(a.text)) && seen.add(normalize(a.text)));
+    if (unique.length) questions.push({ id: `${item.id}:${what}`, about: item.id, kind, asks, prompt, answers: unique, names: [item.id, ...ends] });
+  };
+  const out = links.filter((l) => l.from === item.id);
+
+  const next = out.filter((l) => asksWhatHappens(deck, l));
+  ask('becomes', 'becomes', 'label', `What happens to ${term} next?`, next.map((l) => ({ text: labelOf(l), fact: `${term}: ${labelOf(l)}.` })), []);
+
+  const sources = links.filter((l) => l.to === item.id && l.kind === 'becomes' && !asksWhatHappens(deck, l));
+  ask(
+    'came',
+    'becomes',
+    'term',
+    `What did ${term} come from?`,
+    sources.map((l) => ({ text: termOf(deck, l.from), fact: said(`${term} comes from ${termOf(deck, l.from)}`, l.label) })),
+    sources.map((l) => l.from),
+  );
+
+  const held = out.filter((l) => l.kind === 'blocks');
+  ask(
+    'blocks',
+    'blocks',
+    'term',
+    `Which step does ${term} hold back?`,
+    held.map((l) => ({ text: termOf(deck, l.to), fact: said(`${term} ${HOLDS_BACK} ${termOf(deck, l.to)}`, l.label) })),
+    held.map((l) => l.to),
+  );
+
+  const needed = out.filter((l) => l.kind === 'needs');
+  ask(
+    'needs',
+    'needs',
+    'term',
+    `What does ${term} need?`,
+    needed.map((l) => ({ text: termOf(deck, l.to), fact: said(`${term} needs ${termOf(deck, l.to)}`, l.label) })),
+    needed.map((l) => l.to),
+  );
+
   return questions.slice(0, LINK_QUESTIONS_PER_STOP);
+}
+
+/**
+ * The questions about links on a recall walk, by the item at whose place each is asked, once
+ * that place has been answered. `walk` is the items of the walk in the order they are walked.
+ * A question is asked at the place of the step it is about, unless it names a step the walk
+ * reaches only later: then it waits, and is asked after the last place, when every place has
+ * been answered. (A step that is not on this walk at all, an older place, gives nothing away.)
+ */
+export function walkLinkQuestions(deck: Deck | undefined, walk: readonly string[]): Map<string, LinkQuestion[]> {
+  const at = new Map<string, LinkQuestion[]>();
+  if (!isProcessDeck(deck)) return at;
+  const position = new Map(walk.map((id, i) => [id, i]));
+  const waiting: LinkQuestion[] = [];
+  walk.forEach((id, here) => {
+    const item = deck.items.find((it) => it.id === id);
+    if (!item || at.has(id)) return;
+    const asked: LinkQuestion[] = [];
+    for (const q of questionsAbout(deck, item)) (q.names.some((name) => (position.get(name) ?? -1) > here) ? waiting : asked).push(q);
+    at.set(id, asked);
+  });
+  const last = walk[walk.length - 1];
+  if (last !== undefined && waiting.length && at.has(last)) at.set(last, [...(at.get(last) ?? []), ...waiting]);
+  return at;
 }
 
 /** An answer to a question about a link. Kept by the flow, apart from the answers about places. */
@@ -161,19 +240,21 @@ export interface LinkAnswer {
 }
 
 /**
- * One right answer and up to three other terms of the deck, as the recall walk draws its
- * options: the others in random order, the slot of the right one balanced (dealSlot). The
- * step asked about and the question's other right answers are never among the distractors.
+ * One right answer and up to three others of its kind, as the recall walk draws its options:
+ * the others in random order, the slot of the right one balanced (dealSlot). For what happens
+ * to a step the others are the labels of the deck's other `becomes` links; for a step, other
+ * terms of the deck. The step asked about and the question's other right answers are never
+ * among the distractors.
  */
 export function buildLinkChoices(deck: Deck, question: LinkQuestion): string[] {
-  const right = shuffle(question.answers)[0]?.term ?? '';
-  const seen = new Set([normalize(termOf(deck, question.from)), ...question.answers.map((a) => normalize(a.term))]);
+  const right = shuffle(question.answers)[0]?.text ?? '';
+  const seen = new Set([...(question.asks === 'term' ? [normalize(termOf(deck, question.about))] : []), ...question.answers.map((a) => normalize(a.text))]);
   const pool: string[] = [];
-  for (const other of deck.items) {
-    const key = normalize(answerOf(other));
+  for (const other of question.asks === 'label' ? stepLabels(deck) : deck.items.map(answerOf)) {
+    const key = normalize(other);
     if (seen.has(key)) continue;
     seen.add(key);
-    pool.push(answerOf(other));
+    pool.push(other);
   }
   const others = shuffle(pool).slice(0, 3);
   const slot = dealSlot(others.length + 1);
@@ -182,7 +263,7 @@ export function buildLinkChoices(deck: Deck, question: LinkQuestion): string[] {
 
 /** Graded as the recall walk grades a place: a picked option exactly, a typed answer forgivingly. */
 export function gradeLink(question: LinkQuestion, given: string, input: 'choice' | 'typed'): boolean {
-  return question.answers.some((a) => (input === 'choice' ? given === a.term : typedMatches(given, a.term)));
+  return question.answers.some((a) => (input === 'choice' ? given === a.text : typedMatches(given, a.text)));
 }
 
 /** The steps of a process in the order they run. In a cycle the last step leads back to the first. */
