@@ -162,3 +162,76 @@ marks or trust; **minor** = polish. No blocker was found.
 - **Whether a person can pass the route check after a 15-place survey**, read a place in 4 s
   while it rebuilds, or understand the ruins unprompted: no person has tried.
 - **Screen readers and contrast:** not measured.
+
+## Verification pass, Sat 10:15 PM build `c8de73e`
+
+Same reviewer, 15 November 2026, 03:02 to 03:40 UTC (Sat 10:02 to 10:40 PM ET). `npm run build`
+at `c8de73e`, served with `vite preview`, headless Chromium with software WebGL, greybox, one
+browser at a time, about 25 sessions; load average under 3. The offline copy was tested on a copy
+of `dist/` in the scratchpad, edited by hand to stand for a later build. The deployed site was not
+opened in this pass. The suites were not re-run. Nothing was seen in motion or on a GPU.
+
+### What was changed, issue by issue
+
+| Issue | Status | What I saw |
+|---|---|---|
+| 1 Ruins unexplained | **fixed** | "In ruins: you have not learned these yet. Each place is rebuilt as you study it." is on every screen of the `/?judge` preview and on study stops 1 and 2 of both variants, from the start of the glide (about 7 s a stop), 16 px, grey, above the term. At 1440 × 900 the term (y 187), meaning, scene (to y 369) and buttons are all in view with no scroll: it does not get in the way. From stop 3 it is gone. |
+| 2 Plan A overruns | **fixed on paper** | Counted: opening 20 words, 9 over the screen between, close 50; 8 + 47 + 4 + 29 + 20 = 108 s, 12 in hand. This build: study walk 48.6 s, spot check 17.8 s with instant keys, 66.6 s in all (67.2 s offline after a reload). The walk is 1.6 s over the budget's 47; the slack covers it. Still not rehearsed with a person. |
+| 3 "Nothing is revealed" | **fixed** | Gone from README, Devpost and pitch; the summary now reads "standing: answered in the survey, not yet recalled". |
+| 4 Process questions give the next place away | **fixed** | Cycle deck, one full walk with misses and "I don't know": "What happens to Citrate next?" with four labels as options, feedback "Citrate: rearranged." No question, option or feedback named a place that was still to be asked (checked against the eight terms at all 17 stops). The inhibition question waits until after place 8. A right pick shows the same sentence (read in `src/flows/process.ts`; I never picked right). The count is unchanged: 8 places + 9 links + 8 ordering picks = 25 answers. |
+| 5 "Holds back Citrate" | **fixed for the deck** | Study walk, at Citrate and at Succinyl-CoA: "Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate." Recall: "Which step inhibits citrate synthase?", answer Succinyl-CoA. No "Held back by" in either walk. A built-in deck has no Compose list to check; in Compose a learner's own inhibition link still reads "ATP holds back PFK-1" (the kind's general name). |
+| 6 One route per topic | **partly fixed** | Two Gothic palaces from different notes (`gothic@uefbv`, 12 places; `gothic@fen5d`, 14): one place holds the same object at the same place id (The Ship, r3-2), four more objects stand in both at different places, none twice within a palace. A third palace from the first one's notes shared no place with it. A draft kept its furnishing over a reload and into the survey. Extension: the 12 old items identical, every old place the same object, three new places appended. Comer and the cycle deck have the places they had. Not changed: no notice when a second palace is started in a style that holds an unfinished one, and five decks share the Roman house (the documents now say so). |
+| 7 36 clicks to the first image | **fixed** | Comer: 21 presses including "Walk" (15 answers, "Check the route", two route answers each with "Next"), 19 screens, 68 s with instant answers. The stop holds 1.2 s after an answer, with a Pause. Skip path on the cycle deck: 8 presses at best (was 17); the walk of the empty route moves on by itself. |
+| 8 Self-rating sets the state | **fixed** | "zzzz" then "I was right": "Marked by you. This place stays under repair until you recall it.", the place at 0.6, the card from box 2 to box 1, due in 10 minutes. Survey alone (two right picks): "Now: 0 restored, 2 standing, 0 under repair, 0 needing another repair, 6 in ruins." |
+| 9 Slide PDF | **fixed, one part left** | The footer with its page number is gone; rooms read "The Nephron", "Distal tubule & collecting duct". Table PDF: one fact a row ("A" means "Retinol; Night blindness"); its header row became the heading, so the rooms are "Vitamin: Name: Deficiency" and "Vitamin: Name: Deficiency II". Left: "Aldosterone → ENaC → sodium in, potassium out" inside a bullet is still three bare facts. |
+| 10 Carvedilol line | **fixed** | One fact, "carvedilol: also blocks alpha-1"; 12 facts in four rooms of three. |
+| 11 No offline copy | **fixed** | Copy complete about 1 s after the title appeared (23 files). Network off, reload: title, then the pitch run to its results in 67.2 s; `/?judge` by address offline, to its results; Compose offline gave a proposal. A later build: the page was the new one on the first online load, its copy was saved 7.4 s after that load, and an offline reload then showed the new page; one visit later the old copy was gone. `/?nosw`: no worker, no saved files, and an offline reload fails again; opening `/` registers it again. No page error. |
+| 12 Documents stale | **fixed** | Nothing is called "being built" or "merged". What remains "(to fill in)" is what cannot be known yet: a person's timing, the re-rendered media, the venue numbers. |
+| 13 Legend | **fixed** | Five names on the summary, the results and Progress (in ruins, standing, under repair, restored, needs another repair); four on a Judge run, which has no "standing". |
+| 16 Skipped survey on the results | **fixed** | "Before study: 0 of 8 (survey skipped). Now: 7 of 8." |
+| 17 Offline planner, other notes | **partly fixed** | `water cycle: evaporation -> ... -> evaporation` is a process in a room "Water cycle" with four links, the last closing the circle. The title line is no longer a step. Not changed: ten silly lines still say "Left out 1 line" when three were; `a -> b (enzyme, uses ATP)` lines give the same compound twice (with and without its bracket) and one line became the fact "Uses ATP". |
+| 18 Route check cannot be failed | **fixed** | First miss: "try again", that option disabled. Second miss: "It was The Pole Lathe ... Walk the route again if the order is not clear yet", with "Walk the route again" and "Go on". |
+| 20 Pitch Plan B | **fixed** | The Scaphoid line is at 0:09 to 0:13, while the lamp is on screen; "in your own palace" added. |
+| 23 "Guess first" on vocabulary | **fixed** | Comer shows "Guess first." and stops there. |
+| 14, 19, 24 Not changed on purpose | **still minor** | The hand is on the fifth place of a room; every room is `~hall~`; the floor labels were not looked at again. None is worse than minor. |
+
+### Exam Mode (new, ten minutes)
+
+- **Offered** only on a studied palace (the cycle deck, not Comer). The setup says what it is and what it does not change.
+- **The paper** covers the scene (the point under the pointer over the canvas is the sheet). Two papers came in two different orders, neither the route order (the first began with the facts of places 3, 2 and 4). No place name or image in the questions I read. Nothing is marked before hand-in; a pick can be changed.
+- **Reload** in the middle: nothing recorded, cards identical, and a line says so. It lands on the Reviews screen, also when the exam was started from the title (new issue 3).
+- **Browser Back** and **Escape**: "Leave this exam? It has not been handed in, so nothing from it is kept", with Stay first. Back did not leave the site.
+- **Hand-in:** 0 of 8; each row gives my answer, the right one, the place it lives at and its image. The review cards and the saved decks were byte for byte what they were before; the history gained one `exam` record; Progress lists it "in the table, not on the line". "Walk back to the 8 places you missed" starts a study walk of those places and had changed no card when it started. I did not finish that walk or the recall walk after it.
+- **One-fact palace** (seeded by hand), term to meaning, typed: one question; "zzzz", hand in, "Mark your own answers", "I had it": "1 of 1 ... Self-marked: the typed meanings were judged by you", and the card unchanged. With nothing missed there is no walk back, and it says so.
+- Not tried: a list asked by position, the entries in Reviews and Progress (seen, not pressed), a long deck, the keyboard alone.
+
+### Regressions on the demo path
+
+None found. `/?judge=pitch`: 66.6 s online, 67.2 s offline after a reload, end state right (asked and right 1, missed 0.3, the five not asked 0.6). `/?judge`: 108.2 s online with nothing pressed but the answers (62.6 s to the screen between), and to its results offline. A double click was not repeated. No page error in any run.
+
+### New issues, ranked
+
+No blocker and no major.
+
+| # | Severity | Where | What I did | What happened | Smallest fix |
+|---|---|---|---|---|---|
+| 1 | minor (precaution) | Offline copy, a new deployment | Loaded a later build online and cut the network 3 s later. | The reload showed the build before it, complete and working: the new copy is saved about 7 s after the first load (23 files). Waiting longer, it was the new one. | The pitch already says "wait ten seconds". After the last deployment, open the site, wait, and reload once before the Wi-Fi is trusted to fail. |
+| 2 | minor | Seeded palaces | Compared two Gothic palaces; read what stands in them. | Five of twelve objects also stand in the other palace, one at the same place, and nothing warns when a second palace is started in a style that holds an unfinished one. Eight of the twelve objects in my Gothic library were not the style's own (a Beehive, a Ship, an Anchor, an Easel). "Machines as stations" was seen only in the built-in cycle deck; a new Workshop palace was not built. | The notice from the Roman house, for a style in use; in the documents, "the built-in process deck". |
+| 3 | minor | Exam Mode, reload | Reloaded during an exam started from the title row. | The page comes back on the Reviews screen. | Come back to the title, with the same line. |
+| 4 | minor | Process deck, length | Counted. | Still 25 answers for 8 facts, and my 0 of 9 on the links sits beside 7 of 8 on the places. The questions are no longer the same question twice. | Leave it; say "three scores" when showing it. |
+| 5 | minor | Offline planner and PDF leftovers | As issues 9 and 17 above. | The count of lines left out; bracketed arrow lines; an arrow inside a slide bullet; a table's header as the room name with "II". | After the freeze. |
+| 6 | minor | Wording | Read the documents. | Devpost: "A legend names the states of a place: in ruins, under repair, restored" (the build names five). Pitch Plan B: "and a 2025 review grades the evidence" still reads as a third source (review 3, issue 15). The ruins line still says "In ruins" once the place stands in its scaffold. | "and the newer of the two grades"; add the two states to the Devpost sentence. |
+
+### Updated verdict and scores
+
+**Safe to demo: yes.** The precautions left are the ones no script can retire: watch one full run
+on the demo laptop's GPU and say whether the rebuild gets in the way of reading; do the offline
+check in the laptop's own browser (open, wait ten seconds, Wi-Fi off, reload); rehearse Plan A once
+with a person and a stopwatch.
+
+| Criterion | Review 4 | Now | Evidence |
+|---|---|---|---|
+| **Creativity** | 8 | **8** | The same idea, now explained on screen in one line that does not crowd the picture; the images are still emoji medallions. |
+| **Utility** | 8 | **8** | Firmer: 21 presses to the first image where there were 36, a process walk that no longer answers itself, self-marking that no longer restores a place, an exam on a plain sheet that changed no card, and a reload that works offline. Not higher without a person using it or a real lecture PDF. |
+| **Charity** | 6 | **6** | Nothing changed: no number from a person. |
+| **Avidity** | 8 | **9** | Twelve majors answered in about two hours, ten of them fixed outright as I measured, and the documents now say what the build does, including what this review found wrong. |
