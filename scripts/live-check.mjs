@@ -208,9 +208,13 @@ async function palaceCheck(facts) {
     // The kits that exist, as the app offers them: the Architect must choose one of these and no other.
     const { KIT_LIST } = await vite.ssrLoadModule('/src/layouts/kits/list.ts');
     const kitIds = KIT_LIST.map((k) => k.id);
-    /** A palace of more than one fact has no room of a single place; and its kit is one that exists. */
+    /**
+     * A palace of more than one fact has no room of a single place, unless the rooms beside it
+     * are full (the planner then has nowhere to merge it: src/ai/wire.ts); and its kit exists.
+     */
     const checkRooms = (label, spec, facts, since = []) => {
-      const lone = spec.rooms.filter((r) => r.places === 1 && !since.includes(r.id));
+      const full = (r) => !r || r.places >= 5;
+      const lone = spec.rooms.filter((r, i) => r.places === 1 && !since.includes(r.id) && !(full(spec.rooms[i - 1]) && full(spec.rooms[i + 1])));
       if (facts > 1 && lone.length) bad(`${label}: ${lone.length === 1 ? 'a room has' : `${lone.length} rooms have`} a single place (${spec.rooms.map((r) => `${r.name}: ${r.places}`).join(', ')}). A room is a category or a phase, never one fact.`);
       if (!kitIds.includes(spec.kit)) bad(`${label}: the kit "${spec.kit}" does not exist (the kits are ${kitIds.join(', ')})`);
     };
@@ -296,8 +300,10 @@ async function palaceCheck(facts) {
     if (bread.source === 'api') {
       const breadSpec = describe(bread, bread.items);
       checkRooms('the process', breadSpec, bread.items.length);
-      // The steps of a process are stations along a hall: never more rooms than five steps a room need.
-      if (breadSpec.rooms.length > Math.ceil(bread.items.length / 3)) bad(`the process: ${bread.items.length} steps were spread over ${breadSpec.rooms.length} rooms`);
+      // The steps of a process are stations along a hall. A room is a phase of at least two steps
+      // (src/ai/wire.ts), so a process never has more rooms than half its steps; a room of one step
+      // is caught by checkRooms above.
+      if (breadSpec.rooms.length > Math.ceil(bread.items.length / 2)) bad(`the process: ${bread.items.length} steps were spread over ${breadSpec.rooms.length} rooms`);
       note(`  kit chosen for a process: ${bread.kit.id} (${bread.kit.chosenBy}${bread.kit.reason ? `: ${bread.kit.reason}` : ''})`);
       const chain = bread.items.slice(0, -1).every((it, i) => bread.links.some((l) => l.kind === 'becomes' && l.from === it.id && l.to === bread.items[i + 1].id));
       if (bread.focus === 'process' && chain) ok(`the six steps came back as a process, each step linked to the next (${(wall / 1000).toFixed(1)} s)`);
