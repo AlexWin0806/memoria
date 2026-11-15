@@ -18,6 +18,7 @@ export function PickOne({
   value,
   onChange,
   disabled = false,
+  compact = false,
   testid,
   children,
 }: {
@@ -26,13 +27,18 @@ export function PickOne({
   value: string;
   onChange: (id: string) => void;
   disabled?: boolean;
+  /**
+   * Many options in little room: names only, two to a line, and the blurb of the chosen one
+   * under the list. The other blurbs stay in the page for a screen reader, each with its option.
+   */
+  compact?: boolean;
   testid: string;
   /** Said under the legend, before the options. */
   children?: ReactNode;
 }) {
   const name = useId();
   return (
-    <fieldset className="pick" disabled={disabled} data-testid={testid}>
+    <fieldset className={compact ? 'pick pick--compact' : 'pick'} disabled={disabled} data-testid={testid}>
       <legend className="label">{legend}</legend>
       {children}
       <div className="pick__list">
@@ -46,6 +52,12 @@ export function PickOne({
           </label>
         ))}
       </div>
+      {compact && (
+        // Seen, not heard a second time: the same words are in the chosen option's own label.
+        <p className="pick__chosen" aria-hidden="true" data-testid={`${testid}-blurb`}>
+          {options.find((o) => o.id === value)?.blurb ?? ''}
+        </p>
+      )}
     </fieldset>
   );
 }

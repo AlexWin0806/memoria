@@ -804,7 +804,7 @@ export function Compose() {
           </p>
         )}
         {!standing && (
-          <PickOne legend="Architecture" options={archOptions} value={chosenArch} onChange={(id) => draft.patch({ arch: id })} disabled={planning} testid="arch" />
+          <PickOne legend="Architecture" options={archOptions} value={chosenArch} onChange={(id) => draft.patch({ arch: id })} disabled={planning} compact testid="arch" />
         )}
         {chosenArch === ARCH_HOUSE && !standing ? (
           <p className="hint">
@@ -874,7 +874,16 @@ export function Compose() {
             </div>
           </>
         ) : (
-          <>
+          // Pinned to the bottom edge of the panel, like the proposal's button: however many
+          // kinds of architecture there are to choose from, the way on is in view.
+          <div className="dock dock--notes" data-testid="compose-actions">
+            {empty && (
+              <p className="hint" data-testid="compose-empty-note">
+                {text.trim() ? 'These lines hold no words, so there is nothing to place yet.' : 'Nothing to place yet.'}{' '}
+                {standing ? 'Type the new facts, one per line.' : `Type at least ${MIN_ITEMS} facts, one per line.`}
+              </p>
+            )}
+            {plan && <p className="hint">{standing ? 'Reading them again' : 'Designing again'} replaces the images you have edited.</p>}
             <div className="actions">
               <button type="button" className="btn btn--primary" disabled={empty || (standing !== undefined && left <= 0)} onClick={() => design()} data-testid="compose-design">
                 {slow ? 'Try again' : plan ? (standing ? 'Read them again' : 'Design again') : standing ? 'Read these notes' : 'Design my palace'}
@@ -890,15 +899,8 @@ export function Compose() {
                 </button>
               )}
             </div>
-            {empty && (
-              <p className="hint" data-testid="compose-empty-note">
-                {text.trim() ? 'These lines hold no words, so there is nothing to place yet.' : 'Nothing to place yet.'}{' '}
-                {standing ? 'Type the new facts, one per line.' : `Type at least ${MIN_ITEMS} facts, one per line.`}
-              </p>
-            )}
-            {plan && <p className="hint">{standing ? 'Reading them again' : 'Designing again'} replaces the images you have edited.</p>}
             {hasDraft({ text, plan }) && <p className="draft-tools">{discardControl}</p>}
-          </>
+          </div>
         )}
       </section>
     );

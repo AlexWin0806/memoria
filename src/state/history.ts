@@ -35,6 +35,16 @@ export function isSectionWalk(record: Pick<WalkRecord, 'id'>): boolean {
 }
 
 /**
+ * An exam asks the same facts with no palace on screen (src/flows/exam.ts). Its answers are a
+ * different kind of answer from a recall walk's, where the place is the cue: it is listed with
+ * the walks, and never counted among them (not on the trend, not as "the walk before", not
+ * among the places missed on walks).
+ */
+export function isExam(record: Pick<WalkRecord, 'kind'>): boolean {
+  return record.kind === 'exam';
+}
+
+/**
  * Drops the oldest walks beyond the cap, never a palace's first survey nor the survey of a
  * section: each is the only score before study for the places it asked about.
  */
@@ -59,9 +69,9 @@ function capped(records: WalkRecord[]): WalkRecord[] {
 }
 
 /**
- * The walk history: one record per finished survey, recall or review walk. Written by the
- * flow controllers (src/flows/flow.ts) and by nothing else; a Judge run and the comparison
- * test never reach them, so neither leaves a record.
+ * The walk history: one record per finished survey, recall or review walk, and one per exam
+ * handed in. Written by the flow controllers (src/flows/flow.ts, src/flows/exam.ts) and by
+ * nothing else; a Judge run and the comparison test never reach them, so neither leaves a record.
  */
 export const useHistory = create<HistoryState>()(
   persist(
@@ -138,11 +148,14 @@ export function compareWithSurveys(records: WalkRecord[], current: WalkRecord): 
   };
 }
 
-/** The latest walk before `current` that tested memory after study (not the survey) and shares a place with it. */
+/**
+ * The latest walk before `current` that tested memory after study, with the place as the cue
+ * (not the survey, not an exam), and shares a place with it.
+ */
 export function previousWalk(records: WalkRecord[], current: WalkRecord): WalkRecord | undefined {
   const asked = new Set(current.items.map((it) => it.itemId));
   return walksOf(records, current.deckId)
-    .filter((r) => r.id !== current.id && r.kind !== 'survey' && r.at <= current.at && r.items.some((it) => asked.has(it.itemId)))
+    .filter((r) => r.id !== current.id && r.kind !== 'survey' && !isExam(r) && r.at <= current.at && r.items.some((it) => asked.has(it.itemId)))
     .pop();
 }
 
@@ -155,12 +168,13 @@ export interface WeakPlace {
 
 /**
  * The places missed most often on recall and review walks, worst first. The survey is left
- * out: not knowing something before studying it is the starting point, not a weakness.
+ * out: not knowing something before studying it is the starting point, not a weakness. So is
+ * an exam: it did not ask at the place.
  */
 export function weakestPlaces(records: WalkRecord[], deckId: string, limit = 3): WeakPlace[] {
   const tally = new Map<string, WeakPlace>();
   for (const r of walksOf(records, deckId)) {
-    if (r.kind === 'survey') continue;
+    if (r.kind === 'survey' || isExam(r)) continue;
     for (const it of r.items) {
       const row = tally.get(it.itemId) ?? { itemId: it.itemId, misses: 0, asked: 0 };
       row.asked++;
