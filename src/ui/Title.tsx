@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CompareLink } from '@/ab/CompareLink';
 import type { Deck, ReviewCard } from '@/core/types';
+import { canExam, startExam } from '@/flows/exam';
 import { discardSavedWalk, judgeVariantFromUrl, openProgress, resumeWalk, startEncode, startJudge, startRecall, useFlow } from '@/flows/flow';
 import { formatWhen, plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
@@ -148,6 +149,12 @@ export function Title() {
                   <button type="button" className="link" onClick={() => startRecall(deck.id, 'all')} aria-label={`Recall ${deck.title}`}>
                     Recall
                   </button>
+                  {/* A third way to study, once there is something studied to be examined on: never before the survey. */}
+                  {canExam(deck, cards) && (
+                    <button type="button" className="link" onClick={() => startExam(deck.id)} aria-label={`Exam on ${deck.title}`} data-testid="deck-exam">
+                      Exam
+                    </button>
+                  )}
                 </div>
                 {/* What is done to the palace itself, on a quieter line of its own: a row of five links wrapped under its text. */}
                 {!deck.fixture && (

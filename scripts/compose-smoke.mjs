@@ -15,11 +15,15 @@
  *      facts becomes process; the draft survives a reload; saving gives a deck with a `gen:`
  *      layout, the links and the focus; the survey starts in that palace; a reload keeps it all,
  *      and the title names the style and the rooms
- *   b  (continues a) "Add to this palace": new notes under a heading that names a room and under
- *      a new one. Only the new items are shown, the new room is marked, the screen says nothing
- *      moves; after saving every old item is identical (id, place, term, image), the new places
- *      are appended, and only they are surveyed. The results screen offers it too. A palace
- *      that is nearly full says which facts were left out
+ *   b  (continues a) "Add to this palace", on a palace that has been surveyed, studied and
+ *      recalled: new notes under a heading that names a room and under a new one. Only the new
+ *      items are shown, the new room is marked, the screen says nothing moves; after saving
+ *      every old item is identical (id, place, term, image), the new places are appended, and
+ *      only they are surveyed. The section is then walked to its end (survey, summary, route
+ *      check, study, recall, results): the older places' cards and the palace's survey date are
+ *      untouched, and the results screen offers "Add to this palace" again. A palace that was
+ *      never opened is surveyed whole, the new places with the rest, and saves the same grown
+ *      deck. A palace that is nearly full says which facts were left out
  *   c  The Roman house still works, with reduced motion: twelve places, three rooms, the rooms
  *      of the house as headings that cannot be renamed, no "Add" on its row; a draft saved by
  *      an earlier build opens as it did
@@ -175,6 +179,7 @@ const session = (page) => page.evaluate(() => {
 });
 const sceneShows = (page, want) => page.waitForFunction((id) => window.__memoria?.session.getState().layoutId === id, want, { timeout: 15000 });
 const savedDecks = (page) => page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('memoria.decks.v1') ?? '{}').state?.decks ?? {}));
+const savedReview = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('memoria.review.v1') ?? '{}').state?.cards ?? {});
 const savedDraft = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('memoria.draft.v1') ?? '{}').state ?? {});
 const roomNames = (page) => page.locator('[data-testid=room]').evaluateAll((els) => els.map((el) => el.querySelector('[data-testid=room-name]')?.value ?? el.querySelector('[data-testid=room-title]')?.textContent ?? ''));
 const linkRows = (page) => page.getByTestId('link-row').allTextContents().then((rows) => rows.map((r) => r.replace(/Remove$/, '').trim()));
@@ -448,8 +453,47 @@ const cases = {
   async b() {
     assert(shared, 'case b continues case a: run them together (--only a,b)');
     const { context, page, errors } = shared;
+    // The palace has been through its survey, its study walk and its recall walk two days ago:
+    // every place is restored. (Seeded as smoke.mjs case n seeds it, not walked: that loop is smoke.mjs's to test.)
+    const DAY = 24 * 3600 * 1000;
+    const surveyedAt = Date.now() - 2 * DAY;
+    const made = (await savedDecks(page)).find((d) => d.title === DECK_TITLE);
+    await page.evaluate(
+      ([deckId, when, now, day]) => {
+        const decks = JSON.parse(localStorage.getItem('memoria.decks.v1'));
+        const deck = decks.state.decks[deckId];
+        deck.surveyedAt = when;
+        localStorage.setItem('memoria.decks.v1', JSON.stringify(decks));
+        const card = (it, n) => ({ itemId: it.id, deckId, box: 2, dueAt: now + day, lastReviewedAt: now - day, reps: 1, lapses: 0, survey: n % 2 ? 'unknown' : 'known', surveyGiven: n % 2 ? '' : it.term, studiedAt: when + 60_000 });
+        localStorage.setItem('memoria.review.v1', JSON.stringify({ state: { cards: Object.fromEntries(deck.items.map((it, n) => [it.id, card(it, n)])), walk: null }, version: 0 }));
+        const record = (id, kind, at, ok) => {
+          const items = deck.items.map((it, n) => ({ itemId: it.id, correct: ok(n) }));
+          return { id, deckId, kind, at, total: items.length, correct: items.filter((i) => i.correct).length, unknown: 0, ms: 9000, items };
+        };
+        localStorage.setItem('memoria.history.v1', JSON.stringify({ state: { records: [record('walk-seed-a', 'survey', when, (n) => n % 2 === 0), record('walk-seed-b', 'recall', when + 120_000, () => true)] }, version: 0 }));
+        const settings = JSON.parse(localStorage.getItem('memoria.settings.v1') ?? '{"state":{},"version":0}');
+        settings.state.familiarized = { ...(settings.state.familiarized ?? {}), [deck.layoutId]: true };
+        localStorage.setItem('memoria.settings.v1', JSON.stringify(settings));
+      },
+      [made.id, surveyedAt, Date.now(), DAY],
+    );
+    await page.reload({ waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    assert((await page.getByTestId('storage-notice').count()) === 0, 'the seeded walks were set aside');
     const before = (await savedDecks(page)).find((d) => d.title === DECK_TITLE);
+    const cardsBefore = await savedReview(page);
+    assert(before.surveyedAt === surveyedAt && before.items.every((it) => cardsBefore[it.id]?.reps === 1), 'the palace was not seeded as walked');
     const row = deckRow(page, DECK_TITLE);
+    // A studied palace offers an exam with its study actions (Walk, Recall, Exam), apart from what is done to the palace itself.
+    const study = await row.locator('.deck__actions button').allTextContents();
+    const manage = await row.locator('.deck__manage button').allTextContents();
+    assert(JSON.stringify(study) === JSON.stringify(['Walk', 'Recall', 'Exam']) && JSON.stringify(manage) === JSON.stringify(['Add', 'Edit', 'Delete']), `the row's actions: ${study} | ${manage}`);
+    assert((await row.getByTestId('deck-exam').getAttribute('aria-label')) === `Exam on ${DECK_TITLE}`, 'the Exam action does not name its palace');
+    await row.getByTestId('deck-exam').click();
+    await page.getByTestId('exam-setup').waitFor();
+    assert((await text(page.getByTestId('exam-head'))) === `Memoria · Exam · ${DECK_TITLE}`, `the exam opened from the title is headed "${await text(page.getByTestId('exam-head'))}"`);
+    await page.getByTestId('exam-cancel').click();
+    await page.getByTestId('exam-setup').waitFor({ state: 'detached' });
     assert((await row.getByTestId('deck-extend').getAttribute('aria-label')) === `Add to ${DECK_TITLE}`, 'the row has no "Add to this palace" entry');
     await row.getByTestId('deck-extend').focus();
     await page.keyboard.press('Enter');
@@ -458,8 +502,8 @@ const cases = {
     assert((await text(page.locator('[data-testid=compose] .label').first())) === 'Add to this palace', 'the screen is not headed "Add to this palace"');
     assert((await text(page.getByTestId('extend-keeps'))) === 'Everything already in this palace stays where it is.', 'the screen does not say what will not change');
     assert((await text(page.getByTestId('extend-size'))) === `${KITS[0].name} · 3 rooms · 9 places. It has room for 21 more: a palace holds 30 places.`, `size: ${await text(page.getByTestId('extend-size'))}`);
-    // Nothing in it has been studied: one calm line, and nothing is blocked.
-    assert((await text(page.getByTestId('extend-finish-first'))).startsWith('9 of its 9 places are still in ruins or under repair. You may want to finish those walks before you add more. This is a suggestion, not a finding'), `the suggestion reads: ${await text(page.getByTestId('extend-finish-first'))}`);
+    // Every place is restored, so nothing suggests finishing first.
+    assert((await page.getByTestId('extend-finish-first').count()) === 0, `a palace that has been recalled is told to finish first: ${await page.getByTestId('extend-finish-first').allTextContents()}`);
     assert((await page.getByTestId('arch').count()) === 0, 'a palace that stands should not be offered another architecture here');
     await sceneShows(page, before.layoutId);
     assert((await session(page)).deckId === before.id, 'the palace being added to should be shown with its images');
@@ -521,24 +565,131 @@ const cases = {
     assert(walking.mode === 'survey' && walking.layoutId === grown && JSON.stringify(surveyed) === JSON.stringify(['r2-4', 'r4-1', 'r4-2']), `the survey walks ${surveyed} in ${walking.layoutId}`);
     await shot(page, 'extend-survey');
 
-    // Back on the title, the row has grown; the results screen offers the same entry.
-    await page.keyboard.press('Escape');
-    await page.getByTestId('leave-yes').click();
-    await page.getByTestId('title').waitFor();
-    assert((await text(deckRow(page, DECK_TITLE).locator('.deck__line'))).startsWith(`${KITS[0].name} · 4 rooms · 12 places`), `the row after growing: ${await text(deckRow(page, DECK_TITLE).locator('.deck__line'))}`);
-    await page.evaluate(([deckId, layoutId]) => window.__memoria.session.setState({ mode: 'results', deckId, layoutId, stops: [0, 1], step: 1, results: [] }), [after.id, after.layoutId]);
+    // The section's whole loop, walked. First the survey of the three new places, and of nothing else.
+    const names = await page.evaluate(() => window.__memoria.layout.loci.map((l) => l.name));
+    const route = walking.stops.map((i) => names[i]);
+    const factAt = Object.fromEntries(added.map((it, n) => [route[n], it]));
+    for (let i = 1; i <= 3; i++) {
+      await page.locator(`[data-testid=survey] [data-testid=walk-label]:has-text("Place ${i} of 3")`).waitFor();
+      const question = page.getByTestId('survey-question');
+      await question.waitFor();
+      assert((await question.getAttribute('data-place')) === route[i - 1], `section survey stop ${i} is at ${await question.getAttribute('data-place')}, not at ${route[i - 1]}`);
+      if (i === 1) assert((await text(page.locator('[data-testid=survey] [data-testid=walk-label]'))).startsWith('Survey of the new places'), `the section's survey is labelled "${await text(page.locator('[data-testid=survey] [data-testid=walk-label]'))}"`);
+      await page.keyboard.press('0');
+      await page.getByTestId('survey-ack').waitFor();
+      await page.getByTestId('survey-next').click();
+    }
+    await page.getByTestId('survey-summary').waitFor();
+    const summary = { label: await text(page.getByTestId('survey-summary-label')), score: await text(page.getByTestId('survey-score')), next: await text(page.getByTestId('survey-study')) };
+    assert(summary.label === `Survey · ${DECK_TITLE} · 3 new places` && summary.score === 'You knew 0 of 3.' && summary.next === 'Check the route', `the section's summary: ${JSON.stringify(summary)}`);
+    await shot(page, 'extend-summary');
+    await page.getByTestId('survey-study').click();
+    // The route of the new places is checked before their images are placed.
+    let checks = 0;
+    for (; checks < 6; checks++) {
+      await page.waitForFunction(() => document.querySelector('[data-testid=route-question]') || document.querySelector('[data-testid=encode]'));
+      if ((await page.getByTestId('route-question').count()) === 0) break;
+      const anchor = (await text(page.getByTestId('route-question'))).match(/right after (.+)\?$/)[1];
+      const options = await page.locator('[data-testid=route-option] span:last-child').allTextContents();
+      const answer = route[route.indexOf(anchor) + 1];
+      assert(route.includes(anchor) && options.includes(answer), `the section's route check asks what follows ${anchor}, among ${options}`);
+      await page.keyboard.press(String(options.indexOf(answer) + 1));
+      await page.getByTestId('route-next').click();
+      await page.getByTestId('route-next').waitFor({ state: 'detached' });
+    }
+    assert(checks >= 1, 'new places were given images without a check of their route');
+    // The study walk and the recall walk, of the same three places.
+    for (let i = 1; i <= 3; i++) {
+      await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 3")`).waitFor();
+      await page.getByTestId('encode-term').waitFor();
+      assert((await text(page.getByTestId('encode-term'))) === added[i - 1].term, `section study stop ${i} shows ${await text(page.getByTestId('encode-term'))}`);
+      await page.getByTestId('walk-next').click();
+    }
+    await page.getByTestId('interstitial').waitFor();
+    await page.getByTestId('recall-start').click();
+    for (let i = 1; i <= 3; i++) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 3")`).waitFor();
+      const question = page.getByTestId('recall-question');
+      await question.waitFor();
+      const it = factAt[await question.getAttribute('data-place')];
+      assert(it, `section recall stop ${i} is at ${await question.getAttribute('data-place')}, which is not a new place`);
+      const options = await page.locator('[data-testid=choice] span:last-child').allTextContents();
+      const pick = options.findIndex((o) => o === it.meaning || o === it.term);
+      assert(pick >= 0, `section recall stop ${i}: none of ${options} is ${it.term} or ${it.meaning}`);
+      await page.getByTestId('choice').nth(pick).click();
+      await page.getByTestId('recall-verdict').waitFor();
+      await page.getByTestId('recall-next').click();
+      // None of the three new facts has a link that a process walk asks about, and three steps with no order have no ordering task.
+      await page.waitForFunction((n) => document.querySelector('[data-testid=results], [data-testid=link-question], [data-testid=order]') || (document.querySelector('[data-testid=recall] [data-testid=walk-label]')?.textContent ?? '').includes(`Place ${n + 1} of 3`), i);
+      assert((await page.locator('[data-testid=link-question], [data-testid=order]').count()) === 0, `section recall stop ${i}: the walk asked about a link or an order that the new facts do not have`);
+    }
+    await page.getByTestId('results').waitFor();
+    const results = {
+      label: await text(page.locator('[data-testid=results] .label').first()),
+      score: await text(page.getByTestId('results-score')),
+      section: await text(page.getByTestId('results-section')),
+      sinceSurvey: await text(page.getByTestId('results-vs-survey')),
+      again: await text(page.getByTestId('results-again')),
+      rows: await page.getByTestId('result-row').count(),
+      extend: await text(page.getByTestId('results-extend')),
+    };
+    assert(results.score === '3 of 3' && results.rows === 3, `the section's results: ${JSON.stringify(results)}`);
+    assert(results.section === '3 new places: the rest of the palace was not walked.', `the section's results say "${results.section}"`);
+    assert(results.sinceSurvey === 'Before study: 0 of 3. Now: 3 of 3.' && results.again === 'Recall the whole palace', `the section's results: ${JSON.stringify(results)}`);
+    await page.getByTestId('results-extend').scrollIntoViewIfNeeded();
+    await shot(page, 'extend-results');
+    // Nothing about the older places has changed; the new ones have been through the whole loop.
+    const cardsAfter = await savedReview(page);
+    for (const item of before.items) assert(JSON.stringify(cardsAfter[item.id]) === JSON.stringify(cardsBefore[item.id]), `the card of "${item.term}" changed while the new places were walked`);
+    assert(added.every((it) => cardsAfter[it.id]?.survey === 'unknown' && cardsAfter[it.id].studiedAt !== undefined && cardsAfter[it.id].reps === 1), `the new places' cards: ${JSON.stringify(added.map((it) => cardsAfter[it.id]))}`);
+    const walked = (await savedDecks(page)).find((d) => d.id === before.id);
+    assert(walked.surveyedAt === surveyedAt && JSON.stringify({ ...walked, surveyedAt: 0 }) === JSON.stringify({ ...after, surveyedAt: 0 }), 'walking the new places changed the palace or the date it was surveyed');
+
+    // "Add to this palace" on the results screen, reached by walking there.
+    assert(results.extend === 'Add to this palace', `the results screen offers "${results.extend}"`);
     await page.getByTestId('results-extend').click();
     await page.getByTestId('extend-keeps').waitFor();
-    assert((await text(page.getByTestId('extend-size'))).startsWith(`${KITS[0].name} · 4 rooms · 12 places.`), 'the results screen did not open "Add to this palace" for this deck');
+    assert((await text(page.getByTestId('extend-size'))) === `${KITS[0].name} · 4 rooms · 12 places. It has room for 18 more: a palace holds 30 places.`, `from the results screen: ${await text(page.getByTestId('extend-size'))}`);
+    assert((await page.getByTestId('extend-finish-first').count()) === 0, 'twelve restored places should not be told to finish first');
+    await sceneShows(page, after.layoutId);
     await page.keyboard.press('Escape');
     await page.getByTestId('title').waitFor();
     assert((await page.getByTestId('leave-confirm').count()) === 0, 'leaving "Add to this palace" should not need a confirmation');
-    // Leaving puts the scene back, and "Build a palace" is a new palace again, not these notes.
+    // Leaving puts the scene back, the row has grown, and "Build a palace" is a new palace again, not these notes.
     assert((await session(page)).layoutId === after.layoutId, 'leaving without saving did not put the scene back');
+    assert((await text(deckRow(page, DECK_TITLE).locator('.deck__line'))).startsWith(`${KITS[0].name} · 4 rooms · 12 places`), `the row after growing: ${await text(deckRow(page, DECK_TITLE).locator('.deck__line'))}`);
     await page.getByTestId('title-build').click();
     assert((await text(page.locator('[data-testid=compose] .label').first())) === 'Build a palace', '"Build a palace" opened the notes being added to another palace');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
+
+    // The other half: a palace that was never opened has no older places. Extending it saves the same
+    // grown deck, and its survey then covers all of it, the new places with the rest.
+    const unopened = genDeck('deck-unopened', 'Never opened', KITS[0].id, [['One', 3], ['Two', 2]]);
+    const never = await open({ seed: seedDecks([unopened]) });
+    await never.page.getByTestId('title').waitFor();
+    // A new palace has nothing to be examined on yet: no Exam among its study actions.
+    assert((await deckRow(never.page, 'Never opened').getByTestId('deck-exam').count()) === 0 && JSON.stringify(await deckRow(never.page, 'Never opened').locator('.deck__actions button').allTextContents()) === JSON.stringify(['Walk', 'Recall']), 'a palace that was never opened offers an exam');
+    await deckRow(never.page, 'Never opened').getByTestId('deck-extend').click();
+    // Nothing in it has been studied: one calm line, and nothing is blocked.
+    assert((await text(never.page.getByTestId('extend-finish-first'))).startsWith('5 of its 5 places are still in ruins or under repair. You may want to finish those walks before you add more. This is a suggestion, not a finding'), `the suggestion reads: ${await text(never.page.getByTestId('extend-finish-first'))}`);
+    await never.page.getByTestId('compose-text').fill(['# Two', 'gamma - third letter', 'delta - fourth letter'].join('\n'));
+    await never.page.getByTestId('compose-design').click();
+    await never.page.getByTestId('proposal').waitFor();
+    assert((await never.page.getByTestId('proposal-row').count()) === 2 && (await text(never.page.getByTestId('extend-keeps'))) === 'Everything already in this palace stays where it is.', 'the proposal for a palace that was never opened is not the two new facts');
+    await never.page.getByTestId('compose-skip').click();
+    await never.page.getByTestId('compose-place').click();
+    await never.page.locator('[data-testid=survey] [data-testid=walk-label]:has-text("Place 1 of 7")').waitFor();
+    const whole = await session(never.page);
+    const wholeStops = await never.page.evaluate((stops) => stops.map((i) => window.__memoria.layout.loci[i].id), whole.stops);
+    assert(whole.mode === 'survey' && JSON.stringify(wholeStops) === JSON.stringify(['r1-1', 'r1-2', 'r1-3', 'r2-1', 'r2-2', 'r2-3', 'r2-4']), `the survey of a palace that was never opened walks ${wholeStops}`);
+    assert(!(await text(never.page.locator('[data-testid=survey] [data-testid=walk-label]'))).includes('new places'), 'the survey of the whole palace is labelled as a survey of the new places');
+    const grownDeck = (await savedDecks(never.page)).find((d) => d.id === unopened.id);
+    for (const item of unopened.items) assert(JSON.stringify(grownDeck.items.find((it) => it.id === item.id)) === JSON.stringify(item), `"${item.term}" is not identical after a palace that was never opened grew`);
+    assert(JSON.stringify(grownDeck.items.slice(5).map((it) => [it.term, it.locusId])) === JSON.stringify([['gamma', 'r2-3'], ['delta', 'r2-4']]) && JSON.stringify(specOf(grownDeck.layoutId).rooms.map((r) => r.places)) === '[3,4]', `the grown deck: ${JSON.stringify(grownDeck.items.map((it) => [it.term, it.locusId]))}`);
+    assert(grownDeck.surveyedAt === undefined, 'a palace that was never opened was marked as surveyed by being extended');
+    assert(never.errors.length === 0, `page errors: ${never.errors.join(' | ')}`);
+    await never.context.close();
 
     // A palace that is nearly full: six rooms, two places left in the last.
     const rooms = [['Alpha', 5], ['Beta', 5], ['Gamma', 5], ['Delta', 5], ['Epsilon', 5], ['Zeta', 3]];
@@ -561,7 +712,7 @@ const cases = {
     await shot(full.page, 'extend-full');
     assert(full.errors.length === 0, `page errors: ${full.errors.join(' | ')}`);
     await full.context.close();
-    return 'added 3 under an old heading and a new one: old items identical, places appended (r2-4, r4-1, r4-2), new room marked, only those 3 surveyed; from the results screen too; a nearly full palace names the facts left out, and says where the space is when none fits';
+    return 'added 3 under an old heading and a new one: old items identical, places appended (r2-4, r4-1, r4-2), new room marked, only those 3 surveyed, studied and recalled (3 of 3), older cards untouched; Add again from the results; a palace never opened is surveyed whole (7); a nearly full palace names the facts left out, and says where the space is when none fits';
   },
 
   async c() {
