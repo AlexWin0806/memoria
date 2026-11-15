@@ -146,7 +146,8 @@ function PalaceProgress({ deck, walks: all, cards, now }: { deck: Deck; walks: W
       )}
       {repair && (
         <p className="body" data-testid="progress-repair">
-          Now: {repair.whole} restored, {repair.repair} under repair, {repair.damaged} needing another repair, {repair.ruins} in ruins.
+          Now: {repair.whole} restored, {repair.standing} standing, {repair.repair} under repair, {repair.damaged} needing another repair,{' '}
+          {repair.ruins} in ruins.
         </p>
       )}
       {canExam(deck, cards) && (

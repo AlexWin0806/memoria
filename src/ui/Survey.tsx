@@ -334,7 +334,7 @@ function SurveySummary() {
         {rows.map(({ locus, known }) => (
           <li key={locus.id} className="place" data-state={known ? 'standing' : 'ruins'} data-testid="survey-place">
             <span className="place__term">{locus.name}</span>
-            <span className="place__meta">{known ? 'standing: you knew its fact' : 'in ruins'}</span>
+            <span className="place__meta">{known ? 'standing: answered in the survey, not yet recalled' : 'in ruins'}</span>
           </li>
         ))}
       </ol>

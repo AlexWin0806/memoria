@@ -117,32 +117,43 @@ function studied(card: ReviewCard | undefined): card is ReviewCard {
 }
 
 /**
- * How whole an item's place is, from what is saved about the item (see `SceneView.integrity`):
- *   recalled, and the last answer was right       1    restored
- *   recalled, and the last answer was a miss      0.3  damaged (a miss sends the card to box 1)
- *   recalled, and the learner marked it right     0.6  under repair: a claim restores nothing
- *   known in the survey, not recalled yet         1    it never fell
- *   studied, not recalled yet                     0.6  under repair
- *   unknown in the survey, or never surveyed      0    in ruins
+ * The state of an item's place, from what is saved about the item, and how whole the place
+ * looks in it (see `SceneView.integrity`):
+ *   recalled, and the last answer was right       restored   1
+ *   recalled, and the last answer was a miss      damaged    0.3  (a miss sends the card to box 1)
+ *   recalled, and the learner marked it right     repair     0.6  a claim restores nothing
+ *   right in the survey, not recalled yet         standing   1    it never fell
+ *   studied, not recalled yet                     repair     0.6
+ *   unknown in the survey, or never surveyed      ruins      0
+ * A place that stands looks like a restored one in the scene, and it is not one: a right pick
+ * in the survey may be a guess, and only a recall after study restores (research principle
+ * 10). So the two are named and counted apart wherever the states are put into words.
  * Only meaningful for a deck that has been surveyed; `deriveSceneView` decides that.
  */
+export type PlaceState = 'ruins' | 'damaged' | 'repair' | 'standing' | 'restored';
+
 export const INTEGRITY = { ruins: 0, damaged: 0.3, repair: 0.6, whole: 1 } as const;
 
-export function savedIntegrity(card: ReviewCard | undefined): number {
-  if (card && card.reps > 0) return isSelfMarked(card) ? INTEGRITY.repair : card.box >= 2 ? INTEGRITY.whole : INTEGRITY.damaged;
-  if (card?.survey === 'known') return INTEGRITY.whole;
-  return card?.studiedAt !== undefined ? INTEGRITY.repair : INTEGRITY.ruins;
+export function savedState(card: ReviewCard | undefined): PlaceState {
+  if (card && card.reps > 0) return isSelfMarked(card) ? 'repair' : card.box >= 2 ? 'restored' : 'damaged';
+  if (card?.survey === 'known') return 'standing';
+  return card?.studiedAt !== undefined ? 'repair' : 'ruins';
 }
 
-/** How many of a deck's places are in each state of repair, from saved state. */
-export function repairCounts(deck: Deck, cards: Record<string, ReviewCard>): { ruins: number; damaged: number; repair: number; whole: number } {
-  const counts = { ruins: 0, damaged: 0, repair: 0, whole: 0 };
+export function savedIntegrity(card: ReviewCard | undefined): number {
+  const state = savedState(card);
+  return state === 'standing' || state === 'restored' ? INTEGRITY.whole : INTEGRITY[state];
+}
+
+/**
+ * How many of a deck's places are in each state, from saved state. `whole` counts the
+ * restored places only; the ones that have stood since the survey are `standing`.
+ */
+export function repairCounts(deck: Deck, cards: Record<string, ReviewCard>): { ruins: number; damaged: number; repair: number; standing: number; whole: number } {
+  const counts = { ruins: 0, damaged: 0, repair: 0, standing: 0, whole: 0 };
   for (const it of deck.items) {
-    const v = savedIntegrity(cards[it.id]);
-    if (v === INTEGRITY.ruins) counts.ruins++;
-    else if (v === INTEGRITY.damaged) counts.damaged++;
-    else if (v === INTEGRITY.repair) counts.repair++;
-    else counts.whole++;
+    const state = savedState(cards[it.id]);
+    counts[state === 'restored' ? 'whole' : state]++;
   }
   return counts;
 }

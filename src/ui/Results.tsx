@@ -180,7 +180,7 @@ export function Results() {
           This demo run was not added to your reviews.
         </p>
       )}
-      {ruins && <RepairLegend />}
+      {ruins && <RepairLegend judge={judge} />}
       <div className="actions results__actions" data-testid="results-actions">
         {judge && (
           <button type="button" className="btn btn--primary" onClick={() => useSession.getState().toCompose()} data-testid="results-build">
