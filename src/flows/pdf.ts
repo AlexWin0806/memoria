@@ -253,6 +253,8 @@ const PAGE_NUMBER = /^(?:(?:page|p\.)\s*)?\d{1,4}(?:\s*(?:\/|of)\s*\d{1,4})?$|^[
 const BULLET = new RegExp(`^[•◦▪▫■□●○◆◇‣⁃∙·*–—${String.fromCodePoint(0xf0b7, 0xf0a7, 0xf0d8, 0xf076, 0xf0fc)}-]\\s+`, 'u');
 const NUMBERED = /^(?:\(?\d{1,3}[.)]|\(?[a-z]\)|[ivx]{1,4}[.)])\s+/i;
 const ENDS_SENTENCE = /[.!?:;…]["'”’)\]]*$/;
+/** "Chapter 3 . . . . . 41": dots leading to a page number. */
+const LEADERS = /(?:\.\s?){4,}\s*\d+$/;
 
 const letters = (s: string): number => (s.match(/\p{L}/gu) ?? []).length;
 const inBand = (line: Line, page: RawPage): 'top' | 'bottom' | null =>
@@ -316,31 +318,63 @@ function measure(pages: Doc['pages']): Pick<Doc, 'bodySize' | 'bodyFont' | 'pitc
   return { bodySize, bodyFont, pitch };
 }
 
-interface Column {
-  /**
-   * Where wrapped lines end, for lines starting near here. Zero when the text is not wrapped
-   * prose: a margin is believed only if a good share of the lines reach it and those lines
-   * are long. A list of short lines of like length has no margin, whatever its right edge.
-   */
-  margin: number;
-  /** The right edge of the longest line starting near here. */
-  widest: number;
+/**
+ * Where justified text ends: the right edge of the longest lines, if four or more long lines
+ * of different text, and a good share of all the lines, end there to within a hair. Zero if
+ * not. Lines of a list end where their words end, each somewhere else; and where a fixed-width
+ * face makes lines of equal length end together, they hold the same number of letters, which
+ * justified lines do not.
+ */
+function justifiedEdge(lines: Line[]): number {
+  const long = lines.filter((l) => l.text.length >= 30);
+  if (!long.length) return 0;
+  const edge = Math.max(...long.map((l) => l.right));
+  const together = new Set(long.filter((l) => edge - l.right <= 0.75).map((l) => l.text));
+  const lengths = new Set([...together].map((text) => text.length));
+  return together.size >= 4 && lengths.size >= 3 && together.size >= 0.3 * new Set(lines.map((l) => l.text)).size ? edge : 0;
 }
 
-function columnFor(doc: Doc): (line: Line, page: RawPage) => Column {
-  const all = doc.pages.flatMap((p) => p.lines.filter((l) => Math.abs(l.size - doc.bodySize) <= 1));
-  const cache = new Map<number, Column>();
-  return (line, page) => {
-    const slot = Math.round(line.x / 12);
-    const known = cache.get(slot);
-    if (known) return known;
-    const near = all.filter((l) => Math.abs(l.x - line.x) <= 0.2 * page.width).sort((a, b) => a.right - b.right);
-    const edge = near.length ? near[Math.min(near.length - 1, Math.floor(near.length * 0.9))].right : 0;
-    const reaching = near.filter((l) => l.right >= edge - 1.5 * doc.bodySize).map((l) => l.text.length).sort((a, b) => a - b);
-    const wrapped = reaching.length >= 3 && reaching.length >= near.length * 0.3 && reaching[Math.floor(reaching.length / 2)] >= 30;
-    const column = { margin: wrapped ? edge : 0, widest: near.length ? near[near.length - 1].right : 0 };
-    cache.set(slot, column);
-    return column;
+/**
+ * The right edge of the text block a line sits in, on its page: where a line of that column
+ * ends when it has run out of room. Zero when the page shows no such edge for the column,
+ * and then no line in it is taken for a wrapped one.
+ *
+ * An edge is believed on the evidence of where lines end, never of what they say:
+ *  - lines come up to the right margin of the page (as far from the right side as the text
+ *    starts from the left) or, in a column with another to its right, up to that column;
+ *  - or the text is justified (see justifiedEdge).
+ * The right edge of the longest lines of a list is not an edge: short lines of like length
+ * end near each other by chance, and reading that as a margin joined a whole vocabulary
+ * list into one line.
+ */
+function edgesOf(page: Doc['pages'][number], bodySize: number): (line: Line) => number {
+  const { width } = page.raw;
+  const body = page.lines.filter((l) => Math.abs(l.size - bodySize) <= 1);
+  const lefts = body.map((l) => l.x).sort((a, b) => a - b);
+  // The left margin: the leftmost place where two lines start. One line alone may be a stray, or centred.
+  const left = lefts.find((x, i) => i + 1 < lefts.length && lefts[i + 1] - x <= 2) ?? lefts[0] ?? 0;
+  // Centred lines mirror themselves, so every one of them "comes up to the margin" opposite its
+  // own start. A page set mostly that way (a title page, a centred list) has no edge to run to.
+  const centred = body.filter((l) => l.x > left + 2 && Math.abs((l.x + l.right) / 2 - width / 2) <= 2).length;
+  if (centred >= 2 && centred >= 0.5 * body.length) return () => 0;
+  // More columns: places well to the right where many lines start.
+  const starts = [left];
+  for (const x of lefts) {
+    if (x < starts[starts.length - 1] + 0.25 * width) continue;
+    if (lefts.filter((other) => Math.abs(other - x) <= 2).length >= Math.max(4, 0.12 * body.length)) starts.push(x);
+  }
+  const edges = starts.map((start, i) => {
+    const next = starts[i + 1];
+    const column = body.filter((l) => l.x >= start - 2 && (next === undefined || l.x < next - 2));
+    const from = next === undefined ? width - left - 0.08 * width : next - Math.max(4 * bodySize, 0.06 * width);
+    const reaching = column.filter((l) => l.right >= from && (next === undefined || l.right < next)).map((l) => l.right).sort((a, b) => a - b);
+    return reaching.length ? reaching[Math.floor(0.9 * (reaching.length - 1))] : justifiedEdge(column);
+  });
+  return (line) => {
+    if (line.x < left - 2) return 0;
+    let at = 0;
+    while (at + 1 < starts.length && line.x >= starts[at + 1] - 2) at++;
+    return edges[at];
   };
 }
 
@@ -378,7 +412,8 @@ function join(above: string, below: string): string {
   return `${above} ${below}`;
 }
 
-function toBlocks(page: Doc['pages'][number], doc: Doc, columnOf: (line: Line, page: RawPage) => Column): Block[] {
+function toBlocks(page: Doc['pages'][number], doc: Doc): Block[] {
+  const edgeOf = edgesOf(page, doc.bodySize);
   const { lines, raw } = page;
   const blocks: Block[] = [];
   let first: Line | undefined;
@@ -396,28 +431,26 @@ function toBlocks(page: Doc['pages'][number], doc: Doc, columnOf: (line: Line, p
       else if (heading) starts = line.size !== prev.size || dy > 1.6 * line.size || dy <= 0;
       else if (dy <= 0 || dy > doc.pitch * 1.35 || Math.abs(line.size - prev.size) > 1) starts = true;
       else if (Math.abs(line.x - prev.x) > 0.25 * raw.width) starts = true;
-      // A row of a table is a line of its own.
-      else if (BULLET.test(line.text) || line.text.includes('\t') || prev.text.includes('\t')) starts = true;
+      // A row of a table, or of a table of contents, is a line of its own.
+      else if (BULLET.test(line.text) || line.text.includes('\t') || prev.text.includes('\t') || LEADERS.test(prev.text)) starts = true;
       else {
         const listItem = BULLET.test(first.text) || NUMBERED.test(first.text);
-        const { margin, widest } = columnOf(prev, raw);
         const capital = /^["'“‘(]?[\p{Lu}\p{N}]/u.test(line.text);
         const ended = ENDS_SENTENCE.test(prev.text);
-        // Would the first word of this line have fitted at the end of the line above? Then the
-        // line above ended on purpose: it was the last line of its paragraph or list item.
-        const room = margin > 0 ? prev.right + 0.3 * prev.size + firstWordWidth(line) <= margin - 0.5 * prev.size : null;
-        if (NUMBERED.test(line.text)) starts = room !== false || ended || listItem;
+        // The one sign that a line runs on into the next: it ran to the right edge of its text
+        // block, so that the first word of the next line had no room left on it. A line that
+        // stops short of the edge ended on purpose, and so does every line where the page shows
+        // no edge. Whether the line ends with a full stop does not come into it.
+        const edge = edgeOf(prev);
+        const ran = edge > 0 && prev.right >= edge - Math.min(firstWordWidth(line) + 0.8 * prev.size, 10 * prev.size);
+        if (NUMBERED.test(line.text)) starts = !ran || ended || listItem;
         // A first-line indent starts a paragraph; under a list marker it is the item running on.
         else if (!listItem && line.x - prev.x > 0.9 * line.size) starts = true;
-        else if (room !== null) starts = room || (capital && ended);
-        else {
-          // No margin to measure against: these are lines, not wrapped prose. Each is an item of
-          // its own unless it plainly runs on: a word broken by a hyphen, or a long line, as
-          // wide as any here, that stops mid-sentence before a small letter.
-          const brokenWord = /\p{L}[-‐]$/u.test(prev.text) && /^\p{Ll}/u.test(line.text);
-          const long = prev.text.split(/\s+/).length >= 4 && prev.right >= widest - 0.15 * (widest - prev.x);
-          starts = !(brokenWord || (long && !capital && !ended));
-        }
+        // Ran to the edge: one paragraph. Only where a sentence ends there and another begins is
+        // it split, because two lines of one paragraph cost less than two facts in one line.
+        else if (ran) starts = capital && ended;
+        // Stopped short: a line of its own. A word cut in two by a hyphen is still one word.
+        else starts = !(/\p{L}[-‐]$/u.test(prev.text) && /^\p{Ll}/u.test(line.text));
       }
     }
 
@@ -436,9 +469,8 @@ function layout(raw: RawPage[]): PdfPageText[] {
   const pages = raw.map((page) => ({ raw: page, lines: toLines(page.runs) }));
   withoutRunningLines(pages, measure(pages).bodySize);
   const doc: Doc = { pages, ...measure(pages) };
-  const columnOf = columnFor(doc);
   return pages.map((page, i) => {
-    const blocks = toBlocks(page, doc, columnOf);
+    const blocks = toBlocks(page, doc);
     const notes = blocks
       .map((b) => (b.heading ? `# ${b.text.replace(/^#+\s*/, '')}` : b.text.replace(BULLET, '- ')).replace(/[ ]{2,}/g, ' ').trim())
       .filter(Boolean)

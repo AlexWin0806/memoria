@@ -25,6 +25,11 @@
  *      is read; a drop elsewhere on the page does not navigate away
  *   e  "Stop reading" cancels; with the browser offline before the reader was ever loaded the
  *      learner is told so (there is no service worker: offline needs the reader fetched once)
+ *   f  A page that is only short "term - meaning" lines, with no bullets and no full stops,
+ *      stays one fact per line: as plain lines, as a <ul>, as a two-column <table>, and under
+ *      two headings; with a paragraph of wrapped prose on the same page, the prose is still
+ *      joined into one line and the list is left alone; a centred list and a list in a
+ *      fixed-width face stay lists; wrapped prose in two columns is joined column by column
  *
  * Screenshots go to qa/shots/ui/pdf-*.png.
  */
@@ -140,7 +145,56 @@ const MIXED_HTML = `<html><body style="font: 12pt Georgia, serif"><h1 style="fon
  */
 const LOCKED_PDF = 'JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgPGZkOGVlZDA2YWE+Cj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9UeXBlIC9QYWdlcwovQ291bnQgMQovS2lkcyBbIDQgMCBSIF0KPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDIgMCBSCj4+CmVuZG9iago0IDAgb2JqCjw8Ci9Db250ZW50cyA1IDAgUgovTWVkaWFCb3ggWyAwIDAgMjAwIDEwMCBdCi9SZXNvdXJjZXMgPDwKL0ZvbnQgNiAwIFIKL1Byb2NTZXQgWyAvUERGIC9UZXh0IC9JbWFnZUIgL0ltYWdlQyAvSW1hZ2VJIF0KPj4KL1JvdGF0ZSAwCi9UcmFucyA8PAo+PgovVHlwZSAvUGFnZQovUGFyZW50IDIgMCBSCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9MZW5ndGggMTEwCj4+CnN0cmVhbQqxDRyvPY9wH2KsgcuccKRLYgn0bryhriBP7niUGGlGtXEsNsDSoEMkWgbYrh8166J/ot+pzm1JHbmqFLd0lWfVHibl420BkoImYAH+bndW2P1jZlX8Y+CWx3XRYzTeaPGpmCLswYmpJp8AYtPI3wplbmRzdHJlYW0KZW5kb2JqCjYgMCBvYmoKPDwKL0YxIDcgMCBSCj4+CmVuZG9iago3IDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhCi9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nCi9OYW1lIC9GMQovU3VidHlwZSAvVHlwZTEKL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjggMCBvYmoKPDwKL1YgMgovUiAzCi9MZW5ndGggMTI4Ci9QIDQyOTQ5NjcyOTIKL0ZpbHRlciAvU3RhbmRhcmQKL08gPDBkYjU4NTVmYzUzMjY1NjllNzY1OTA2Y2FmNjRlNDQyOWE0YzIwZDZlOTk2ZmRlZjk2M2U5YjUwODBmOWUwODM+Ci9VIDxlMDY4NjA2OGQ1MWQ3NjVlZmFhMjVkYmQwZWI1NGM3ZjI4YmY0ZTVlNGU3NThhNDE2NDAwNGU1NmZmZmEwMTA4Pgo+PgplbmRvYmoKeHJlZgowIDkKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDAwNTkgMDAwMDAgbiAKMDAwMDAwMDExOCAwMDAwMCBuIAowMDAwMDAwMTY3IDAwMDAwIG4gCjAwMDAwMDAzNTYgMDAwMDAgbiAKMDAwMDAwMDUxNyAwMDAwMCBuIAowMDAwMDAwNTQ4IDAwMDAwIG4gCjAwMDAwMDA2NTUgMDAwMDAgbiAKdHJhaWxlcgo8PAovU2l6ZSA5Ci9Sb290IDMgMCBSCi9JbmZvIDEgMCBSCi9JRCBbIDwzNTM0MzczODM4MzUzMTMxMzUzMDMxMzUzODM4MzY2NTYyNjUzMjYyMzYzNjM1MzIzMTM0MzkzNTMwMzUzMTMyPiA8MzUzNDM3MzgzODM1MzEzMTM1MzAzMTM1MzgzODM2NjU2MjY1MzI2MjM2MzYzNTMyMzEzNDM5MzUzMDM1MzEzMj4gXQovRW5jcnlwdCA4IDAgUgo+PgpzdGFydHhyZWYKODcwCiUlRU9GCg==';
 
+/** Twelve short facts with nothing at the line ends and lengths much alike: what a vocabulary sheet looks like. */
+const TERMS = [
+  ['mitochondria', 'the powerhouse of the cell'],
+  ['ribosome', 'the site of protein synthesis'],
+  ['nucleus', 'holds the DNA of the cell'],
+  ['lysosome', 'breaks down worn-out parts'],
+  ['Golgi apparatus', 'sorts and ships proteins'],
+  ['chloroplast', 'turns light into sugar'],
+  ['cell wall', 'a stiff layer around plant cells'],
+  ['vacuole', 'stores water and nutrients'],
+  ['cytoplasm', 'the gel that fills the cell'],
+  ['centriole', 'organises the spindle fibres'],
+  ['peroxisome', 'breaks down fatty acids'],
+  ['cytoskeleton', 'the frame that gives a cell its shape'],
+];
+const FACTS = TERMS.map(([term, meaning]) => `${term} - ${meaning}`);
+const SHEET = 'font: 12pt Georgia, serif; margin: 15mm';
+const PLAIN_HTML = `<html><body style="${SHEET}">${FACTS.join('<br>')}</body></html>`;
+const BULLETED_HTML = `<html><body style="${SHEET}"><ul>${items(FACTS)}</ul></body></html>`;
+const TABLE_HTML = `<html><body style="${SHEET}"><table>${TERMS.map(([term, meaning]) => `<tr><td>${term}</td><td>${meaning}</td></tr>`).join('')}</table></body></html>`;
+const HEADED_HTML = `<html><body style="${SHEET}"><h2 style="font-size: 16pt">Inside every cell</h2>${FACTS.slice(0, 6).join('<br>')}<h2 style="font-size: 16pt">In some cells only</h2>${FACTS.slice(6).join('<br>')}</body></html>`;
+/** No hyphen in it, so that where its lines break is the only thing to undo. */
+const PROSE =
+  'Cells are the smallest units of life that can carry out every process an organism needs, and the parts inside them, called organelles, each do one job. This paragraph is long enough to run over several lines of the page, so the reader has to put its lines back together, while the list under it must stay as it is, with one fact to a line.';
+const PROSE_AND_LIST_HTML = `<html><body style="${SHEET}"><p>${PROSE}</p>${FACTS.join('<br>')}</body></html>`;
+/** Three layouts where lines end together without having run out of room, and one where they did, in two columns. */
+const CENTRED_HTML = `<html><body style="${SHEET}; text-align: center">${FACTS.join('<br>')}</body></html>`;
+const FIXED = [
+  'alpha - the first letter of Greek',
+  'gamma - the third letter of Greek',
+  'kappa - the tenth letter of Greek',
+  'omega - the final letter of Greek',
+  'theta - the eighth letter in line',
+  'sigma - the letter used for a sum',
+  'beta - the second one',
+  'pi - the sixteenth',
+];
+const FIXED_HTML = `<html><body style="margin: 15mm"><pre style="font: 10pt monospace; margin: 0">${FIXED.join('\n')}</pre></body></html>`;
+const PARAGRAPHS = ['First', 'Second', 'Third', 'Fourth'].map((n) => `${n} of four. ${PROSE}`);
+const COLUMNS_HTML = `<html><body style="${SHEET}"><div style="column-count: 2; column-gap: 10mm">${PARAGRAPHS.map((p) => `<p>${p}</p>`).join('')}</div></body></html>`;
+
 const files = {
+  plain: { name: 'vocabulary.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(PLAIN_HTML) },
+  bulleted: { name: 'vocabulary-bullets.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(BULLETED_HTML) },
+  table: { name: 'vocabulary-table.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(TABLE_HTML) },
+  headed: { name: 'vocabulary-headed.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(HEADED_HTML) },
+  proseAndList: { name: 'intro-and-vocabulary.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(PROSE_AND_LIST_HTML) },
+  centred: { name: 'vocabulary-centred.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(CENTRED_HTML) },
+  fixed: { name: 'greek-letters.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(FIXED_HTML) },
+  columns: { name: 'two-columns.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(COLUMNS_HTML) },
   list: { name: 'carpal-bones.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(LIST_HTML) },
   long: { name: 'lecture-4.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(LONG_HTML, RUNNING) },
   scan: { name: 'scanned-handout.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(SCAN_HTML) },
@@ -506,6 +560,42 @@ const cases = {
     assert(fresh.errors.length === 0, `page errors: ${fresh.errors.join(' | ')}`);
     await fresh.context.close();
     return 'Stop reading cancels and writes nothing; offline before the reader was loaded says so, and works again once online';
+  },
+
+  /**
+   * Short lines with nothing at their ends are the commonest thing a student uploads. Each
+   * stays a line of its own, however alike their lengths; only a line that ran to the right
+   * edge of its text block is joined to the next.
+   */
+  async f() {
+    const { context, page, errors, box } = await open();
+    const read = async (file) => {
+      await box.fill('');
+      await upload(page, file);
+      await phase(page, 'done');
+      return (await box.inputValue()).split('\n');
+    };
+    const same = (got, want, what) => assert(JSON.stringify(got) === JSON.stringify(want), `${what}: expected ${want.length} lines, got ${got.length}:\n${got.join('\n')}`);
+
+    same(await read(files.plain), FACTS, 'a plain list of short lines');
+    await shot(page, 'plain-list');
+    same((await read(files.bulleted)).map((l) => l.replace(/^- /, '')), FACTS, 'the list as <ul>');
+    const rows = await read(files.table);
+    assert(rows.length === TERMS.length, `the list as a table: expected ${TERMS.length} lines, got ${rows.length}:\n${rows.join('\n')}`);
+    TERMS.forEach(([term, meaning], i) => assert(rows[i].split(/[\t ]+/).join(' ') === `${term} ${meaning}`, `table row ${i + 1} reads "${rows[i]}"`));
+    same(await read(files.headed), ['# Inside every cell', ...FACTS.slice(0, 6), '# In some cells only', ...FACTS.slice(6)], 'the list under two headings');
+    const mixed = await read(files.proseAndList);
+    same(mixed, [PROSE, ...FACTS], 'a paragraph of wrapped prose and then the list');
+    // Lines that end together for another reason than having run out of room are not joined either:
+    // centred lines mirror themselves, and in a fixed-width face equal counts of letters end at one place.
+    same(await read(files.centred), FACTS, 'the list centred on the page');
+    assert(FIXED.filter((l) => l.length === 33).length === 6, 'the fixed-width list should have six lines of one length');
+    same(await read(files.fixed), FIXED, 'a list in a fixed-width face with lines of equal length');
+    // And the edge a line runs to is that of its own column.
+    same(await read(files.columns), PARAGRAPHS, 'four paragraphs of wrapped prose in two columns');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `${FACTS.length} short lines stay ${FACTS.length} lines as plain text, as <ul>, as a table, under two headings, centred, and in a fixed-width face; a wrapped paragraph beside the list is still one line, and so is each of four paragraphs in two columns`;
   },
 };
 
