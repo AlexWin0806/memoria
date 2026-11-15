@@ -38,3 +38,19 @@
 @media (max-width: 719px) {
   .deck--arranging { flex-wrap: wrap; }
 }
+
+/* A row can also be dragged by its name with the pointer: it is lifted on the paper wash and follows the pointer. */
+.arrange__grip {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.deck--dragging {
+  position: relative;
+  z-index: 1;
+  /* A rule above as a shadow, not a border: lifting a row must not move the others by a pixel. */
+  box-shadow: 0 -1px 0 var(--rule-strong);
+  border-bottom-color: var(--rule-strong);
+  background: var(--ui-panel);
+}
+.deck--dragging .arrange__grip { cursor: grabbing; }

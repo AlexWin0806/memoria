@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { CompareLink } from '@/ab/CompareLink';
 import { UNLISTED_DECK_IDS } from '@/ai/fixtures';
 import type { Deck, ReviewCard } from '@/core/types';
@@ -11,7 +11,7 @@ import { JUDGE_PROMISE } from '@/flows/timing';
 import { getDeck, useAllDecks, useDecks } from '@/state/decks';
 import { EDIT_PREFIX, hasExtensionDraft, hasNewPalaceDraft, openEditor, openExtension, openNewPalace, useDraft } from '@/state/draft';
 import { useHistory } from '@/state/history';
-import { arrangePalaces, movePalace } from '@/state/palaceOrder';
+import { arrangePalaces, movePalace, placePalace } from '@/state/palaceOrder';
 import { deckProgress, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { prefersReducedMotion, useSettings, type RecallInput } from '@/state/settings';
@@ -154,7 +154,15 @@ export function Title() {
         <ul className="decks" ref={arrange.listRef}>
           {arrange.on && decks.map((deck, i) => (
             <li key={deck.id} className="deck deck--arranging" data-testid="deck-row" data-deck-id={deck.id}>
-              <span className="deck__text deck__title">{deck.title}</span>
+              <span
+                className="deck__text deck__title arrange__grip"
+                onPointerDown={(e) => arrange.dragStart(e, deck.id)}
+                onPointerMove={arrange.dragMove}
+                onPointerUp={() => arrange.dragEnd(true)}
+                onPointerCancel={() => arrange.dragEnd(false)}
+              >
+                {deck.title}
+              </span>
               <span className="arrange__moves">
                 {/* aria-disabled, not disabled: a button that reaches the end keeps the focus it was pressed with. */}
                 <button
@@ -260,10 +268,12 @@ export function Title() {
 function useArrange(decks: Deck[]) {
   const [on, setOn] = useState(false);
   const [said, setSaid] = useState('');
-  // The button of the row that was just moved, to be focused again once the row is redrawn.
-  const [moved, setMoved] = useState<{ id: string; dir: 'up' | 'down'; n: number } | null>(null);
+  // The row that was just moved, and the button to focus again once it is redrawn (none after a drag).
+  const [moved, setMoved] = useState<{ id: string; dir: 'up' | 'down' | null; n: number } | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  // A drag with the pointer in progress: the row follows the pointer by style, not by React state.
+  const drag = useRef<{ id: string; from: number; to: number; startY: number; mids: number[]; row: HTMLElement } | null>(null);
   const ids = decks.map((d) => d.id);
 
   const end = () => {
@@ -296,23 +306,56 @@ function useArrange(decks: Deck[]) {
   useEffect(() => {
     if (!moved) return;
     const row = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-deck-id]') ?? [])].find((el) => el.dataset.deckId === moved.id);
-    row?.querySelector<HTMLButtonElement>(`[data-move=${moved.dir}]`)?.focus();
+    if (moved.dir) row?.querySelector<HTMLButtonElement>(`[data-move=${moved.dir}]`)?.focus();
     if (row && !prefersReducedMotion(useSettings.getState().reducedMotion)) {
       row.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
     }
   }, [moved]);
 
-  const move = (id: string, by: -1 | 1) => {
-    const next = movePalace(ids, id, by);
+  const save = (id: string, next: string[], dir: 'up' | 'down' | null) => {
     const at = next.indexOf(id);
     if (at === ids.indexOf(id)) return;
     useSettings.getState().setPalaceOrder(next);
     const title = decks.find((d) => d.id === id)?.title ?? '';
     setSaid(`${title}: now ${ordinal(at + 1)} of ${next.length}`);
-    setMoved((m) => ({ id, dir: by < 0 ? 'up' : 'down', n: (m?.n ?? 0) + 1 }));
+    setMoved((m) => ({ id, dir, n: (m?.n ?? 0) + 1 }));
+  };
+  const move = (id: string, by: -1 | 1) => save(id, movePalace(ids, id, by), by < 0 ? 'up' : 'down');
+
+  // Dragging a row by its name: an addition for the pointer; the moves above do the same from the keyboard.
+  const dragStart = (e: ReactPointerEvent<HTMLElement>, id: string) => {
+    if (e.button !== 0) return;
+    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-deck-id]') ?? [])];
+    const from = rows.findIndex((r) => r.dataset.deckId === id);
+    if (from < 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const mids = rows.map((r) => {
+      const box = r.getBoundingClientRect();
+      return box.top + box.height / 2;
+    });
+    drag.current = { id, from, to: from, startY: e.clientY, mids, row: rows[from] };
+    rows[from].classList.add('deck--dragging');
+  };
+  const dragMove = (e: ReactPointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const dy = e.clientY - d.startY;
+    d.row.style.transform = `translateY(${dy}px)`;
+    // Its new index: how many of the other rows have their middle above the dragged row's.
+    const y = d.mids[d.from] + dy;
+    d.to = d.mids.reduce((n, m, i) => (i !== d.from && y > m ? n + 1 : n), 0);
+  };
+  const dragEnd = (drop: boolean) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    d.row.style.transform = '';
+    d.row.classList.remove('deck--dragging');
+    if (drop) save(d.id, placePalace(ids, d.id, d.to), null);
   };
 
-  return { on, said, toggle, move, toggleRef, listRef };
+  return { on, said, toggle, move, toggleRef, listRef, dragStart, dragMove, dragEnd };
 }
 
 /** Value of the menu entry that stands for a theme shown but not saved. */

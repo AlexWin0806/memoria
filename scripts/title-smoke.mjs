@@ -19,6 +19,8 @@
  *      that is far too long) falls back to the default order without an error, and is set aside;
  *      ids of palaces that are gone are ignored and the palaces it does not name come first.
  *      With reduced motion a move animates nothing.
+ *   c  With the pointer (an addition to the keyboard moves): a row dragged by its name to the top,
+ *      then one dragged down two places; a drag that ends where it began changes nothing.
  *
  * Screenshots go to qa/shots/ui/title-*.png.
  */
@@ -324,6 +326,42 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${bad.length} bad values fall back and are set aside; stale ids ignored, unnamed first; no animation with reduced motion`;
+  },
+
+  async c() {
+    const { context, page, errors } = await open();
+    await page.getByTestId('title-arrange').click();
+    await page.getByTestId('arrange-hint').waitFor();
+    const grip = (title) => page.locator('[data-testid=deck-row] .arrange__grip', { hasText: title });
+    /** Drag the row named `title` so that its middle lands `rows` rows away (negative = up). */
+    const dragBy = async (title, rows, name) => {
+      const box = await grip(title).boundingBox();
+      const pitch = (await page.getByTestId('deck-row').nth(1).boundingBox()).y - (await page.getByTestId('deck-row').nth(0).boundingBox()).y;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x, y + rows * pitch, { steps: 8 });
+      if (name) await shot(page, name);
+      await page.mouse.up();
+    };
+    const KITCHEN = 'Spanish in the kitchen';
+    await dragBy(KITCHEN, -5.6, 'dragging');
+    await page.waitForFunction((t) => document.querySelector('[data-testid=deck-row] .deck__title')?.textContent.trim() === t, KITCHEN, { timeout: 5000 }).catch(() => {});
+    const afterTop = [KITCHEN, ...DEFAULT.filter((t) => t !== KITCHEN)];
+    assert(same(await titles(page), afterTop), `after a drag to the top the list reads ${await titles(page)}`);
+    assert((await said(page)) === `${KITCHEN}: now 1st of 8`, `after the drag the live region says "${await said(page)}"`);
+    assert(same(await storedOrder(page), await rowIds(page)), 'the dragged order was not stored as shown');
+    await dragBy(ALPHA.title, 2.4);
+    const afterDown = [KITCHEN, BETA.title, BUILT_IN[0], ALPHA.title, ...BUILT_IN.filter((t) => t !== KITCHEN).slice(1)];
+    assert(same(await titles(page), afterDown), `after a drag down two places the list reads ${await titles(page)}`);
+    await dragBy(BETA.title, 0.2);
+    assert(same(await titles(page), afterDown), 'a drag that ended where it began moved a row');
+    const lifted = await page.locator('.deck--dragging, [data-testid=deck-row][style*=translate]').count();
+    assert(lifted === 0, 'a row is still lifted after the drag');
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return 'a row dragged to the top and one down two places; a short drag changes nothing';
   },
 };
 

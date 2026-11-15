@@ -39,3 +39,11 @@ export function movePalace(shown: readonly string[], id: string, by: -1 | 1): st
   [ids[from], ids[to]] = [ids[to], ids[from]];
   return ids.slice(0, PALACE_ORDER_MAX);
 }
+
+/** The ids of `shown` with the palace `id` taken out and put back at index `to` (a drag with the pointer). */
+export function placePalace(shown: readonly string[], id: string, to: number): string[] {
+  const ids = shown.filter((x) => x !== id);
+  if (ids.length === shown.length) return [...shown];
+  ids.splice(Math.max(0, Math.min(to, ids.length)), 0, id);
+  return ids.slice(0, PALACE_ORDER_MAX);
+}
