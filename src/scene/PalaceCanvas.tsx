@@ -6,6 +6,7 @@ import { useReview } from '@/state/review';
 import { useSession } from '@/state/session';
 import { prefersReducedMotion, useSettings } from '@/state/settings';
 import { STYLES, StyleEnvironment, StylePost, StyleProvider } from '@/styles';
+import { toneTheme } from '@/styles/tone';
 import { useActiveTheme } from '@/themes/active';
 import { PalaceScene } from './PalaceScene';
 import { PerfLog } from './PerfLog';
@@ -95,7 +96,9 @@ function AdaptiveResolution({ max }: { max: number }) {
 export function PalaceCanvas() {
   const layout = getLayout(useSession((s) => s.layoutId));
   const qa = useMemo(() => readQa(layout.loci.length), [layout]);
-  const theme = useActiveTheme();
+  // A kit's tone (stone for Gothic, timber for Workshop) makes one theme object per palace.
+  const active = useActiveTheme();
+  const theme = useMemo(() => toneTheme(active, layout.tone), [active, layout.tone]);
   const style = STYLES[theme.style] ?? STYLES.greybox;
   const reduced = prefersReducedMotion(useSettings((s) => s.reducedMotion));
   // One veil for the life of the canvas. It lifts once, when the first scene is ready; made
