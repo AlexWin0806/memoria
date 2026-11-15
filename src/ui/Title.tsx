@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { CompareLink } from '@/ab/CompareLink';
 import { RETIRED_DECK_IDS, UNLISTED_DECK_IDS } from '@/ai/fixtures';
 import type { Deck, ReviewCard } from '@/core/types';
+import { ordinal } from '@/flows/answers';
 import { canExam, startExam } from '@/flows/exam';
 import { discardSavedWalk, judgeVariantFromUrl, openProgress, resumeWalk, startEncode, startJudge, startRecall, useFlow } from '@/flows/flow';
 import { formatWhen, plural } from '@/flows/format';
@@ -10,15 +11,17 @@ import { JUDGE_PROMISE } from '@/flows/timing';
 import { getDeck, useAllDecks, useDecks } from '@/state/decks';
 import { EDIT_PREFIX, hasExtensionDraft, hasNewPalaceDraft, openEditor, openExtension, openNewPalace, useDraft } from '@/state/draft';
 import { useHistory } from '@/state/history';
+import { arrangePalaces, movePalace, placePalace } from '@/state/palaceOrder';
 import { deckProgress, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
-import { useSettings, type RecallInput } from '@/state/settings';
+import { prefersReducedMotion, useSettings, type RecallInput } from '@/state/settings';
 import { savedDataWasSetAside } from '@/state/storage';
 import { useThemeLab } from '@/state/themeLab';
 import { getTheme, THEMES } from '@/themes';
 import { useActiveTheme } from '@/themes/active';
 import { palaceStyleLine } from './palaceWords';
 import './compose.css';
+import './arrange.css';
 
 /**
  * "8 places · not started", "8 places · 3 due now" or "8 places · next review tomorrow".
@@ -42,10 +45,13 @@ export function deckStatus(deck: Deck, cards: Record<string, ReviewCard>, now: n
 /** Title screen: set low on the left, straight over the scene, with no panel. */
 export function Title() {
   // A built-in deck kept only for the comparison test is not offered here (see UNLISTED_DECK_IDS).
-  const decks = useAllDecks().filter((d) => !UNLISTED_DECK_IDS.has(d.id) && !RETIRED_DECK_IDS.has(d.id));
+  // The list is in the order the learner arranged (see @/state/palaceOrder); only this list follows it.
+  const order = useSettings((s) => s.palaceOrder);
+  const decks = arrangePalaces(useAllDecks().filter((d) => !UNLISTED_DECK_IDS.has(d.id) && !RETIRED_DECK_IDS.has(d.id)), order);
   const cards = useReview((s) => s.cards);
   const now = useNow();
   const [deleting, setDeleting] = useState<string | null>(null);
+  const arrange = useArrange(decks);
   // Only places that have been studied and are due again: a new learner has no reviews.
   const totalDue = decks.reduce((n, d) => n + deckProgress(d, cards, now).due, 0);
   const promise = JUDGE_PROMISE[judgeVariantFromUrl()].label;
@@ -107,20 +113,86 @@ export function Title() {
             Your palaces
           </h2>
           <span className="rowhead__links">
-            <button type="button" className="link" onClick={() => useSession.getState().toReview()} data-testid="title-review">
-              Reviews{totalDue > 0 ? ` (${totalDue} due)` : ''}
-            </button>
-            <button type="button" className="link" onClick={openProgress} data-testid="title-progress">
-              Progress
-            </button>
+            {/* While the list is arranged nothing else is offered: a stray Enter cannot open another screen. */}
+            {!arrange.on && (
+              <>
+                <button type="button" className="link" onClick={() => useSession.getState().toReview()} data-testid="title-review">
+                  Reviews{totalDue > 0 ? ` (${totalDue} due)` : ''}
+                </button>
+                <button type="button" className="link" onClick={openProgress} data-testid="title-progress">
+                  Progress
+                </button>
+              </>
+            )}
+            {/* One button that reads Arrange, then Done: focus stays on it as the mode changes. */}
+            {(decks.length >= 2 || arrange.on) && (
+              <button
+                key="arrange"
+                type="button"
+                ref={arrange.toggleRef}
+                className="link"
+                onClick={() => {
+                  setDeleting(null);
+                  arrange.toggle();
+                }}
+                data-testid="title-arrange"
+              >
+                {arrange.on ? 'Done' : 'Arrange'}
+              </button>
+            )}
           </span>
         </div>
-        <ul className="decks">
-          {decks.map((deck) => {
+        {/* Always in the page, so that what it says is heard as it changes. */}
+        <p className="sr-only" role="status" aria-live="polite" data-testid="arrange-said">
+          {arrange.said}
+        </p>
+        {arrange.on && (
+          <p className="arrange__hint" data-testid="arrange-hint">
+            Move each palace up or down, then Done. A palace you build later is put at the top.
+          </p>
+        )}
+        <ul className="decks" ref={arrange.listRef}>
+          {arrange.on && decks.map((deck, i) => (
+            <li key={deck.id} className="deck deck--arranging" data-testid="deck-row" data-deck-id={deck.id}>
+              <span
+                className="deck__text deck__title arrange__grip"
+                onPointerDown={(e) => arrange.dragStart(e, deck.id)}
+                onPointerMove={arrange.dragMove}
+                onPointerUp={() => arrange.dragEnd(true)}
+                onPointerCancel={() => arrange.dragEnd(false)}
+              >
+                {deck.title}
+              </span>
+              <span className="arrange__moves">
+                {/* aria-disabled, not disabled: a button that reaches the end keeps the focus it was pressed with. */}
+                <button
+                  type="button"
+                  className="link arrange__move"
+                  aria-disabled={i === 0}
+                  aria-label={`Move ${deck.title} up`}
+                  data-move="up"
+                  onClick={() => arrange.move(deck.id, -1)}
+                >
+                  Move up
+                </button>
+                <button
+                  type="button"
+                  className="link arrange__move"
+                  aria-disabled={i === decks.length - 1}
+                  aria-label={`Move ${deck.title} down`}
+                  data-move="down"
+                  onClick={() => arrange.move(deck.id, 1)}
+                >
+                  Move down
+                </button>
+              </span>
+            </li>
+          ))}
+          {!arrange.on && decks.map((deck) => {
             // A generated palace says what it is built as and how many rooms it has; it can also be added to.
             const style = palaceStyleLine(deck.layoutId);
             return (
-            <li key={deck.id} className="deck" data-testid="deck-row">
+            <li key={deck.id} className="deck" data-testid="deck-row" data-deck-id={deck.id}>
               <div className="deck__text">
                 <span className="deck__title">{deck.title}</span>
                 <span className="deck__line">
@@ -187,6 +259,103 @@ export function Title() {
       <CompareLink />
     </div>
   );
+}
+
+/**
+ * Arrange mode of the list of palaces: on or off, a move, what is said after it, and where focus
+ * goes. A move writes the whole list as shown to settings (`palaceOrder`); nothing else changes.
+ */
+function useArrange(decks: Deck[]) {
+  const [on, setOn] = useState(false);
+  const [said, setSaid] = useState('');
+  // The row that was just moved, and the button to focus again once it is redrawn (none after a drag).
+  const [moved, setMoved] = useState<{ id: string; dir: 'up' | 'down' | null; n: number } | null>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  // A drag with the pointer in progress: the row follows the pointer by style, not by React state.
+  const drag = useRef<{ id: string; from: number; to: number; startY: number; mids: number[]; row: HTMLElement } | null>(null);
+  const ids = decks.map((d) => d.id);
+
+  const end = () => {
+    setOn(false);
+    setMoved(null);
+    setSaid('Done arranging.');
+  };
+  const toggle = () => {
+    if (on) return end();
+    setOn(true);
+    setSaid('Arranging your palaces: move each one up or down, then Done.');
+  };
+
+  // Escape ends the mode from anywhere on the title, and focus returns to the button that began it.
+  useEffect(() => {
+    if (!on) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setOn(false);
+      setMoved(null);
+      setSaid('Done arranging.');
+      toggleRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [on]);
+
+  // After a move: the same button of the moved row has focus again, and the row fades in briefly.
+  useEffect(() => {
+    if (!moved) return;
+    const row = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-deck-id]') ?? [])].find((el) => el.dataset.deckId === moved.id);
+    if (moved.dir) row?.querySelector<HTMLButtonElement>(`[data-move=${moved.dir}]`)?.focus();
+    if (row && !prefersReducedMotion(useSettings.getState().reducedMotion)) {
+      row.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
+    }
+  }, [moved]);
+
+  const save = (id: string, next: string[], dir: 'up' | 'down' | null) => {
+    const at = next.indexOf(id);
+    if (at === ids.indexOf(id)) return;
+    useSettings.getState().setPalaceOrder(next);
+    const title = decks.find((d) => d.id === id)?.title ?? '';
+    setSaid(`${title}: now ${ordinal(at + 1)} of ${next.length}`);
+    setMoved((m) => ({ id, dir, n: (m?.n ?? 0) + 1 }));
+  };
+  const move = (id: string, by: -1 | 1) => save(id, movePalace(ids, id, by), by < 0 ? 'up' : 'down');
+
+  // Dragging a row by its name: an addition for the pointer; the moves above do the same from the keyboard.
+  const dragStart = (e: ReactPointerEvent<HTMLElement>, id: string) => {
+    if (e.button !== 0) return;
+    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-deck-id]') ?? [])];
+    const from = rows.findIndex((r) => r.dataset.deckId === id);
+    if (from < 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const mids = rows.map((r) => {
+      const box = r.getBoundingClientRect();
+      return box.top + box.height / 2;
+    });
+    drag.current = { id, from, to: from, startY: e.clientY, mids, row: rows[from] };
+    rows[from].classList.add('deck--dragging');
+  };
+  const dragMove = (e: ReactPointerEvent<HTMLElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const dy = e.clientY - d.startY;
+    d.row.style.transform = `translateY(${dy}px)`;
+    // Its new index: how many of the other rows have their middle above the dragged row's.
+    const y = d.mids[d.from] + dy;
+    d.to = d.mids.reduce((n, m, i) => (i !== d.from && y > m ? n + 1 : n), 0);
+  };
+  const dragEnd = (drop: boolean) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    d.row.style.transform = '';
+    d.row.classList.remove('deck--dragging');
+    if (drop) save(d.id, placePalace(ids, d.id, d.to), null);
+  };
+
+  return { on, said, toggle, move, toggleRef, listRef, dragStart, dragMove, dragEnd };
 }
 
 /** Value of the menu entry that stands for a theme shown but not saved. */
