@@ -1,0 +1,40 @@
+/*
+ * Arranging the title screen's list of palaces (Title.tsx, useArrange). Like overlay.css:
+ * every colour and face comes from the CSS variables written by applyThemeVars().
+ * The rows keep the list's hairline rules; the two moves are the overlay's underlined links.
+ */
+
+.deck--arranging {
+  align-items: center;
+  flex-wrap: nowrap;
+}
+.deck--arranging .deck__title { flex: 1 1 auto; }
+
+.arrange__moves {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 16px;
+}
+.arrange__move { font-size: 16px; }
+/* At either end of the list a move does nothing: no underline (nothing to press), the text still legible. */
+.arrange__move[aria-disabled='true'] {
+  border-bottom-color: transparent;
+  cursor: default;
+}
+.arrange__move[aria-disabled='true']:hover {
+  border-bottom-width: 1px;
+  padding-bottom: 1px;
+}
+
+/* One quiet line under the heading while the list is arranged. */
+.arrange__hint {
+  margin: 10px 0 2px;
+  font-size: 16px;
+  font-style: italic;
+}
+
+/* A narrow sheet: a long name wraps above its two moves. */
+@media (max-width: 719px) {
+  .deck--arranging { flex-wrap: wrap; }
+}

@@ -1,6 +1,7 @@
 import type { Deck, DeckFocus, Imago, ItemLink, MemoryItem, PalaceLayoutMeta, PalaceSpec, RecallResult, ReviewCard, WalkRecord } from '@/core/types';
 import { DOMUS_META } from '@/layouts/domus/meta';
 import { parsePalaceId, specPlaces } from '@/layouts/spec';
+import { PALACE_ORDER_MAX } from './palaceOrder';
 
 /**
  * Everything Memoria keeps in the browser is read through this file, so that a value left
@@ -284,6 +285,7 @@ export interface CleanSettings {
   reducedMotion?: boolean | null;
   recallInput?: 'choice' | 'typed';
   familiarized?: Record<string, boolean>;
+  palaceOrder?: string[];
 }
 
 /** Only the fields that are well formed; the store's defaults stand in for the rest. */
@@ -305,6 +307,10 @@ export function cleanSettingsState(state: unknown, t: Tally): CleanSettings {
     if (kept.length !== entries.length) t.dropped = true;
     out.familiarized = Object.fromEntries(kept) as Record<string, boolean>;
   } else bad(state.familiarized);
+  // The order of the title list: deck ids. Anything else is dropped whole, and the list shows its default order.
+  const order = state.palaceOrder;
+  if (Array.isArray(order) && order.length <= PALACE_ORDER_MAX && order.every(str)) out.palaceOrder = order;
+  else bad(order);
   return out;
 }
 
