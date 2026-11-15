@@ -3,7 +3,7 @@ import { getKit } from '@/layouts/kits';
 import { KIT_LIST } from '@/layouts/kits/list';
 import type { FeatureDef, KitDef, RoomPlan, RoomPlot } from '@/layouts/kits/types';
 import { PROPS } from '@/layouts/props';
-import { ROOM_CAPACITY, normalizeSpec, palaceLayoutId, placeId } from '@/layouts/spec';
+import { MAX_ROOMS, ROOM_CAPACITY, normalizeSpec, palaceLayoutId, placeId, seedNumber } from '@/layouts/spec';
 
 /**
  * The data half of a generated palace: where every room, place, camera view and rail
@@ -13,8 +13,9 @@ import { ROOM_CAPACITY, normalizeSpec, palaceLayoutId, placeId } from '@/layouts
  *   **nothing that exists ever moves.**
  *
  *   - A room's origin depends on the shapes of the rooms before it, and on nothing else.
- *   - A place's position, feature, name, accent and view depend on (kit, room index, room
- *     shape, slot). In particular not on how many places its room has, nor on which rooms follow.
+ *   - A place's position, feature, name, accent and view depend on (kit, seed, room index,
+ *     room shape, slot). In particular not on how many places its room has, nor on which rooms
+ *     follow. What stands where is the furnishing: see `furnish` below.
  *   - The only things that depend on what comes later are the rail from the last place of a
  *     room to the first place of the next, and whether a far doorway is open.
  *
@@ -174,19 +175,6 @@ const round = (v: number) => Math.round(v * 1000) / 1000;
 const v3 = (x: number, y: number, z: number): Vec3 => [round(x), round(y), round(z)];
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/**
- * The n-th landmark of a palace (n = room index × 5 + slot): the kit's own features, then
- * the kit-neutral props, each once; if a palace needs more than there are, the kit's
- * features come round again and are told apart by name ("The Second Lectern").
- */
-function featureAt(kit: KitDef, n: number): { feature: FeatureDef; round: number } {
-  const pool = kit.features.length + PROPS.length;
-  if (n < kit.features.length) return { feature: kit.features[n], round: 0 };
-  if (n < pool) return { feature: PROPS[n - kit.features.length], round: 0 };
-  const again = n - pool;
-  return { feature: kit.features[again % kit.features.length], round: 1 + Math.floor(again / kit.features.length) };
-}
-
 /** The floor point of a slot in its room's frame, before mirroring: where a floor feature of this footprint stands. */
 function slotGround(slot: Slot, footprint = 0): [number, number] {
   const out = Math.max(slot.standoff, footprint + slot.margin);
@@ -202,7 +190,7 @@ interface Sited {
 }
 
 /** Where a feature stands in a slot of a room, where its image floats and where the learner stops to look. */
-function site(room: RoomSite, slot: Slot, feature: FeatureDef): Sited {
+function site(room: Pick<RoomSite, 'origin' | 'mirrored'>, slot: Slot, feature: FeatureDef): Sited {
   const onWall = feature.mount === 'wall';
   const { nx, nz } = slot;
   // In the room's frame, unmirrored: p the feature's origin, a the point its image floats over.
@@ -247,6 +235,200 @@ function site(room: RoomSite, slot: Slot, feature: FeatureDef): Sited {
   };
 }
 
+/**
+ * Furnishing: which feature stands at which place, and in which pigment.
+ *
+ * A palace without a seed takes the kit's own features in the kit's order, then the
+ * kit-neutral props in theirs: every such palace of a kit is furnished alike. That is how
+ * palaces were built before seeds existed, and the built-in decks still are, so it never
+ * changes (`scripts/palace-invariance.mjs` holds the lists).
+ *
+ * A palace with a seed is furnished from (kit, seed) alone, so that a learner's second palace
+ * in a style is not the first one again with other facts in it (research principle 8). The
+ * whole of the largest palace is laid out at once, room by room, and a palace of any size
+ * shows its first rooms and places: growing one moves nothing.
+ *
+ *   - The far end of a room (the fifth place, with the golden hand) takes one of the things
+ *     fit to stand there: the kit's own landmarks, which stand at the far ends of rooms among
+ *     the first four, and the tallest props.
+ *   - The kit's other features are dealt over all the rooms, two to the first rooms and one to
+ *     the rest, one of them always among a room's first three places: every room keeps the
+ *     style's character, however short the palace and however few places the room has.
+ *   - The smaller props fill what is left.
+ *   - Two features share a room only if they suit each other's plots (`suit`): their images
+ *     stand apart, and nobody stops to look at one while standing in the other. The kit's own
+ *     order was set by hand to that end; a seeded one is held to it here.
+ *   - A room holds no more than two wall features while there is a choice, far end included.
+ *   - The pigments are the hand-set table with five of its names exchanged: every rule of the
+ *     table holds, and amber stays amber (the landmark is never amber).
+ */
+interface Furnishing {
+  /** The n-th feature (n = room index × 5 + slot) stands at that place. */
+  order: FeatureDef[];
+  accent(roomIndex: number, slot: number): AccentKey;
+}
+
+/**
+ * A seeded palace draws on the features that existed when seeds were introduced: the first
+ * ten of its kit and the first 28 props. Kits and props are append-only so that palaces
+ * learners know do not change; a seeded order is a shuffle of the whole pool, so a feature
+ * appended later must stay out of it. Raising these re-furnishes every seeded palace.
+ */
+const SEEDED_OWN = 10;
+const SEEDED_PROPS = 28;
+/** A prop at least this tall is fit to stand at the far end of a room. */
+const LANDMARK_HEIGHT = 2.4;
+/**
+ * Props a kit does not take, because it has the same thing among its own: the Gothic library
+ * a bookcase with a ladder (see src/layouts/props/index.ts), the Workshop a trip hammer that
+ * strikes an anvil on a stump. In one room the two would be taken for each other.
+ */
+const KEPT_OUT: Record<string, string[]> = { gothic: ['ladder'], workshop: ['anvil'] };
+/** At most this many wall features in a room, while the pool gives a choice: a room of things hung on walls has nothing standing in it. */
+const ROOM_WALLS = 2;
+/** The pigments a seed exchanges among themselves. Amber is not one: see ACCENTS. */
+const EXCHANGED: AccentKey[] = ['red', 'green', 'teal', 'blue', 'plum'];
+
+/** FNV-1a, as `seedNumber` in src/layouts/spec.ts. */
+function hash(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** A stream of numbers in [0, 1) that depends on `seed` alone (mulberry32). */
+function stream(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), a | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffled<T>(list: readonly T[], next: () => number): T[] {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** A room at the origin, to try two features against each other in. */
+const TRIAL = { origin: [0, 0, 0] as Vec3, mirrored: false };
+/**
+ * Clearances between two places of a room, in metres: what the invariance script asks (3, 1.6
+ * and the rail's 0.3) and a little over. No more than a little: in a hall a tall feature is
+ * looked at from about 1.7 m off the image of the place before it, and asking much more
+ * would leave it no neighbour.
+ */
+const IMAGES_APART = 3.05;
+const VIEW_FROM_IMAGE = 1.65;
+const VIEW_FROM_FEATURE = 0.35;
+
+const apart = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[2] - b[2]);
+
+/**
+ * Whether feature `a` in slot `i` and feature `b` in slot `j` of one room suit each other, in
+ * a hall and in a ring (a furnishing does not know which a room will be): their images are
+ * apart, and the view of neither stands in the image or on the ground of the other.
+ */
+function suit(i: number, a: FeatureDef, j: number, b: FeatureDef): boolean {
+  return Object.values(SHAPES).every(({ slots }) => {
+    const sa = site(TRIAL, slots[i], a);
+    const sb = site(TRIAL, slots[j], b);
+    return (
+      apart(sa.anchor, sb.anchor) >= IMAGES_APART &&
+      apart(sa.view.position, sb.anchor) >= VIEW_FROM_IMAGE &&
+      apart(sb.view.position, sa.anchor) >= VIEW_FROM_IMAGE &&
+      apart(sa.view.position, sb.position) >= b.footprint + VIEW_FROM_FEATURE &&
+      apart(sb.view.position, sa.position) >= a.footprint + VIEW_FROM_FEATURE
+    );
+  });
+}
+
+/**
+ * Takes the first feature, of the first list that has one, that suits the room and keeps it
+ * within ROOM_WALLS; if no list has one, the first that suits the room; failing that, the first.
+ */
+function take(lists: FeatureDef[][], suits: (f: FeatureDef) => boolean, walls: number): FeatureDef | undefined {
+  const within = (f: FeatureDef) => f.mount !== 'wall' || walls < ROOM_WALLS;
+  for (const test of [(f: FeatureDef) => suits(f) && within(f), suits, () => true]) {
+    for (const list of lists) {
+      const i = list.findIndex(test);
+      if (i >= 0) return list.splice(i, 1)[0];
+    }
+  }
+  return undefined;
+}
+
+function furnish(kit: KitDef, seed: number): Furnishing {
+  if (!seed) return { order: [...kit.features, ...PROPS], accent: (roomIndex, slot) => ACCENTS[roomIndex % ACCENTS.length][slot] };
+
+  // The kit is part of the seed: a palace that changes style keeps its seed, and its props should not stay where they were.
+  const next = stream(seed ^ hash(kit.id));
+  const own = kit.features.slice(0, SEEDED_OWN);
+  const isLandmark = (i: number) => i % ROOM_CAPACITY === ROOM_CAPACITY - 1;
+  const props = PROPS.slice(0, SEEDED_PROPS).filter((f) => !KEPT_OUT[kit.id]?.includes(f.id));
+  const landmarks = shuffled(own.filter((_, i) => isLandmark(i)), next);
+  const ordinary = shuffled(own.filter((_, i) => !isLandmark(i)), next);
+  const tall = shuffled(props.filter((f) => f.height >= LANDMARK_HEIGHT), next);
+  const small = shuffled(props.filter((f) => f.height < LANDMARK_HEIGHT), next);
+  // The kit's landmarks and as many tall props, mixed, for the first rooms; then the other tall props.
+  const ends = [...shuffled([...landmarks, ...tall.splice(0, landmarks.length)], next), ...tall];
+  // Every room takes `each` of the kit's other features, and the first `more` rooms one more.
+  const each = Math.floor(ordinary.length / MAX_ROOMS);
+  const more = ordinary.length % MAX_ROOMS;
+  const accent = seededAccent(next);
+
+  const order: FeatureDef[] = [];
+  for (let r = 0; r < MAX_ROOMS && r < ends.length; r++) {
+    const end = ends[r];
+    let walls = end.mount === 'wall' ? 1 : 0;
+    // The four side plots, in the order they are furnished: one of the first three, then the rest.
+    const first = Math.floor(next() * 3);
+    const sides = [first, ...shuffled([0, 1, 2, 3].filter((slot) => slot !== first), next)];
+    const kitSides = sides.slice(0, each + (r < more ? 1 : 0));
+    const room: FeatureDef[] = [];
+    room[ROOM_CAPACITY - 1] = end;
+    // The kit's features before the props: of the two, they have fewer to choose from. A prop
+    // stands in for a kit feature where none of those left suits the room.
+    for (const slot of sides) {
+      // `every` passes over the plots that are still empty.
+      const suits = (f: FeatureDef) => room.every((other, at) => suit(slot, f, at, other));
+      const feature = take(kitSides.includes(slot) ? [ordinary, small] : [small], suits, walls);
+      // Out of features: the palace's later places take the kit's again, by another name (featureAt).
+      if (!feature) return { order, accent };
+      if (feature.mount === 'wall') walls++;
+      room[slot] = feature;
+    }
+    order.push(...room);
+  }
+  return { order, accent };
+}
+
+function seededAccent(next: () => number): Furnishing['accent'] {
+  const exchanged = shuffled(EXCHANGED, next);
+  return (roomIndex, slot) => {
+    const accent = ACCENTS[roomIndex % ACCENTS.length][slot];
+    const i = EXCHANGED.indexOf(accent);
+    return i < 0 ? accent : exchanged[i];
+  };
+}
+
+/**
+ * The n-th landmark of a palace (n = room index × 5 + slot): the furnishing's features, each
+ * once; if a palace needs more than there are, the kit's features come round again and are
+ * told apart by name ("The Second Lectern").
+ */
+function featureAt(kit: KitDef, order: FeatureDef[], n: number): { feature: FeatureDef; round: number } {
+  if (n < order.length) return { feature: order[n], round: 0 };
+  const again = n - order.length;
+  return { feature: kit.features[again % kit.features.length], round: 1 + Math.floor(again / kit.features.length) };
+}
+
 /** The rooms of a spec, each placed by the rooms before it. */
 export function roomSites(spec: PalaceSpec, kit: KitDef): RoomSite[] {
   let z = 0;
@@ -277,6 +459,7 @@ export function planLayout(input: PalaceSpec): PalacePlan {
   const spec = normalizeSpec(input);
   const kit = getKit(spec.kit);
   const rooms = roomSites(spec, kit);
+  const furnishing = furnish(kit, seedNumber(spec));
   const places: PlaceSite[] = [];
   const loci: Locus[] = [];
   const footprint: number[] = [];
@@ -289,9 +472,9 @@ export function planLayout(input: PalaceSpec): PalacePlan {
     const count = Math.min(room.spec.places, ROOM_CAPACITY, slots.length);
     for (let slot = 0; slot < count; slot++) {
       const n = room.index * ROOM_CAPACITY + slot;
-      const { feature, round: again } = featureAt(kit, n);
+      const { feature, round: again } = featureAt(kit, furnishing.order, n);
       const s = site(room, slots[slot], feature);
-      const accent = ACCENTS[room.index % ACCENTS.length][slot];
+      const accent = furnishing.accent(room.index, slot);
       const landmark = slot === ROOM_CAPACITY - 1;
       const index = loci.length;
       // The walk from the last place of the room before comes in through this room's entrance.
