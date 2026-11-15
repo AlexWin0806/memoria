@@ -310,6 +310,9 @@ function SurveyWalk() {
   );
 }
 
+/** How long after the summary appears its advance keys start to work (see SurveySummary). */
+const SUMMARY_KEYS_AFTER_MS = 700;
+
 /** After the survey: what it found, place by place, and the way into study. */
 function SurveySummary() {
   const { stops, layoutId, deckId } = useSession();
@@ -326,7 +329,15 @@ function SurveySummary() {
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, []);
-  useWalkKeys({ next: beginStudyAfterSurvey });
+  // The survey arrives here by itself after its last answer. A Space meant for that last place
+  // (to move on sooner) can land a moment late: for the first instant the keys do nothing, so
+  // that it cannot carry the learner past the summary unread. The button works at once.
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setArmed(true), SUMMARY_KEYS_AFTER_MS);
+    return () => clearTimeout(id);
+  }, []);
+  useWalkKeys({ next: armed ? beginStudyAfterSurvey : undefined });
 
   if (!deck) return null;
   const rows = stops.flatMap((index) => {
