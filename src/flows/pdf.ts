@@ -131,6 +131,8 @@ interface Run {
   size: number;
   font: string;
   eol: boolean;
+  /** Set in a fixed-width face, where every space between two words is as wide as a letter. */
+  mono: boolean;
 }
 
 interface RawPage {
@@ -150,6 +152,18 @@ interface Line {
   font: string;
   /** Every run of the line is set in `font`. */
   uniform: boolean;
+  /** What the line was put together from. */
+  runs: Run[];
+  /** The runs after the first, and the gap before each: where the cells of a table row would start. */
+  breaks: Break[];
+  /** A row of a table: what each cell says, left to right. */
+  cells?: string[];
+  /** The column each of those cells is in. */
+  cellColumns?: number[];
+  /** The rest of a cell that ran over from the row above, and was put back into it: not a line of the notes. */
+  absorbed?: boolean;
+  /** A row of a table that holds the titles of its columns. */
+  titles?: boolean;
 }
 
 type Matrix = [number, number, number, number, number, number];
@@ -190,15 +204,32 @@ const half = (n: number): number => Math.round(n * 2) / 2;
 const BULLET_GLYPHS = `•◦▪▫■□●○◆◇‣⁃∙·*–—›»➢➤►▶✓✔❖→⇒${String.fromCodePoint(0xf0b7, 0xf0a7, 0xf0d8, 0xf076, 0xf0fc)}-`;
 const BULLET = new RegExp(`^[${BULLET_GLYPHS}]\\s+`, 'u');
 const NUMBERED = /^(?:\(?\d{1,3}[.)]|\(?[a-z]\)|[ivx]{1,4}[.)])\s+/i;
-/** A bullet or a number with nothing after it yet. */
-const MARKER_ALONE = new RegExp(`^(?:[${BULLET_GLYPHS}]|\\(?\\d{1,3}[.)]|\\(?[a-z]\\)|[ivx]{1,4}[.)])$`, 'iu');
+/** A bullet or a number with nothing after it yet. A bare number counts: it numbers the line, it is not a cell of a table. */
+const MARKER_ALONE = new RegExp(`^(?:[${BULLET_GLYPHS}]|\\(?\\d{1,3}[.)]?|\\(?[a-z]\\)|[ivx]{1,4}[.)])$`, 'iu');
 
-function toLine(runs: Run[]): Line | null {
+const inked = (r: Run): boolean => r.str.trim() !== '';
+/** A gap this many ems wide, between two runs of a line, is taken for the gap between two cells whatever else is known. */
+const WIDE = 3;
+
+/** A run that starts after the first of its line, and how far it stands from what came before, in ems. */
+interface Break {
+  x: number;
+  gap: number;
+  /** The gap is more than a space between two words: 0.6 em, or two spaces of a fixed-width face. */
+  clear: boolean;
+}
+
+/**
+ * The words of a row of runs, spaced as they are set. `begins` says where in the text each
+ * run starts; `breaks` are the runs after the first, with the gap before each. A gap of
+ * several letters is set as a tab.
+ */
+function strung(runs: Run[]): { text: string; begins: { at: number; run: Run; length: number }[]; breaks: Break[] } {
   let text = '';
   let end = 0;
   let spaced = false;
-  /** Where in `text` each run begins, to find the run that holds the first word after a bullet. */
   const begins: { at: number; run: Run; length: number }[] = [];
+  const breaks: Break[] = [];
   for (const r of runs) {
     const str = tidy(r.str);
     if (!str.trim()) {
@@ -207,20 +238,26 @@ function toLine(runs: Run[]): Line | null {
       continue;
     }
     if (text) {
-      const gap = r.x - end;
+      const gap = (r.x - end) / r.size;
+      // After a bullet or a number alone the gap is the indent of the list, not a column of a table.
+      if (!MARKER_ALONE.test(text.trim())) breaks.push({ x: r.x, gap, clear: gap >= (r.mono ? 1.1 : 0.6) });
       // A gap of several letters is a column of a table or a tab stop: "term <tab> meaning".
-      // After a bullet or a number alone it is the indent of the list, not a column.
-      if (gap > 3 * r.size && !MARKER_ALONE.test(text.trim())) text = `${text.trimEnd()}\t`;
-      else if ((spaced || gap > 0.18 * r.size) && !/\s$/.test(text) && !/^\s/.test(str)) text += ' ';
+      if (gap > WIDE && !MARKER_ALONE.test(text.trim())) text = `${text.trimEnd()}\t`;
+      else if ((spaced || gap > 0.18) && !/\s$/.test(text) && !/^\s/.test(str)) text += ' ';
     }
     begins.push({ at: text.length, run: r, length: str.length });
     text += str;
     end = Math.max(end, r.x + r.width);
     spaced = false;
   }
+  return { text, begins, breaks };
+}
+
+function toLine(runs: Run[]): Line | null {
+  const { text, begins, breaks } = strung(runs);
   if (!text.trim()) return null;
-  const inked = runs.filter((r) => r.str.trim());
-  const x = Math.min(...inked.map((r) => r.x));
+  const inkedRuns = runs.filter(inked);
+  const x = Math.min(...inkedRuns.map((r) => r.x));
   // Where the words begin, if the line starts with a bullet or a number: at the run that holds
   // the first letter after it. When bullet and words are one run, that is a little way into
   // the run, by about the width a bullet, a number and a space are set at.
@@ -229,18 +266,20 @@ function toLine(runs: Run[]): Line | null {
   const holder = marker ? begins.find((b) => b.at <= indent + marker && indent + marker < b.at + b.length) : undefined;
   const ems = holder ? [...text.slice(holder.at, indent + marker)].reduce((sum, ch) => sum + (/\d/.test(ch) ? 0.55 : /\p{L}/u.test(ch) ? 0.5 : /\s/.test(ch) ? 0.28 : 0.35), 0) : 0;
   const textX = holder ? holder.run.x + holder.run.size * ems : x;
-  const font = heaviest(inked.map((r) => [r.font, r.str.length] as [string, number])) ?? '';
-  const size = heaviest(inked.map((r) => [half(r.size), r.str.length] as [number, number])) ?? 0;
-  const lead = inked.find((r) => half(r.size) === size) ?? inked[0];
+  const font = heaviest(inkedRuns.map((r) => [r.font, r.str.length] as [string, number])) ?? '';
+  const size = heaviest(inkedRuns.map((r) => [half(r.size), r.str.length] as [number, number])) ?? 0;
+  const lead = inkedRuns.find((r) => half(r.size) === size) ?? inkedRuns[0];
   return {
     text: text.replace(/[ ]{2,}/g, ' ').trim(),
     x,
     textX,
-    right: Math.max(...inked.map((r) => r.x + r.width)),
+    right: Math.max(...inkedRuns.map((r) => r.x + r.width)),
     y: lead.y,
     size,
     font,
-    uniform: inked.every((r) => r.font === font),
+    uniform: inkedRuns.every((r) => r.font === font),
+    runs,
+    breaks,
   };
 }
 
@@ -288,33 +327,238 @@ interface Doc {
 }
 
 /**
- * Running heads, running feet and page numbers: a line at the very top or bottom of the page,
- * no larger than the body text, whose words (digits aside) come back on other pages. A line
- * that is only a page number goes too. Anything else stays: leaving a header in costs a line,
- * taking a fact out costs the fact.
+ * What is on the pages but is not notes.
+ *  - A page number alone at the head or foot of a page, in any document.
+ *  - In a document of three pages or more, a line at the very top or bottom of the page, no
+ *    larger than the body text, that comes back on other pages word for word.
+ *  - In a document of three pages or more, a line with a number in it that comes back on
+ *    three pages or more once its digits are taken out, once to a page: a footer that ends
+ *    in the slide's number, a date, "Slide 3 of 20". It goes wherever it sits if it is set
+ *    smaller than the body text, as such lines are, and at the very top or bottom whatever
+ *    its size. A heading of the content is not one: a heading that comes back on only some
+ *    of the pages ("Example 1", "Example 2"), or the only heading its page has. Nor are lines
+ *    of the content that differ only in their numbers ("Sample 12: 3.4 mg", "Normal range:
+ *    3.5 to 5.0"): those come several to a page, or in the size of the body text.
+ * Two pages are too few to tell a running line from a line said twice, so there nothing but
+ * the page number goes. Anything else stays: leaving a header in costs a line, taking a fact
+ * out costs the fact.
  */
-function withoutRunningLines(pages: Doc['pages'], bodySize: number): void {
-  const key = (line: Line, band: string) => `${band}|${line.text.replace(/\d+/g, '#').replace(/\s+/g, ' ').toLowerCase()}`;
-  const seenOn = new Map<string, number>();
+function withoutRunningLines(doc: Doc): void {
+  const { pages, bodySize } = doc;
+  const bare = (line: Line) => line.text.replace(/\d+/g, '#').replace(/\s+/g, ' ').toLowerCase();
+  const small = (line: Line) => line.size <= bodySize * 1.05;
+  const numbered = (line: Line) => /\d/.test(line.text) && letters(line.text) >= 2;
+  // On how many pages each line is found at the head or foot; and, for a line that carries a
+  // number, on how many pages it is found just once.
+  const atEdgeOn = new Map<string, number>();
+  const onceOn = new Map<string, number>();
   for (const { raw, lines } of pages) {
-    const here = new Set<string>();
+    const edge = new Set<string>();
+    const times = new Map<string, number>();
     for (const line of lines) {
       const band = inBand(line, raw);
-      if (band && line.size <= bodySize * 1.05) here.add(key(line, band));
+      if (band && small(line)) edge.add(`${band}|${bare(line)}`);
+      if (numbered(line)) times.set(bare(line), (times.get(bare(line)) ?? 0) + 1);
     }
-    for (const k of here) seenOn.set(k, (seenOn.get(k) ?? 0) + 1);
+    for (const k of edge) atEdgeOn.set(k, (atEdgeOn.get(k) ?? 0) + 1);
+    for (const [k, n] of times) if (n === 1) onceOn.set(k, (onceOn.get(k) ?? 0) + 1);
   }
   const withText = pages.filter((p) => p.lines.length > 0).length;
-  const repeated = (k: string) => {
-    const n = seenOn.get(k) ?? 0;
-    return n >= 3 || (n >= 2 && n >= withText / 2);
-  };
   for (const page of pages) {
-    page.lines = page.lines.filter((line) => {
-      const band = inBand(line, page.raw);
-      if (!band || line.size > bodySize * 1.05) return true;
-      return !(PAGE_NUMBER.test(line.text) || repeated(key(line, band)));
+    const { lines, raw } = page;
+    page.lines = lines.filter((line, i) => {
+      const band = inBand(line, raw);
+      if (band && small(line) && PAGE_NUMBER.test(line.text)) return false;
+      if (withText < 3) return true;
+      const atEdge = band && small(line) ? (atEdgeOn.get(`${band}|${bare(line)}`) ?? 0) : 0;
+      if (atEdge >= 3 || (atEdge >= 2 && atEdge >= withText / 2)) return false;
+      if (!numbered(line) || !(band || line.size <= bodySize * 0.9)) return true;
+      if (lines.filter((other) => bare(other) === bare(line)).length > 1) return true;
+      const running = onceOn.get(bare(line)) ?? 0;
+      if (running < 3) return true;
+      // A heading of the content is not furniture: one that comes back on only some of the
+      // pages, or the only heading its page has ("Question 4" as the title of a slide).
+      const titled = (at: number): boolean => isHeading(lines[at], lines[at - 1], lines[at + 1], doc);
+      return titled(i) && (running < withText || !lines.some((_, j) => j !== i && titled(j)));
     });
+  }
+}
+
+/* ───────── Layout: tables ───────── */
+
+/** Where a run of the line starts after a gap of several letters. */
+const stopsOf = (line: Line): number[] => line.breaks.filter((b) => b.gap > WIDE).map((b) => b.x);
+
+/**
+ * The columns of some rows: the places, left to right, where the cells after the first start.
+ * A place counts if the rows agree on it (to within two points) and the gap before it is one
+ * between cells, not between words: a gap of several letters in one row and a start there in
+ * another, or a start there in three rows, half of them or more standing clear of what came
+ * before by more than a word space. Words of prose line up by chance, but not with such gaps.
+ */
+function columnsOf(rows: Line[]): number[] {
+  const all = rows.flatMap((row, i) => row.breaks.map((b) => ({ ...b, row: i }))).sort((a, b) => a.x - b.x);
+  const columns: number[] = [];
+  for (let i = 0; i < all.length; ) {
+    let j = i + 1;
+    while (j < all.length && all[j].x - all[i].x <= 2) j++;
+    const here = all.slice(i, j);
+    const count = (of: typeof here): number => new Set(of.map((b) => b.row)).size;
+    const support = count(here);
+    const wide = count(here.filter((b) => b.gap > WIDE));
+    const clear = count(here.filter((b) => b.clear));
+    if ((wide >= 1 && (support >= 2 || rows.length === 1)) || (support >= 3 && clear >= support / 2)) columns.push(all[i].x);
+    i = j;
+  }
+  return columns;
+}
+
+/** True if `below` is the next row under `above`: lower on the page, no further than `pace`, in the same size. */
+const paced = (above: Line, below: Line, pace: number): boolean => below.y > above.y && below.y - above.y <= pace && Math.abs(above.size - below.size) <= 1;
+
+/** Which column a run starts in: columns are the places where the cells after the first start. */
+const columnAt = (x: number, columns: number[]): number => columns.filter((c) => c <= x + 2).length;
+
+/**
+ * True if the words of a line fall into two or more of the columns the way cells do: each
+ * cell after the first starts where its column starts, or well clear of the cell before it.
+ * A line of prose that only happens to pass over a column does neither.
+ */
+function cellLike(line: Line, columns: number[]): boolean {
+  let groups = 1;
+  let last: Run | undefined;
+  for (const r of line.runs.filter(inked)) {
+    if (last && columnAt(r.x, columns) !== columnAt(last.x, columns)) {
+      const atColumn = columns.some((c) => Math.abs(c - r.x) <= 2);
+      const clear = r.x - (last.x + last.width) >= r.size;
+      if (!atColumn && !clear) return false;
+      groups++;
+    }
+    last = r;
+  }
+  return groups >= 2;
+}
+
+/**
+ * PDF.js hands over two cells set close together as one run. Inside a table such a run is cut
+ * where a column starts: at the gap between two words that lies nearest to it, within an em
+ * and a half (letters are not all one width, so where a word sits in its run is an estimate).
+ */
+function cutAtColumns(run: Run, columns: number[]): Run[] {
+  const str = tidy(run.str);
+  for (const column of columns) {
+    if (column <= run.x + 2 || column >= run.x + run.width - 2) continue;
+    let at = -1;
+    let off = 1.5 * run.size;
+    for (let k = 1; k < str.length; k++) {
+      const here = Math.abs(run.x + (run.width * k) / str.length - column);
+      if (str[k - 1] === ' ' && str[k] !== ' ' && here < off) [at, off] = [k, here];
+    }
+    if (at < 0) continue;
+    const left: Run = { ...run, str: str.slice(0, at).trimEnd(), width: column - run.x - 0.25 * run.size };
+    return [left, ...cutAtColumns({ ...run, str: str.slice(at), x: column, width: run.x + run.width - column }, columns)];
+  }
+  return [run];
+}
+
+/**
+ * Gives a row its cells: a new cell where a run starts in another column, or after a gap of
+ * several letters. A line that turns out to be all one cell is no row, and keeps none.
+ */
+function setCells(line: Line, columns: number[]): void {
+  const stops = stopsOf(line);
+  const groups: Run[][] = [[]];
+  let last: Run | undefined;
+  for (const r of line.runs.flatMap((run) => (inked(run) ? cutAtColumns(run, columns) : [run]))) {
+    if (inked(r) && last && (stops.includes(r.x) || columnAt(r.x, columns) !== columnAt(last.x, columns))) groups.push([]);
+    groups[groups.length - 1].push(r);
+    if (inked(r)) last = r;
+  }
+  const cells = groups.map((g) => ({ text: strung(g).text.replace(/\s+/g, ' ').trim(), column: columnAt(g.find(inked)?.x ?? 0, columns) })).filter((c) => c.text);
+  if (cells.length < 2) return;
+  line.cells = cells.map((c) => c.text);
+  line.cellColumns = cells.map((c) => c.column);
+}
+
+/**
+ * The column a line is the rest of a cell in, or 0: a cell that ran over onto a second line
+ * leaves a line with words in that one column only, starting where the column starts.
+ */
+function restOfCell(line: Line, columns: number[]): number {
+  const runs = line.runs.filter(inked);
+  const column = columnAt(runs[0].x, columns);
+  const alone = column >= 1 && Math.abs(columns[column - 1] - runs[0].x) <= 2 && runs.every((r) => columnAt(r.x, columns) === column);
+  return alone && !stopsOf(line).length ? column : 0;
+}
+
+/** A cell that could be the title of a column: a few words, no number, no sentence. */
+const titleCell = (cell: string): boolean => cell.length <= 30 && cell.split(/\s+/).length <= 4 && letters(cell) >= 2 && !/[\p{N}.!?;:]/u.test(cell);
+
+/**
+ * True if the first row of a table holds the titles of its columns: every cell could be a
+ * title, and the row is set apart from all the rows under it, in another face (bold), in
+ * another size, or by being the only one without a number or a sentence in it. A first row
+ * that is merely short proves nothing: it stays a row, and a fact.
+ */
+function holdsTitles(top: Line, below: Line[]): boolean {
+  if (!top.cells?.every(titleCell)) return false;
+  const face = top.uniform && below.every((row) => row.font !== top.font);
+  const size = below.every((row) => Math.abs(row.size - top.size) > 0.5);
+  const kind = below.every((row) => row.cells !== undefined && !row.cells.every(titleCell));
+  return face || size || kind;
+}
+
+/**
+ * Finds the tables of a page and gives each row its cells. A table shows itself by a row with
+ * a gap of several letters between two cells, or by three rows one under another whose cells
+ * start at the same places (a table set close has no wide gaps). The lines under it and over
+ * it belong to it while they keep its pace and their words fall into its columns: a row of
+ * titles is often centred, and starts nowhere the rows under it do.
+ */
+function tabulate(lines: Line[]): void {
+  for (let at = 0; at < lines.length; at++) {
+    if (lines[at].cells) continue;
+    let start = at;
+    let end = at;
+    const rows = (): Line[] => lines.slice(start, end + 1);
+    if (!stopsOf(lines[at]).length) {
+      const three = lines.slice(at, at + 3);
+      const together = three.length === 3 && paced(three[0], three[1], 3 * three[0].size) && paced(three[1], three[2], 3 * three[0].size);
+      if (!together || !three.every((line) => cellLike(line, columnsOf(three)))) continue;
+      end = at + 2;
+    }
+    // Rows keep a pace: the next is no further off than a row and a half, once two are known.
+    const pace = (): number => (end > start ? (1.6 * (lines[end].y - lines[start].y)) / (end - start) : 3 * lines[at].size);
+    const isRow = (line: Line): boolean => stopsOf(line).length > 0 || cellLike(line, [...columnsOf(rows()), ...rows().flatMap(stopsOf)]);
+    // Two cells handed over as one run look like a line of prose. Such a line is a row only if the table goes on under it.
+    const mayBeRow = (line: Line): boolean => line.runs.some((r) => inked(r) && cutAtColumns(r, columnsOf(rows())).length > 1);
+    while (end + 1 < lines.length && paced(lines[end], lines[end + 1], pace())) {
+      const next = lines[end + 1];
+      if (isRow(next)) end++;
+      // The second line of a cell, a line's pitch under the first: part of the row above it.
+      else if (next.y - lines[end].y <= 1.8 * next.size && restOfCell(next, columnsOf(rows())) > 0) end++;
+      else if (end + 2 < lines.length && mayBeRow(next) && paced(next, lines[end + 2], pace()) && isRow(lines[end + 2])) end += 2;
+      else break;
+    }
+    const columns = columnsOf(rows());
+    while (start > 0 && !lines[start - 1].cells && paced(lines[start - 1], lines[start], pace()) && cellLike(lines[start - 1], columns)) start--;
+    let row: Line | undefined;
+    for (const [i, line] of rows().entries()) {
+      // The rest of a cell goes back with its beginning, in the row above; with no such cell there, it stays a line.
+      const close = i > 0 && line.y - lines[start + i - 1].y <= 1.8 * line.size;
+      const rest = row && close ? restOfCell(line, columns) : 0;
+      const into = rest > 0 ? (row?.cellColumns?.lastIndexOf(rest) ?? -1) : -1;
+      if (row?.cells && into >= 0) {
+        row.cells[into] = join(row.cells[into], line.text);
+        line.absorbed = true;
+      } else {
+        setCells(line, columns);
+        if (line.cells) row = line;
+      }
+    }
+    const table = rows().filter((line) => !line.absorbed);
+    if (table.length >= 4 && holdsTitles(table[0], table.slice(1))) table[0].titles = true;
+    at = end;
   }
 }
 
@@ -439,19 +683,23 @@ function toBlocks(page: Doc['pages'][number], doc: Doc): Block[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const prev = lines[i - 1];
-    const heading = isHeading(line, prev, lines[i + 1], doc);
+    const row = line.cells;
+    // A row of column titles is a heading; no other row of a table is.
+    const heading = row ? line.titles === true : isHeading(line, prev, lines[i + 1], doc);
     const open = blocks[blocks.length - 1];
     const dy = prev ? line.y - prev.y : 0;
 
     let starts = !open || !prev || !first;
     if (!starts && prev && first && open) {
-      if (heading !== open.heading) starts = true;
+      // A row of a table is a line of its own.
+      if (row || prev.cells) starts = true;
+      else if (heading !== open.heading) starts = true;
       // A title that runs over two lines is one heading.
       else if (heading) starts = line.size !== prev.size || dy > 1.6 * line.size || dy <= 0;
       else if (dy <= 0 || dy > doc.pitch * 1.35 || Math.abs(line.size - prev.size) > 1) starts = true;
       else if (Math.abs(line.x - prev.x) > 0.25 * raw.width) starts = true;
-      // A row of a table, or of a table of contents, is a line of its own.
-      else if (BULLET.test(line.text) || line.text.includes('\t') || prev.text.includes('\t') || LEADERS.test(prev.text)) starts = true;
+      // So is a line with a bullet, and the line after a row of a table of contents.
+      else if (BULLET.test(line.text) || LEADERS.test(prev.text)) starts = true;
       else {
         const listItem = BULLET.test(first.text) || NUMBERED.test(first.text);
         const capital = /^["'“‘(]?[\p{Lu}\p{N}]/u.test(line.text);
@@ -479,7 +727,9 @@ function toBlocks(page: Doc['pages'][number], doc: Doc): Block[] {
     }
 
     if (starts || !open) {
-      blocks.push({ heading, text: line.text });
+      // A row is one fact: its first cell the term, the others what is said of it. Titles read "Vitamin: Deficiency".
+      const text = row ? (line.titles ? row.join(': ') : `${row[0]}\t${row.slice(1).join('; ')}`) : line.text;
+      blocks.push({ heading, text });
       first = line;
     } else {
       open.text = join(open.text, line.text);
@@ -491,8 +741,14 @@ function toBlocks(page: Doc['pages'][number], doc: Doc): Block[] {
 /** Positioned text of every page, to notes: the pure half of the reader. */
 function layout(raw: RawPage[]): PdfPageText[] {
   const pages = raw.map((page) => ({ raw: page, lines: toLines(page.runs) }));
-  withoutRunningLines(pages, measure(pages).bodySize);
+  // Measured twice: what the body text looks like decides what is furniture, and the furniture
+  // must not weigh in the measure the rest is read by.
+  withoutRunningLines({ pages, ...measure(pages) });
   const doc: Doc = { pages, ...measure(pages) };
+  for (const page of pages) {
+    tabulate(page.lines);
+    page.lines = page.lines.filter((line) => !line.absorbed);
+  }
   return pages.map((page, i) => {
     const blocks = toBlocks(page, doc);
     const notes = blocks
@@ -573,7 +829,8 @@ export async function extractPdfText(file: File, opts: ExtractOptions = {}): Pro
         const m = multiply(viewport.transform as Matrix, item.transform as Matrix);
         const turn = ((Math.round(Math.atan2(m[1], m[0]) / (Math.PI / 2)) % 4) + 4) % 4;
         const [x, y] = [[m[4], m[5]], [m[5], width - m[4]], [width - m[4], height - m[5]], [height - m[5], m[4]]][turn];
-        byTurn[turn].push({ str: item.str, x, y, width: item.width, size: Math.hypot(m[2], m[3]), font: item.fontName, eol: item.hasEOL });
+        const mono = content.styles[item.fontName]?.fontFamily === 'monospace';
+        byTurn[turn].push({ str: item.str, x, y, width: item.width, size: Math.hypot(m[2], m[3]), font: item.fontName, eol: item.hasEOL, mono });
       }
       const inked = byTurn.map((runs) => runs.reduce((sum, r) => sum + r.str.trim().length, 0));
       const turn = inked.indexOf(Math.max(...inked));
