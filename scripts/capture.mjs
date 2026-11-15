@@ -19,6 +19,11 @@
  * each with its own `--out <a scratch directory outside the repo>`. Every one of them is in the
  * app's own theme, ink-vellum. The pitch video is a 1440 x 900 window drawn at three quarters
  * of its size; its frames are 675 pixels high and the video 674 (H.264 wants an even number).
+ * The repair clip is two takes of one place cut together (see `repair` below); the survey and
+ * repair clips share their framing so that they read as a pair. A still is saved only with the
+ * camera at rest: the stills scenarios load `?debug=stores` (the stores on `window.__memoria`, no
+ * debug posts drawn), wait for `session.arrived` during a walk, and on the results for a stop of
+ * the tour that has just begun; a still taken anywhere else stops the run with an error.
  *
  * How it works. The page never sees real time. Playwright's fake clock (`page.clock`, 1.45 or
  * later) is installed and paused before navigation, so `requestAnimationFrame`,
@@ -61,7 +66,10 @@
  *   stills-walk    PNGs of a learner's first walk of the Comer deck, survey to results:
  *                  ui-survey, ui-encode, ui-recall, ui-results
  *   stills-process PNG of a question about a link on the recall walk of "The citric acid cycle,
- *                  as a cycle" in the Workshop: ui-process
+ *                  as a cycle" in the Workshop, at its last place, with the links that come in and
+ *                  go back out to the first place on the floor: ui-process. (A link is drawn once
+ *                  the images at both its ends have been revealed, so at the first place there is
+ *                  none yet.) Every place is answered right; every link question "I don't know".
  *   stills-compose PNG of the Architect's proposal, room by room, for notes under three
  *                  headings: ui-compose (requests to the Architect are refused, so the plan is
  *                  the offline planner's)
@@ -83,7 +91,8 @@
  *   --from, --to <s>      record this window of scenario time instead of the scenario's own
  *   --place <n>           recall: which spot-check place (1 to 3, default 2); encode: which place (2 to 7, default 3);
  *                         survey, repair and stills-walk: which place of the Comer deck (default 2, the Rose
- *                         Window); stills-process: after which place the question is taken (default 1)
+ *                         Window); stills-process: after which place the question is taken (default 8,
+ *                         the last: every link is drawn by then, the one back to place 1 too)
  *   --know <a,b>          survey, repair, stills-walk: the places answered right in the survey. Every other
  *                         place gets "I don't know". Defaults: the places before --place; none; place 1
  *   --miss <a,b>          stills-walk: the places answered wrongly on the recall walk (default 5,12)
@@ -281,11 +290,15 @@ function pageSide({ seed, thumb, pointer }) {
       // With `debug` in the query the app exposes its camera and its results tour.
       const q = window.__memoria?.camera?.quaternion;
       const tour = window.__memoria?.tour;
+      const session = window.__memoria?.session?.getState();
+      const walking = session && ['familiarize', 'survey', 'encode', 'recall'].includes(session.mode) && session.step >= 0;
       return {
         ids,
         /** The direction the camera looks in. */
         dir: q ? [-2 * (q.x * q.z + q.w * q.y), -2 * (q.y * q.z - q.w * q.x), -(1 - 2 * (q.x * q.x + q.y * q.y))] : null,
-        tour: tour ? { index: tour.index, at: tour.at } : null,
+        tour: tour ? { active: tour.active, index: tour.index, at: tour.at } : null,
+        /** Whether the camera is at rest where the app wants it: settled at the walk's stop, or at a stop of the results tour. Null without `debug`. */
+        rest: session ? (walking ? session.arrived : tour?.active ? tour.at >= 0 : true) : null,
         ready: window.__MEMORIA_READY__ === true,
         /** Canvas pixels per CSS pixel. */
         ratio: canvas && canvas.clientWidth ? canvas.width / canvas.clientWidth : null,
@@ -529,6 +542,14 @@ class Recorder {
   async still(name) {
     // A still shows no pointer, so nothing may look hovered: the real pointer leaves whatever it clicked last.
     if (!drawPointer) await this.page.mouse.move(1, 1);
+    // Never mid-glide (stills load the page with `debug=stores`, so the camera can be asked). The results tour
+    // rests 2.5 s at each stop and the restore below takes 2 s of it: wait for a rest that has just begun.
+    if (this.s.tour?.active) {
+      await this.until((s) => !s.rest, { timeout: 20, what: 'the results tour to move on' });
+      await this.until((s) => s.rest, { timeout: 20, what: 'the results tour to rest' });
+    } else if (this.s.rest === false) {
+      await this.until((s) => s.rest, { timeout: 20, what: 'the camera to arrive' });
+    }
     if (this.small) {
       this.arm();
       await this.setSmall(false);
@@ -543,6 +564,7 @@ class Recorder {
       }
     }
     await this.wait(4 / fps);
+    if (this.s.rest === false) throw new Error(`${name}: the camera is not at rest`);
     mkdirSync(stillsDir, { recursive: true });
     const file = path.join(stillsDir, `${name}.png`);
     await this.page.screenshot({ path: file });
@@ -975,7 +997,7 @@ const SCENARIOS = {
 
   /** The title screen with the built-in palaces listed. */
   'stills-title': {
-    query: '',
+    query: 'debug=stores',
     async run(rec) {
       await rec.wait(1.5);
       await rec.still('ui-title');
@@ -988,7 +1010,7 @@ const SCENARIOS = {
    * walk) and ui-results (two places missed, so that the legend has every state to name).
    */
   'stills-walk': {
-    query: '',
+    query: 'debug=stores',
     async run(rec) {
       const k = num('place', 2);
       const still = async (name, seconds) => {
@@ -1007,9 +1029,9 @@ const SCENARIOS = {
 
   /** The citric acid cycle in the Workshop, walked as a process: ui-process, a question about a link, with the links on the floor. */
   'stills-process': {
-    query: '',
+    query: 'debug=stores',
     async run(rec) {
-      const k = num('place', 1);
+      const k = num('place', 8);
       await learnerRun(rec, CYCLE, {}, {
         async linkQuestion(i) {
           if (i !== k) return;
@@ -1026,7 +1048,7 @@ const SCENARIOS = {
    * Every request to the Architect is refused here, so the plan and its images are the offline planner's.
    */
   'stills-compose': {
-    query: '',
+    query: 'debug=stores',
     async run(rec) {
       const page = rec.page;
       await page.route('**/api/architect', (route) => route.abort());
@@ -1052,10 +1074,14 @@ const SCENARIOS = {
       await rec.click('compose-design');
       await rec.until((s) => 'proposal' in s.ids, { timeout: 90, what: "the Architect's proposals" });
       await rec.wait(1.5);
-      // Scroll the panel, as a reader would, until the first room and its first proposals fill it.
+      // Scroll the panel, as a reader would, until the first room and its first proposals fill it: the room's
+      // rule just under the top of the scrolling area, so that no line of what comes before it is cut in half.
       const { x, y, down } = await page.evaluate(() => {
-        const room = (document.querySelector('[data-testid=room]') ?? document.querySelector('[data-testid=proposal-row]')).getBoundingClientRect();
-        return { x: room.left + room.width / 2, y: room.top, down: room.top - 96 };
+        const first = document.querySelector('[data-testid=room]') ?? document.querySelector('[data-testid=proposal-row]');
+        let box = first.parentElement;
+        while (box && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+        const room = first.getBoundingClientRect();
+        return { x: room.left + room.width / 2, y: room.top, down: room.top - (box ? box.getBoundingClientRect().top : 96) - 12 };
       });
       await page.mouse.move(x, Math.min(y, height / zoom - 200));
       await page.mouse.wheel(0, Math.max(0, down));
@@ -1071,7 +1097,7 @@ const SCENARIOS = {
    * known), studied, and recalled twice. Nobody walked those walks: the numbers in the chart are made up.
    */
   'stills-seeded': {
-    query: '',
+    query: 'debug=stores',
     async run(rec) {
       const page = rec.page;
       await page.evaluate(() => {
