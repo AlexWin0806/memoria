@@ -1,5 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
 /** Server-side settings the Architect function reads. None of them may ever be VITE_-prefixed. */
@@ -36,9 +38,48 @@ function architectDevApi(): Plugin {
   };
 }
 
+/**
+ * Files the offline worker saves when they are first fetched instead of at install: PDF.js and
+ * its worker (about 1.9 MB, needed only once a PDF is chosen), and the .woff copies of fonts
+ * that every browser with service workers loads as .woff2.
+ */
+const SAVED_ON_FIRST_USE = /^assets\/(?:pdf(?:\.worker)?\.min-[^/]+\.mjs|[^/]+\.woff)$/;
+
+/**
+ * Build only: writes /sw.js, the offline worker (src/sw.js), with the list of the files this
+ * build emitted and a stamp of the build in front of it. `enforce: 'post'` so that the bundle
+ * already holds index.html and every chunk and asset when the list is taken.
+ */
+function offlineWorker(): Plugin {
+  return {
+    name: 'memoria-offline-worker',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      const page = bundle['index.html'];
+      if (!page || page.type !== 'asset') this.error('offline worker: index.html is not in the bundle, so /sw.js cannot be written.');
+      const html = typeof page.source === 'string' ? page.source : Buffer.from(page.source).toString('utf8');
+      const files = Object.keys(bundle)
+        .filter((name) => name.startsWith('assets/'))
+        .sort();
+      const urls = (onFirstUse: boolean) => files.filter((name) => SAVED_ON_FIRST_USE.test(name) === onFirstUse).map((name) => `/${name}`);
+      const worker = readFileSync(fileURLToPath(new URL('./src/sw.js', import.meta.url)), 'utf8');
+      // The names of hashed files change with their content, so names, page and worker are the build.
+      const version = createHash('sha256').update(JSON.stringify([files, html, worker])).digest('hex').slice(0, 12);
+      const head = [
+        `const VERSION = ${JSON.stringify(version)};`,
+        `const PAGE = ${JSON.stringify(html)};`,
+        `const PRECACHE = ${JSON.stringify(urls(false))};`,
+        `const LAZY = ${JSON.stringify(urls(true))};`,
+      ].join('\n');
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source: `${head}\n${worker}` });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), architectDevApi()],
+  plugins: [react(), architectDevApi(), offlineWorker()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
