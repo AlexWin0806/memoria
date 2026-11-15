@@ -191,7 +191,7 @@ State at Sun 3:00 AM ET. Each entry says what is known and what would make the r
 - Exam Mode, as described under "If asked".
 - The Architect figures, each as "in single runs on the deployed site", never as averages: a 12-fact palace proposed in 6 to 14 s; 30 facts in 6 rooms in 16 to 17 s as eight short parallel requests; a six-step process laid out as stations in the Workshop in 11 to 13 s; two facts added to a palace in 7 to 9 s; Regenerate in 1 to 2 s. Offline the self-check only flags weak images, so say "rewrites" of the live site only.
 - QA review 4 (Sat evening, a reviewer with no knowledge of the build): safe to demo with precautions, no blocker; Creativity 8, Utility 8, Charity 6, Avidity 8.
-- Live since 2:52 AM: the camera's turns are smoothed (measured on a virtual clock; say "smoothed", not "smooth on any laptop"); the Gothic library in darker grey stone and the Workshop in brown wood; the Architect endpoint accepts JSON requests only; saving a palace with the browser's storage full says that nothing was saved, instead of failing silently.
+- Live since 2:52 AM: the Gothic library in darker grey stone and the Workshop in brown wood; the Architect endpoint accepts JSON requests only; saving a palace with the browser's storage full says that nothing was saved, instead of failing silently.
 
 **Being deployed at about 3:30 AM ET.** Written here as live. Confirm each on the live site after the deployment before saying it: (to fill in)
 
