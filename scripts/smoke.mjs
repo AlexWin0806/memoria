@@ -143,6 +143,8 @@ const JUDGE_DECK_TITLE = 'The eight carpal bones';
 const cellSrc = readFileSync('src/ai/fixtures/cell-cycle.ts', 'utf8');
 const cellAt = Object.fromEntries([...cellSrc.matchAll(/term: '([^']+)'[^\n]*?locusId: '([^']+)'/g)].map((m) => [placeName[m[2]], m[1]]));
 const CELL_TERMS = ['Interphase', 'Prophase', 'Metaphase', 'Anaphase', 'Telophase'];
+/** JUDGE_PROMISE.short.label in src/flows/timing.ts. */
+const SHORT_PROMISE = readFileSync('src/flows/timing.ts', 'utf8').match(/short: \{ measuredSeconds: \d+, label: '([^']+)' \}/)[1];
 /** The pitch variant's spot check: this many of the eight places (spotCheckStops in src/flows/timing.ts). */
 const SPOT = 3;
 const SPOT_WORDS = 'three of the eight';
@@ -226,7 +228,7 @@ function installWalkLog() {
   }
   window.__walkLog = { encode: [], reveal: [], preview: false, spotNote: '', extra: [], barBack: [], hidden: [], whole: [], ruins: [], ruinsText: '', previewRuins: null, fold: 0, overlap: -Infinity };
   const note = (list, entry) => {
-    if (!list.some((e) => e.label === entry.label)) list.push(entry);
+    if (!list.some((e) => e.label === entry.label)) list.push({ ...entry, at: Date.now() });
   };
   let lastStop = '';
   let lastScreen = '';
@@ -363,8 +365,8 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   await page.evaluate(installWalkLog);
   const started = Date.now();
   const phases = {};
-  const mark = (name) => {
-    phases[name] = Math.round((Date.now() - started) / 100) / 10;
+  const mark = (name, at = Date.now()) => {
+    phases[name] = Math.round((at - started) / 100) / 10;
   };
   await page.getByTestId('title-judge').click();
   if (!pitch && !short) await quietShot('preview');
@@ -401,6 +403,14 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   assert(ruins.length === N && withLine.join() === `Place 1 of ${N},Place 2 of ${N}`, `the line about the ruins was shown at: ${withLine} (of ${ruins.length} stops)`);
   assert(fold > 0 && fold <= page.viewportSize().height && overlap <= 0, `with the line about the ruins the scene sentence ends at y = ${Math.round(fold)} (${Math.round(overlap)} px past the top of the pinned buttons)`);
   assert((await page.getByTestId('judge-ruins').count()) === 0, 'the line about the ruins is still there after the study walk');
+  if (short) {
+    const brief = await text(page.getByTestId('brief-note'));
+    assert(brief === 'We check all five places. Answer from memory before you look.', `the short run's screen between the walks says "${brief}"`);
+    const said = `${await text(page.locator('[data-testid=interstitial] h1'))} ${brief}`.split(/\s+/).filter(Boolean).length;
+    assert(said <= 20, `the short run's screen between the walks says its piece in ${said} words (20 at most)`);
+    // Where the study walk's time goes: when each image was first shown.
+    shown.forEach((e, i) => mark(`image ${i + 1}`, e.at));
+  }
   if (pitch) {
     assert(spotNote.includes(SPOT_WORDS), `the spot check is not announced: "${spotNote}"`);
     const said = `${await text(page.locator('[data-testid=interstitial] h1'))} ${spotNote}`.split(/\s+/).filter(Boolean).length;
@@ -415,7 +425,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   await quietShot('interstitial');
   // Both runs wait here for the button, however long the judge takes to read.
   // The reading time counts from when the screen appeared, not from when the harness finished its checks.
-  const read = passive ? (pitch ? READ_MS : READ_DEFAULT_MS) : 0;
+  const read = passive ? (pitch || short ? READ_MS : READ_DEFAULT_MS) : 0;
   await page.waitForTimeout(Math.max(300, read - (Date.now() - interstitialAt)));
   assert((await page.getByTestId('interstitial').count()) === 1, 'the screen between the two walks moved on by itself');
   await page.getByTestId('recall-start').click();
@@ -431,6 +441,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     const question = page.getByTestId('recall-question');
     await question.waitFor();
     if (i === 1) mark('first question');
+    if (short) mark(`question ${i}`);
     const place = await question.getAttribute('data-place');
     visited.push(place);
     const answer = terms[place];
@@ -443,6 +454,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     if (think) await page.waitForTimeout(think);
     await page.getByTestId('choice').nth(pick).click();
     expected.push({ state: i <= wrong ? 'wrong' : 'right', answer });
+    if (short) mark(`answer ${i}`);
     if (i === 3 || i === 1) await quietShot(`recall-feedback-${i}`);
     if (pauseCheck && !pauseChecked) {
       // The feedback is a timed stop too. If the key lands after it has moved on (a busy machine), P does nothing there: try the next one.
@@ -851,7 +863,7 @@ const cases = {
     const seeded = await seedLearner(page);
     await page.waitForFunction(() => window.__memoriaApp);
     const promised = await text(page.getByTestId('title-judge'));
-    assert(promised === 'Try it in 90 seconds', `the short run's button says "${promised}"`);
+    assert(promised === SHORT_PROMISE, `the short run's button says "${promised}"`);
     await context.setOffline(true);
     requests.length = 0;
     const { score, ms, visited, timeline, checkedRepair } = await judgeRun(page, { passive: true, think: THINK_MS, short: true, shots: 'short' });

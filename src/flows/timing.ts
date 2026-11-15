@@ -17,6 +17,8 @@ export interface JudgeTiming {
   missFeedbackSeconds: number;
   /** Recall checks this many places, picked at random, in route order. null = all of them. */
   spotCheckStops: number | null;
+  /** The screen between the walks says its piece in a few words, as the pitch run's does (about 15, not 33). */
+  briefInterstitial: boolean;
 }
 
 /*
@@ -33,6 +35,7 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
     feedbackSeconds: 2,
     missFeedbackSeconds: 3.5,
     spotCheckStops: null,
+    briefInterstitial: false,
   },
   /** `?judge=pitch`: sized to sit inside a 2-minute live pitch. */
   pitch: {
@@ -41,17 +44,20 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
     feedbackSeconds: 2,
     missFeedbackSeconds: 3.5,
     spotCheckStops: 3,
+    briefInterstitial: true,
   },
   /**
-   * `?judge=short`: the five stages of the cell cycle instead of the eight carpal bones, timed
-   * as the pitch run, and every place is asked: on five places a spot check would save little.
+   * `?judge=short`: the five stages of the cell cycle instead of the eight carpal bones, and
+   * every place is asked: on five places a spot check would save little. Sized to be clearly
+   * shorter than the pitch run: a little less time per image, the feedback held a little less.
    */
   short: {
     previewSecondsPerStop: 0,
-    encodeSecondsPerStop: 4,
-    feedbackSeconds: 2,
-    missFeedbackSeconds: 3.5,
+    encodeSecondsPerStop: 3.5,
+    feedbackSeconds: 1.5,
+    missFeedbackSeconds: 2.5,
     spotCheckStops: null,
+    briefInterstitial: true,
   },
 };
 
