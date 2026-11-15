@@ -731,6 +731,16 @@ export function Compose() {
     const empty = cleaned.lines.length === 0;
     const long = cleaned.text.length > MAX_TEXT;
     const sameRoute = chosenArch === ARCH_HOUSE ? Object.values(decks).filter((d) => d.layoutId === ARCH_HOUSE && !d.fixture) : [];
+    // A second palace in a style that still holds one being learned: the new one is furnished
+    // from its own seed, but the architecture is the same, so say so (research principle 8).
+    const sameStyle =
+      !standing && chosenArch !== ARCH_HOUSE && chosenArch !== ARCH_AUTO
+        ? Object.values(decks).filter((d) => {
+            if (d.fixture || parsePalaceId(d.layoutId)?.kit !== chosenArch) return false;
+            const state = repairCounts(d, cards);
+            return d.surveyedAt === undefined || state.ruins + state.damaged + state.repair > 0;
+          })
+        : [];
     const archOptions: PickOption[] = [
       { id: ARCH_AUTO, name: 'Let the Architect choose', blurb: 'It picks the style that suits your notes and says why. You can change it afterwards.' },
       ...KIT_LIST.map((k) => ({ id: k.id, name: k.name, blurb: k.blurb })),
@@ -829,6 +839,12 @@ export function Compose() {
           <p className="notice">
             This route already holds {sameRoute.map((d) => `"${d.title}"`).join(', ')}. Reusing a route for a second list is thought to make the
             lists interfere (the evidence is mixed), so keep similar lists apart.
+          </p>
+        )}
+        {sameStyle.length > 0 && (
+          <p className="notice" data-testid="compose-same-style">
+            You are still learning another palace in this style ({sameStyle.map((d) => `"${d.title}"`).join(', ')}). The new one gets its own
+            furnishing; another style would make the two look less alike.
           </p>
         )}
         {error && (

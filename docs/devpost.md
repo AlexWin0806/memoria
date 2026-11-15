@@ -22,7 +22,7 @@ Then you walk it three ways:
 - **Study.** The study walk follows in the same session. Each image appears at its place, with your survey answer beside the right one, and the place is rebuilt inside a scaffold.
 - **Recall.** The same route with the images hidden. You answer at each place before its image is shown again, and a right answer restores the place.
 
-Your results schedule reviews at growing intervals (Leitner boxes). A Progress view keeps every survey, recall and review walk, with the survey labelled "before study", and lists your weakest places. A legend names the states of a place: in ruins, under repair, restored. There are no points, badges or streaks.
+Your results schedule reviews at growing intervals (Leitner boxes). A Progress view keeps every survey, recall and review walk, with the survey labelled "before study", and lists your weakest places. A legend names the states of a place: in ruins, standing (answered in the survey, not yet recalled), under repair, restored, and needs another repair. There are no points, badges or streaks.
 
 The state of a place follows your graded answers, not your own rating. If you overrule a typed miss with "I was right", the answer is shown as self-marked and the place stays under repair until the next real recall. A place you answered right in the survey is "standing", not "restored", until you recall it after study.
 
