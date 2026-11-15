@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CompareLink } from '@/ab/CompareLink';
 import type { Deck, ReviewCard } from '@/core/types';
+import { canExam, startExam } from '@/flows/exam';
 import { discardSavedWalk, judgeVariantFromUrl, openProgress, resumeWalk, startEncode, startJudge, startRecall, useFlow } from '@/flows/flow';
 import { formatWhen, plural } from '@/flows/format';
 import { useNow } from '@/flows/hooks';
@@ -140,6 +141,7 @@ export function Title() {
                   </button>
                 </div>
               ) : (
+                <>
                 <div className="deck__actions">
                   <button type="button" className="link" onClick={() => startEncode(deck.id)} aria-label={`Walk ${deck.title}`}>
                     Walk
@@ -147,23 +149,31 @@ export function Title() {
                   <button type="button" className="link" onClick={() => startRecall(deck.id, 'all')} aria-label={`Recall ${deck.title}`}>
                     Recall
                   </button>
-                  {!deck.fixture && style && (
+                  {/* A third way to study, once there is something studied to be examined on: never before the survey. */}
+                  {canExam(deck, cards) && (
+                    <button type="button" className="link" onClick={() => startExam(deck.id)} aria-label={`Exam on ${deck.title}`} data-testid="deck-exam">
+                      Exam
+                    </button>
+                  )}
+                </div>
+                {/* What is done to the palace itself, on a quieter line of its own: a row of five links wrapped under its text. */}
+                {!deck.fixture && (
+                <div className="deck__manage" data-testid="deck-manage">
+                  {style && (
                     <button type="button" className="link" onClick={() => openExtension(deck.id)} aria-label={`Add to ${deck.title}`} data-testid="deck-extend">
                       {adding.split(' ').includes(deck.id) ? 'Add (draft)' : 'Add'}
                     </button>
                   )}
-                  {/* A built-in deck is changed only as before: one image at a time, from its results. */}
-                  {!deck.fixture && (
+                  {/* A built-in deck has no such line: it is changed only as before, one image at a time, from its results. */}
                     <button type="button" className="link" onClick={() => openEditor(deck.id)} aria-label={`Edit ${deck.title}`} data-testid="deck-edit">
                       {editing.split(' ').includes(deck.id) ? 'Edit (draft)' : 'Edit'}
                     </button>
-                  )}
-                  {!deck.fixture && (
                     <button type="button" className="link" onClick={() => setDeleting(deck.id)} aria-label={`Delete ${deck.title}`}>
                       Delete
                     </button>
-                  )}
                 </div>
+                )}
+                </>
               )}
             </li>
             );
