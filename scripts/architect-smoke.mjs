@@ -438,7 +438,7 @@ try {
   // (b) the picture is the meaning and the scene carries the word; no horn for horno.
   for (const item of plans.b.items) {
     if (!item.imago.scene.includes(`"${item.term}"`)) fail(`reviewer b: the scene for ${item.term} does not carry the word`);
-    if (!item.imago.reason.startsWith(`${item.term} means ${item.meaning}`)) fail(`reviewer b: the reason for ${item.term} does not state the link`);
+    if (!item.imago.reason.startsWith(`${item.term} means "${item.meaning}"`)) fail(`reviewer b: the reason for ${item.term} does not state the link`);
     if (/Sound-alike/.test(item.imago.reason)) fail(`reviewer b: ${item.term} got a sound-alike`);
   }
   if (plans.b.kind !== 'pairs') fail('reviewer b: vocabulary should be a pairs deck');

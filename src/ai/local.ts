@@ -129,7 +129,8 @@ function candidatesFor(fact: Fact): PictureMatch[] {
 
   if (short) {
     for (const e of lookup(meaning)) {
-      const says = `${fact.term} means ${meaning}`;
+      // The meaning is quoted: notes often give it as a verb phrase ("holds the DNA"), and "Nucleus means holds the DNA" is not English.
+      const says = `${fact.term} means "${meaning}"`;
       push({ entry: e, link: 'meaning', reason: e.known && e.why ? `${says}. ${e.why}` : `${says}${e.why ? ` (${e.why})` : ''}${MEANING_TAIL}` });
     }
   }
