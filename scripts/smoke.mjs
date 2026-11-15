@@ -683,7 +683,7 @@ async function assertPalaceHidden(page, when) {
 async function examQuestion(page, i, total) {
   await page.locator(`[data-testid=exam-count]:has-text("Question ${i} of ${total}")`).waitFor();
   const cue = (await page.getByTestId('exam-cue').count()) ? await text(page.getByTestId('exam-cue')) : '';
-  const prompt = await text(page.getByTestId('exam-question'));
+  const prompt = await text(page.getByTestId('exam-prompt'));
   const n = EXAM_MEANINGS.indexOf(cue) + 1 || EXAM_TERMS.indexOf(cue) + 1;
   return { cue, prompt, n };
 }
@@ -2278,7 +2278,7 @@ const cases = {
     await page.getByTestId('encode-term').waitFor();
     const krebs = await page.getByTestId('encode-links').locator('li').allTextContents();
     assert(
-      JSON.stringify(krebs) === JSON.stringify(['Comes from a step further along the route: joins acetyl-CoA.', 'It becomes the step at the next place.', 'Held back by Succinyl-CoA: inhibits citrate synthase.']),
+      JSON.stringify(krebs) === JSON.stringify(['Comes from a step further along the route: joins acetyl-CoA (citrate synthase).', 'It becomes the step at the next place.', 'Held back by Succinyl-CoA: inhibits citrate synthase.']),
       `the citric acid cycle's first step connects as ${JSON.stringify(krebs)}`,
     );
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
@@ -2724,6 +2724,7 @@ const cases = {
         await page.keyboard.press('?');
         await page.locator('[data-testid=exam-unknown][aria-pressed=true]').waitFor();
         assert((await page.getByTestId('exam-input').inputValue()) === '', 'the question mark was typed into the field');
+        if (i === 1) await shot(page, 'exam-question-typed');
         await page.getByTestId(i === 5 ? 'exam-handin' : 'exam-next').click();
       } else {
         await page.keyboard.type(typed);
@@ -2838,7 +2839,7 @@ const cases = {
     const positions = [];
     for (let i = 1; i <= 3; i++) {
       await page.locator(`[data-testid=exam-count]:has-text("Question ${i} of 3")`).waitFor();
-      const prompt = await text(page.getByTestId('exam-question'));
+      const prompt = await text(page.getByTestId('exam-prompt'));
       const nth = ['1st', '2nd', '3rd'].findIndex((o) => prompt === `Which comes ${o} in Three ranks?`);
       assert(nth >= 0 && (await page.getByTestId('exam-cue').count()) === 0, `position question ${i}: "${prompt}"`);
       positions.push(nth + 1);

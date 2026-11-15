@@ -299,7 +299,10 @@ export function startStudyOf(deckId: string, itemIds: string[]): void {
   const cards = useReview.getState().cards;
   const placed = itemIds.filter((id) => cards[id]?.studiedAt !== undefined || (cards[id]?.reps ?? 0) > 0);
   const stops = stopsFor(deck, getLayout(deck.layoutId), placed);
-  if (stops.length) begin('encode', deck, stops, false);
+  if (!stops.length) return;
+  // An exam can be opened over the results of an earlier walk: its answers are not this walk's.
+  useSession.setState({ results: [] });
+  begin('encode', deck, stops, false);
 }
 
 /** Recall walk over the whole deck, or only over the loci whose items are due. */

@@ -154,7 +154,7 @@ function PalaceProgress({ deck, walks: all, cards, now }: { deck: Deck; walks: W
           <button type="button" className="link" onClick={() => startExam(deck.id)} aria-label={`Exam on ${deck.title}`} data-testid="progress-exam">
             Exam
           </button>
-          <span className="muted"> the same facts with no palace on screen, in shuffled order.</span>
+          <span className="muted">: the same facts with no palace on screen, in shuffled order.</span>
         </p>
       )}
       <ScoreChart walks={walks} label={`${deck.title}: score on each of ${plural(walks.length, 'walk')}. ${firstName}: ${score(first)}. Latest: ${score(latest)}.`} />

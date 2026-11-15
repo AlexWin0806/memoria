@@ -44,9 +44,18 @@ export function Exam() {
   const confirm = useExam((s) => s.confirmLeave);
   const deck = useDeck(useExam((s) => s.deckId));
   const open = stage !== 'off' && deck !== undefined;
+  const body = useRef<HTMLDivElement>(null);
 
+  // Each screen of the exam starts at its top, however far the one before it was scrolled.
+  useEffect(() => {
+    if (body.current) body.current.scrollTop = 0;
+  }, [stage]);
   // A reload ended an exam in progress: the learner lands on the reviews screen, which says so.
   useEffect(() => showCutShort(), []);
+  // The palace was deleted meanwhile (in another tab): there is nothing left to ask about.
+  useEffect(() => {
+    if (stage !== 'off' && !deck) leaveExam();
+  }, [stage, deck]);
 
   useEffect(() => {
     if (!open) return;
@@ -65,9 +74,9 @@ export function Exam() {
   if (!open) return null;
   const unfinished = stage === 'paper' || stage === 'marking';
   return (
-    <div className="exam" data-stage={stage} data-testid="exam">
+    <div className="exam" role="region" aria-label={`Exam on ${deck.title}`} data-stage={stage} data-testid="exam">
       {/* The head comes after the body in the document (CSS draws it on top), so that Leave is the last Tab stop, as in the docked panel. */}
-      <div className="exam__body">
+      <div className="exam__body" ref={body}>
         <div className="exam__page">
           {stage === 'setup' && <ExamSetup deck={deck} />}
           {stage === 'paper' && <ExamPaper />}
@@ -206,6 +215,8 @@ function ExamPaper() {
     setAsking(false);
     if (inputRef.current) inputRef.current.focus({ preventScroll: true });
     else questionRef.current?.focus({ preventScroll: true });
+    // A long question may have been scrolled: the next one starts at the top of the sheet.
+    questionRef.current?.closest('.exam__body')?.scrollTo({ top: 0 });
   }, [at]);
   useEffect(() => {
     if (picked > 0) onwardRef.current?.focus({ preventScroll: true });
@@ -252,23 +263,31 @@ function ExamPaper() {
 
   return (
     <section className="screen exam__paper" data-testid="exam-paper">
-      <h1 className="label" data-testid="exam-count">
-        Question {at + 1} of {questions.length}
-      </h1>
-      {/* One stroke per question: answered, open, and the one on screen. The line above says the same in words. */}
-      <p className="exam__tally" aria-hidden="true">
-        {questions.map((each, i) => (
-          <span key={each.itemId} data-state={i === at ? 'here' : isAnswered(state, i) ? 'done' : 'open'} />
-        ))}
-      </p>
-      {q.cue && (
-        <p className="exam__cue" data-length={termLength(q.cue)} data-testid="exam-cue">
-          {q.cue}
+      {/*
+        Multiple choice: the question takes the focus, so it is read out with what it is about. Typed: the
+        focus stays in the answer field from one question to the next, so the new question is announced instead.
+      */}
+      <div aria-live={input === 'typed' ? 'polite' : 'off'}>
+        <h1 className="label" data-testid="exam-count">
+          Question {at + 1} of {questions.length}
+        </h1>
+        {/* One stroke per question: answered, open, and the one on screen. The line above says the same in words. */}
+        <p className="exam__tally" aria-hidden="true">
+          {questions.map((each, i) => (
+            <span key={each.itemId} data-state={i === at ? 'here' : isAnswered(state, i) ? 'done' : 'open'} />
+          ))}
         </p>
-      )}
-      <h2 className="question exam__question" tabIndex={-1} ref={questionRef} data-form={q.form} data-testid="exam-question">
-        {q.prompt}
-      </h2>
+        <h2 className="question exam__question" tabIndex={-1} ref={questionRef} data-form={q.form} data-testid="exam-question">
+          {q.cue && (
+            <span className="exam__cue" data-length={termLength(q.cue)} data-testid="exam-cue">
+              {q.cue}
+            </span>
+          )}{' '}
+          <span className="exam__prompt" data-testid="exam-prompt">
+            {q.prompt}
+          </span>
+        </h2>
+      </div>
 
       {input === 'choice' ? (
         <ol className="choices">

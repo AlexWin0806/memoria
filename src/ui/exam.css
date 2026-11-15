@@ -74,23 +74,27 @@
   background: var(--ui-accent);
 }
 
-/* What the question is about: set in the display face, like a line quoted from the notes. */
+/*
+ * The question is one heading: what it is about, set in the display face like a line quoted
+ * from the notes, and under it the question in words.
+ */
+.exam .exam__question { margin: 0 0 12px; }
 .exam__cue {
+  display: block;
   margin: 0 0 4px;
-  font-family: var(--type-display);
   font-size: 34px;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 .exam__cue[data-length='long'] { font-size: 26px; line-height: 1.25; }
 .exam__cue[data-length='very-long'] { font-size: 21px; line-height: 1.35; }
-.exam .exam__question {
-  margin: 4px 0 12px;
+.exam__prompt {
+  display: block;
   font-size: 22px;
   color: var(--ui-muted);
 }
 /* A question by position has no line above it: the question itself is the main line. */
-.exam .exam__question[data-form='position'] {
+.exam__question[data-form='position'] .exam__prompt {
   font-size: 30px;
   color: var(--ui-fg);
 }
@@ -100,10 +104,11 @@
   font-size: 16px;
   color: var(--ui-muted);
 }
-.exam__handin { margin: 22px 0 0; }
+.exam .exam__handin { margin: 22px 0 0; }
 .exam__handin .actions { margin-top: 12px; }
-/* A chosen mark, and "I don't know" once it is the typed answer: filled, like the primary button. */
-.exam .btn[aria-pressed='true'] {
+/* A chosen mark, and "I don't know" once it is the typed answer: filled, like the primary button (and under the pointer too). */
+.exam .btn[aria-pressed='true'],
+.exam .btn[aria-pressed='true']:hover:not(:disabled) {
   background: var(--ui-fg);
   color: var(--ui-panel);
 }
@@ -118,13 +123,13 @@
   border-top: 1px solid var(--rule);
 }
 .exam__set legend { padding: 0 12px 0 0; }
-.exam__option {
+.exam .exam__option {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   padding: 6px 0;
 }
-.exam__option input {
+.exam .exam__option input {
   flex: none;
   margin-top: 5px;
 }
@@ -147,7 +152,7 @@
   overflow-wrap: anywhere;
 }
 .exam__pair .label { margin-right: 6px; }
-.exam__marks { margin-top: 10px; }
+.exam .exam__marks { margin-top: 10px; }
 /* Where a missed fact lives, and its image: a note in the margin of the row, not a fault. */
 .exam__place,
 .exam__image {
@@ -194,5 +199,5 @@
   .exam__cue { font-size: 26px; }
   .exam__cue[data-length='long'] { font-size: 22px; }
   .exam__cue[data-length='very-long'] { font-size: 19px; }
-  .exam .exam__question[data-form='position'] { font-size: 24px; }
+  .exam__question[data-form='position'] .exam__prompt { font-size: 24px; }
 }
