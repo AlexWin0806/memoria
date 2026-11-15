@@ -1,6 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo } from 'react';
-import { type Camera, type PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { type Camera, type PerspectiveCamera, Vector3 } from 'three';
 import type { PalaceLayout } from '@/layouts';
 import { type SessionState, useSession } from '@/state/session';
 import type { Qa } from './qa';
@@ -37,13 +37,6 @@ const MIN_ZOOM = 0.4;
  * every arrival well inside the six seconds the overlay waits for one.
  */
 const MAX_GLIDE_SECONDS = 4.6;
-/**
- * The head follows the rail's gaze through an exponential lag of about 1/TURN_LAMBDA seconds,
- * so a kink in the look target (a knot, a doorway waypoint, the start or end of a glide)
- * reaches the screen as a rounded turn instead of a jolt. Within TURN_SNAP radians it lands exactly.
- */
-const TURN_LAMBDA = 9;
-const TURN_SNAP = 1e-4;
 
 /** Pointer in -1..1, tracked on the window so it works under the 2D overlay too. */
 const pointer = { x: 0, y: 0 };
@@ -53,7 +46,6 @@ const _right = new Vector3();
 const _up = new Vector3();
 const _p = new Vector3();
 const UP = new Vector3(0, 1, 0);
-const _q = new Quaternion();
 
 function damp(current: number, target: number, lambda: number, dt: number): number {
   return current + (target - current) * (1 - Math.exp(-lambda * dt));
@@ -94,11 +86,6 @@ function createRig() {
     time: 0,
     parX: 0,
     parY: 0,
-    /** Pointer parallax weight: only on the overview's drift (title), never while a place is read. */
-    parW: 0,
-    /** The head's orientation as last drawn, and whether it holds one yet (false: snap to the gaze). */
-    quat: new Quaternion(),
-    turning: false,
     inset: 0,
     insetY: 0,
     appliedInset: -1,
@@ -259,7 +246,6 @@ export function CameraRail({ layout, target, session, reduced, drift, tour, qa, 
     rig.phase = 'rest';
     rig.settleAmt = 0;
     rig.settle = 0;
-    rig.turning = false;
   };
 
   /** View inset: slide the picture's centre into the area the overlay leaves free. */
@@ -379,7 +365,6 @@ export function CameraRail({ layout, target, session, reduced, drift, tour, qa, 
     rig.time += dt;
     rig.parX = damp(rig.parX, pointer.x, 4, dt);
     rig.parY = damp(rig.parY, pointer.y, 4, dt);
-    rig.parW = damp(rig.parW, resting && drift && rig.at === 'overview' ? 1 : 0, 2, dt);
 
     _dir.subVectors(rig.look, rig.pos).normalize();
     _right.crossVectors(_dir, UP).normalize();
@@ -396,20 +381,11 @@ export function CameraRail({ layout, target, session, reduced, drift, tour, qa, 
       _p.y += Math.sin(rig.time * 0.07 + 1) * DRIFT_RISE * rig.drift;
     }
     if (rig.idle > 0.001) {
-      _p.addScaledVector(_right, rig.idle * (Math.sin(rig.time * 0.42) * SWAY_X + rig.parX * PARALLAX_X * rig.parW));
-      _p.addScaledVector(_up, rig.idle * (Math.sin(rig.time * 0.63 + 0.7) * SWAY_Y + rig.parY * PARALLAX_Y * rig.parW));
+      _p.addScaledVector(_right, rig.idle * (Math.sin(rig.time * 0.42) * SWAY_X + rig.parX * PARALLAX_X));
+      _p.addScaledVector(_up, rig.idle * (Math.sin(rig.time * 0.63 + 0.7) * SWAY_Y + rig.parY * PARALLAX_Y));
     }
     cam.position.copy(_p);
     cam.lookAt(rig.look);
-    if (reduced || !rig.turning) {
-      rig.quat.copy(cam.quaternion);
-      rig.turning = true;
-    } else {
-      _q.copy(cam.quaternion);
-      if (rig.quat.angleTo(_q) < TURN_SNAP) rig.quat.copy(_q);
-      else rig.quat.slerp(_q, 1 - Math.exp(-TURN_LAMBDA * dt));
-      cam.quaternion.copy(rig.quat);
-    }
   });
 
   return null;
