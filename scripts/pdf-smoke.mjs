@@ -35,8 +35,9 @@
  *   g  Five slides whose footer ends in the slide's number: the footer is left out, wherever
  *      it sits, and titles that differ only in a number are kept; of two pages a repeated line
  *      is kept; a table of three columns under bold column titles gives a heading and one
- *      "term<TAB>second cell; third cell" line per row; a table with no row set apart keeps
- *      every row
+ *      "term<TAB>second cell; third cell" line per row; in a ruled table a last cell that runs
+ *      over onto a second line stays one cell, and the prose above and below it stays prose;
+ *      a table with no row set apart keeps every row
  *
  * Screenshots go to qa/shots/ui/pdf-*.png.
  */
@@ -247,6 +248,18 @@ const VITAMINS = [
 const VITAMIN_TITLES = ['Vitamin', 'Chemical name', 'Deficiency'];
 const cells = (row, tag = 'td') => `<tr>${row.map((c) => `<${tag}>${c}</${tag}>`).join('')}</tr>`;
 const VITAMINS_HTML = `<html><body style="${SHEET}"><table>${cells(VITAMIN_TITLES, 'th')}${VITAMINS.map((r) => cells(r)).join('')}</table></body></html>`;
+/**
+ * A table with ruled, padded cells set from the top, as a word processor makes them; two of
+ * its last cells run over onto a second line. (Only the last column wraps here: a cell that
+ * runs over in an earlier column comes out of the PDF in another order, which is not handled.)
+ */
+const DEFICIENCIES = [
+  ['A', 'Retinol', 'Night blindness, and in the end dry eyes that scar the cornea'],
+  ['C', 'Ascorbic acid', 'Scurvy'],
+  ['D', 'Calciferol', 'Rickets in children and soft bones in adults'],
+  ['K', 'Phylloquinone', 'Slow clotting'],
+];
+const RULED_HTML = `<html><head><style>table { border-collapse: collapse; width: 150mm } td, th { border: 1px solid #000; padding: 4px 10px; text-align: left; vertical-align: top } th, td:nth-child(-n + 2) { white-space: nowrap }</style></head><body style="${SHEET}"><p>The vitamins that matter most are in the table below.</p><table>${cells(VITAMIN_TITLES, 'th')}${DEFICIENCIES.map((r) => cells(r)).join('')}</table><p>Vitamin C is the only one of these that dissolves in water.</p></body></html>`;
 /** Two columns whose first row is set like every other row: it may be titles, it may be a fact. */
 const PLAIN_ROWS = [['Organelle', 'What it does'], ...TERMS];
 const PLAIN_ROWS_HTML = `<html><body style="${SHEET}"><table>${PLAIN_ROWS.map((r) => cells(r)).join('')}</table></body></html>`;
@@ -267,6 +280,7 @@ const files = {
   twoPages: { name: 'two-pages.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(TWO_PAGES_HTML, RUNNING) },
   vitamins: { name: 'vitamins.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(VITAMINS_HTML) },
   plainRows: { name: 'organelles-table.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(PLAIN_ROWS_HTML) },
+  ruled: { name: 'vitamins-ruled.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(RULED_HTML) },
   list: { name: 'carpal-bones.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(LIST_HTML) },
   long: { name: 'lecture-4.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(LONG_HTML, RUNNING) },
   scan: { name: 'scanned-handout.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(SCAN_HTML) },
@@ -700,11 +714,17 @@ const cases = {
     // A row of three cells is one fact, the first cell its term; a row of bold column titles is a heading.
     same(await read(files.vitamins), [`# ${VITAMIN_TITLES.join(': ')}`, ...VITAMINS.map(([term, ...rest]) => `${term}\t${rest.join('; ')}`)], 'a table of three columns under column titles');
     await shot(page, 'table');
+    // A cell that runs over onto a second line is still one cell, and the lines of prose above and below the table are not rows.
+    same(
+      await read(files.ruled),
+      ['The vitamins that matter most are in the table below.', `# ${VITAMIN_TITLES.join(': ')}`, ...DEFICIENCIES.map(([term, ...rest]) => `${term}\t${rest.join('; ')}`), 'Vitamin C is the only one of these that dissolves in water.'],
+      'a ruled table with cells that run over, between two lines of prose',
+    );
     // No sign that the first row is titles: it stays a row, like every other.
     same(await read(files.plainRows), PLAIN_ROWS.map(([term, meaning]) => `${term}\t${meaning}`), 'a table of two columns with no row set apart');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return `the numbered footer of ${DECK.length} slides is left out and their numbered titles are kept; of two pages the repeated line is kept; a table of three columns gives a heading and ${VITAMINS.length} rows of "term<TAB>second; third"; ${PLAIN_ROWS.length} rows with no titles set apart stay ${PLAIN_ROWS.length} rows`;
+    return `the numbered footer of ${DECK.length} slides is left out and their numbered titles are kept; of two pages the repeated line is kept; a table of three columns gives a heading and ${VITAMINS.length} rows of "term<TAB>second; third"; cells that run over onto a second line stay whole; ${PLAIN_ROWS.length} rows with no titles set apart stay ${PLAIN_ROWS.length} rows`;
   },
 };
 

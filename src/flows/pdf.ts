@@ -158,6 +158,10 @@ interface Line {
   breaks: Break[];
   /** A row of a table: what each cell says, left to right. */
   cells?: string[];
+  /** The column each of those cells is in. */
+  cellColumns?: number[];
+  /** The rest of a cell that ran over from the row above, and was put back into it: not a line of the notes. */
+  absorbed?: boolean;
   /** A row of a table that holds the titles of its columns. */
   titles?: boolean;
 }
@@ -457,8 +461,11 @@ function cutAtColumns(run: Run, columns: number[]): Run[] {
   return [run];
 }
 
-/** The cells of a row: a new cell where a run starts in another column, or after a gap of several letters. */
-function cellsOf(line: Line, columns: number[]): string[] | undefined {
+/**
+ * Gives a row its cells: a new cell where a run starts in another column, or after a gap of
+ * several letters. A line that turns out to be all one cell is no row, and keeps none.
+ */
+function setCells(line: Line, columns: number[]): void {
   const stops = stopsOf(line);
   const groups: Run[][] = [[]];
   let last: Run | undefined;
@@ -467,8 +474,21 @@ function cellsOf(line: Line, columns: number[]): string[] | undefined {
     groups[groups.length - 1].push(r);
     if (inked(r)) last = r;
   }
-  const cells = groups.map((g) => strung(g).text.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  return cells.length >= 2 ? cells : undefined;
+  const cells = groups.map((g) => ({ text: strung(g).text.replace(/\s+/g, ' ').trim(), column: columnAt(g.find(inked)?.x ?? 0, columns) })).filter((c) => c.text);
+  if (cells.length < 2) return;
+  line.cells = cells.map((c) => c.text);
+  line.cellColumns = cells.map((c) => c.column);
+}
+
+/**
+ * The column a line is the rest of a cell in, or 0: a cell that ran over onto a second line
+ * leaves a line with words in that one column only, starting where the column starts.
+ */
+function restOfCell(line: Line, columns: number[]): number {
+  const runs = line.runs.filter(inked);
+  const column = columnAt(runs[0].x, columns);
+  const alone = column >= 1 && Math.abs(columns[column - 1] - runs[0].x) <= 2 && runs.every((r) => columnAt(r.x, columns) === column);
+  return alone && !stopsOf(line).length ? column : 0;
 }
 
 /** A cell that could be the title of a column: a few words, no number, no sentence. */
@@ -513,14 +533,30 @@ function tabulate(lines: Line[]): void {
     // Two cells handed over as one run look like a line of prose. Such a line is a row only if the table goes on under it.
     const mayBeRow = (line: Line): boolean => line.runs.some((r) => inked(r) && cutAtColumns(r, columnsOf(rows())).length > 1);
     while (end + 1 < lines.length && paced(lines[end], lines[end + 1], pace())) {
-      if (isRow(lines[end + 1])) end++;
-      else if (end + 2 < lines.length && mayBeRow(lines[end + 1]) && paced(lines[end + 1], lines[end + 2], pace()) && isRow(lines[end + 2])) end += 2;
+      const next = lines[end + 1];
+      if (isRow(next)) end++;
+      // The second line of a cell, a line's pitch under the first: part of the row above it.
+      else if (next.y - lines[end].y <= 1.8 * next.size && restOfCell(next, columnsOf(rows())) > 0) end++;
+      else if (end + 2 < lines.length && mayBeRow(next) && paced(next, lines[end + 2], pace()) && isRow(lines[end + 2])) end += 2;
       else break;
     }
     const columns = columnsOf(rows());
     while (start > 0 && !lines[start - 1].cells && paced(lines[start - 1], lines[start], pace()) && cellLike(lines[start - 1], columns)) start--;
-    const table = rows();
-    for (const row of table) row.cells = cellsOf(row, columns);
+    let row: Line | undefined;
+    for (const [i, line] of rows().entries()) {
+      // The rest of a cell goes back with its beginning, in the row above; with no such cell there, it stays a line.
+      const close = i > 0 && line.y - lines[start + i - 1].y <= 1.8 * line.size;
+      const rest = row && close ? restOfCell(line, columns) : 0;
+      const into = rest > 0 ? (row?.cellColumns?.lastIndexOf(rest) ?? -1) : -1;
+      if (row?.cells && into >= 0) {
+        row.cells[into] = join(row.cells[into], line.text);
+        line.absorbed = true;
+      } else {
+        setCells(line, columns);
+        if (line.cells) row = line;
+      }
+    }
+    const table = rows().filter((line) => !line.absorbed);
     if (table.length >= 4 && holdsTitles(table[0], table.slice(1))) table[0].titles = true;
     at = end;
   }
@@ -709,7 +745,10 @@ function layout(raw: RawPage[]): PdfPageText[] {
   // must not weigh in the measure the rest is read by.
   withoutRunningLines({ pages, ...measure(pages) });
   const doc: Doc = { pages, ...measure(pages) };
-  for (const page of pages) tabulate(page.lines);
+  for (const page of pages) {
+    tabulate(page.lines);
+    page.lines = page.lines.filter((line) => !line.absorbed);
+  }
   return pages.map((page, i) => {
     const blocks = toBlocks(page, doc);
     const notes = blocks
