@@ -64,7 +64,8 @@
  *      recorded as walks of new places and kept off the Progress line
  *   m  The presses and screens between "Walk" and the first memory image of the 15-place Comer deck
  *   k  "Recall" on a palace in which nothing has been studied: a new one opens on its survey, a
- *      surveyed one on its study walk, a studied one on the recall walk
+ *      surveyed one on its study walk, a studied one on the recall walk; after a skipped survey the
+ *      results say so beside the score before study
  *   h  Exam Mode, multiple choice, keyboard only and with reduced motion: offered on Reviews and in
  *      Progress for a studied palace; the setup; meaning to term, then term to meaning; during the
  *      paper no place, room, image or verdict is on screen, the questions are not in route order and
@@ -2872,15 +2873,26 @@ const cases = {
     assert((await page.getByTestId('recall').count()) === 0 && (await page.getByTestId('survey').count()) === 0, '"Recall" on a surveyed palace that was never studied did not open its study walk');
     await leaveWalk();
 
-    // 3. Once an image has been placed there is something to recall.
-    await seedState(page, { decks: { [deck.id]: deck }, cards: Object.fromEntries([card(1, { studiedAt: Date.now() - 60_000 }), card(2), card(3)]), settings });
+    // 3. Once an image has been placed there is something to recall. (This palace's survey was skipped: nobody was asked.)
+    const skipped = { id: 'walk-skipped', deckId: deck.id, kind: 'survey', at: Date.now() - 3_600_000, total: 3, correct: 0, unknown: 3, ms: 0, items: [1, 2, 3].map((n) => ({ itemId: `s-${n}`, correct: false, unknown: true })) };
+    await seedState(page, { decks: { [deck.id]: deck }, cards: Object.fromEntries([card(1, { studiedAt: Date.now() - 60_000 }), card(2), card(3)]), records: [skipped], settings });
     await page.getByRole('button', { name: 'Recall A surveyed palace' }).click();
-    await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 3")').waitFor();
-    await page.getByTestId('recall-question').waitFor();
-    await leaveWalk();
+    for (let i = 1; i <= 3; i++) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 3")`).waitFor();
+      await page.getByTestId('recall-question').waitFor();
+      const options = await choiceTexts(page, 'choice');
+      await page.getByTestId('choice').nth(options.indexOf(`Term ${i}`)).click();
+      await page.getByTestId('recall-verdict').waitFor();
+      await page.getByTestId('recall-next').click();
+    }
+    // The results say that the score before study is not a measurement (QA review 4, issue 16), as the Progress view does.
+    await page.getByTestId('results').waitFor();
+    assert((await text(page.getByTestId('results-vs-survey'))) === 'Before study: 0 of 3 (survey skipped). Now: 3 of 3.', `results after a skipped survey: ${await text(page.getByTestId('results-vs-survey'))}`);
+    await page.getByTestId('results-home').click();
+    await page.getByTestId('title').waitFor();
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return '"Recall" on a new palace opens its survey; on a surveyed one, its study walk; on a studied one, the recall walk';
+    return '"Recall" on a new palace opens its survey; on a surveyed one, its study walk; on a studied one, the recall walk, whose results say "(survey skipped)"';
   },
 
   /** Exam Mode, multiple choice, with the keyboard only. */
