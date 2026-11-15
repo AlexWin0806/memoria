@@ -1556,6 +1556,12 @@ export default async function handler(req: ArchitectReq, res: ArchitectRes): Pro
       res.setHeader('allow', 'POST');
       throw new HttpError(405, 'method_not_allowed', 'Use POST.');
     }
+    // JSON only. A browser on another site can send a text/plain POST without asking first; a
+    // JSON one needs a preflight that this function never answers, so another site cannot make
+    // its visitors' browsers spend this key. (A script can still call it: the rate limit is for that.)
+    if (!/^application\/json\b/i.test(String(req.headers['content-type'] ?? ''))) {
+      throw new HttpError(415, 'unsupported_media_type', 'Send the request as application/json.');
+    }
     if (rateLimited(clientAddress(req))) {
       throw new HttpError(429, 'rate_limited', 'Too many requests. Wait a few minutes and try again.');
     }
