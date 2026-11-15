@@ -47,12 +47,26 @@ try {
   const { DOMUS_META } = await load('/src/layouts/domus/meta.ts');
   const { planPalace, planPalaceLocal, regenerateImago, isNoStrongerSuggestion, parseLine, designPalace, designPalaceLocal, extendPalace, extendPalaceLocal } = await load('/src/ai/architect.ts');
   const { parsePalaceId, specPlaces, isGeneratedId, MAX_ROOMS, ROOM_CAPACITY, MAX_PLACES } = await load('/src/layouts/spec.ts');
-  const { toOutline, cleanLinks, linkCap } = await load('/src/ai/wire.ts');
+  const { toOutline, cleanLinks, linkCap, roomName } = await load('/src/ai/wire.ts');
   const { isSafeGlyph, wordCount, IMAGO_ACTIONS } = await load('/src/ai/glyphs.ts');
   const { LEXICON } = await load('/src/ai/lexicon.ts');
   const { nameSentences, deriveTerm, singularCounts } = await load('/src/ai/parse.ts');
 
   // ── Checks shared by everything that builds a generated palace ──────────────
+  /**
+   * What is wrong with a room's name, or null. A name is a whole phrase: it never ends on an article, a
+   * conjunction, a preposition or a symbol, and it is short (four words, or about 28 characters; two
+   * categories that share a room are named for both).
+   */
+  const nameFault = (name) => {
+    if (!name.trim() || name.length > 40) return 'is empty or longer than 40 characters';
+    if (/\s(?:a|an|the|and|or|nor|but|of|in|on|at|to|for|from|with|by|as|vs)$/.test(name) || /\s(?:An|The|And|Or|Of|In|On|At|To|For|From|With|By|As)$/.test(name)) return 'ends on an article, a conjunction or a preposition';
+    if (/[^\p{L}\p{N})"'”’?!%]$/u.test(name)) return 'ends on a symbol or a mark of punctuation';
+    if (/^(?:lecture|chapter|week|unit|module|lesson)\s*\d+\s*[:.)-]/i.test(name)) return 'keeps a course or lecture prefix';
+    const words = name.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+    if (words > 4 && name.length > 28 && !/ & /.test(name)) return 'is longer than four words and 28 characters';
+    return null;
+  };
   /** As PalaceSpec.seed is checked in src/layouts/spec.ts. */
   const SEED = /^[a-z0-9]{1,8}$/;
   const seedOf = (layoutId) => parsePalaceId(layoutId)?.seed;
@@ -77,6 +91,7 @@ try {
     if (plan.spec && JSON.stringify(spec) !== JSON.stringify(plan.spec)) fail(`${label}: layoutId and spec disagree`);
     if (plan.spec && plan.spec.seed !== spec.seed) fail(`${label}: the seed in the spec (${plan.spec.seed}) is not the one in the layoutId (${spec.seed})`);
     if (spec.rooms.length > MAX_ROOMS || spec.rooms.some((r) => r.places < 1 || r.places > ROOM_CAPACITY)) fail(`${label}: more than ${MAX_ROOMS} rooms, or a room with more than ${ROOM_CAPACITY} places`);
+    for (const r of spec.rooms) if (nameFault(r.name)) fail(`${label}: the room name "${r.name}" ${nameFault(r.name)}`);
     if (plan.items.length > MAX_PLACES) fail(`${label}: ${plan.items.length} items`);
     // A new palace has no room of a single place. (Only a palace that is extended can: nothing in it may move.)
     if (!lone && plan.items.length > 1 && spec.rooms.some((r) => r.places === 1)) fail(`${label}: a room of one place: ${spec.rooms.map((r) => `${r.name} (${r.places})`).join(', ')}`);
@@ -93,7 +108,7 @@ try {
       const inCategory = plan.categories.flatMap((c) => c.itemIds);
       if (inCategory.length !== plan.items.length || new Set(inCategory).size !== plan.items.length) fail(`${label}: every item should be in exactly one category`);
       for (const c of plan.categories) {
-        if (c.name.split(/\s+/).length > 3 && !/ & /.test(c.name) && !/^Steps \d+ to \d+$/.test(c.name)) fail(`${label}: the category name "${c.name}" is longer than three words`);
+        if (nameFault(c.name)) fail(`${label}: the category name "${c.name}" ${nameFault(c.name)}`);
         for (const id of c.itemIds) if (!c.roomIds.includes(roomOf(plan.items.find((i) => i.id === id)?.locusId ?? ''))) fail(`${label}: an item of ${c.name} is not in one of its rooms`);
         for (const roomId of c.roomIds) if ((spec.rooms.find((r) => r.id === roomId)?.shape === 'ring') !== (c.shape === 'ring')) fail(`${label}: the room ${roomId} of ${c.name} has the wrong shape`);
       }
@@ -747,6 +762,56 @@ try {
       if (domusTable.items.map((it) => `${it.term} = ${it.meaning}`).join(' | ') !== 'A = Retinol; Night blindness | B1 = Thiamine; Beriberi | C = Ascorbic acid; Scurvy') fail('offline table rows: the fixed-route planner reads them differently');
     }
 
+    // ── QA review 4, issue 9: a room name is never cut in the middle of a phrase ──
+    {
+      const NAMES = [
+        ['Lecture 7: The nephron', 'The nephron'],
+        ['Distal tubule & collecting duct', 'Distal tubule & collecting duct'],
+        // The two names the review saw, should a heading ever arrive already cut.
+        ['Lecture 7: The', 'Lecture 7'],
+        ['Distal tubule &', 'Distal tubule'],
+        ['Distal tubule & collecting duct of the nephron', 'Distal tubule & collecting duct'],
+        ['Regulation of sodium and potassium balance in the distal nephron', 'Regulation of sodium'],
+        ['Loop of Henle: the countercurrent multiplier', 'Loop of Henle'],
+        ['Week 2 - Acids, bases and buffers in the blood', 'Acids, bases and buffers'],
+        ['Chapter 3. Calcium channel blockers', 'Calcium channel blockers'],
+        ['Na and K in the loop', 'Na and K in the loop'],
+        ['Vitamin A', 'Vitamin A'],
+        ['Past tense forms here', 'Past tense forms here'],
+        ['Steps 1 to 5', 'Steps 1 to 5'],
+        ['Part 2', 'Part 2'],
+        ['Group 2 & Group 3', 'Group 2 & Group 3'],
+        ['Citrate to succinyl-CoA', 'Citrate to succinyl-CoA'],
+      ];
+      for (const [heading, expected] of NAMES) {
+        const got = roomName(heading);
+        if (got !== expected) fail(`room name: "${heading}" should be "${expected}", got "${got}"`);
+        if (nameFault(got)) fail(`room name: "${got}" (from "${heading}") ${nameFault(got)}`);
+        if (roomName(got) !== got) fail(`room name: shortening "${got}" again changes it to "${roomName(got)}"`);
+      }
+      console.log(`[room names]  ${NAMES.filter(([h, e]) => h !== e).map(([h, e]) => `"${h}" → "${e}"`).join('; ')}`);
+      // Any long heading at all: whole words, a whole phrase, 40 characters at most.
+      const longOnes = ['Pharmacokinetics and pharmacodynamics of anticoagulants', 'The role of the kidney in the regulation of blood pressure (RAAS)', 'Antidisestablishmentarianism versus pseudopseudohypoparathyroidism', 'Causes, signs and treatment of diabetic ketoacidosis and of the hyperosmolar state'];
+      for (const heading of longOnes) {
+        const got = roomName(heading);
+        if (nameFault(got) || !heading.startsWith(got.split(' ')[0])) fail(`room name: "${got}" (from "${heading}") ${nameFault(got)}`);
+        if (!got.split(' ').every((w) => heading.split(' ').includes(w) || heading.split(' ').includes(`${w},`))) fail(`room name: "${got}" cuts a word of "${heading}"`);
+      }
+      // Offline: the headings of lecture slides.
+      const slides = designPalaceLocal({ text: '## Lecture 7: The nephron and its blood supply\nglomerulus - filters plasma\nproximal tubule - reabsorbs most\n## Distal tubule & collecting duct\naldosterone - sodium in, potassium out\nADH - water channels' });
+      checkPalace('offline slide headings', slides);
+      if (slides.spec.rooms.map((r) => r.name).join('|') !== 'The nephron|Distal tubule & collecting duct') fail(`offline slide headings: rooms ${slides.spec.rooms.map((r) => r.name).join('|')}`);
+      // The same heading, later, continues the room that was named from it.
+      const more = extendPalaceLocal({ id: 'deck-slides', title: 'Kidney', kind: 'pairs', layoutId: slides.layoutId, items: slides.items, createdAt: 1 }, '## Lecture 7: The nephron and its blood supply\nmacula densa - senses salt\nmesangium - holds the tuft');
+      if (more.spec.rooms.map((r) => `${r.name}:${r.places}`).join('|') !== 'The nephron:4|Distal tubule & collecting duct:2') fail(`offline slide headings: an extension under the same heading should join its room: ${more.spec.rooms.map((r) => `${r.name}:${r.places}`).join('|')}`);
+      // On arrival: whatever the server sends is named by the same rule.
+      const arrived = toOutline(
+        { title: 'Kidney', kind: 'pairs', categories: [{ name: 'Lecture 7: The', shape: 'hall' }, { name: 'Distal tubule &', shape: 'hall' }, { name: 'Regulation of sodium and potassium balance in the distal nephron', shape: 'hall' }], items: [0, 0, 1, 1, 2, 2].map((category, i) => ({ ref: `i${i + 1}`, term: `t${i + 1}`, category })), links: [], overflow: [], steps: [] },
+        { cap: 30 },
+      );
+      if (arrived?.categories.map((c) => c.name).join('|') !== 'Lecture 7|Distal tubule|Regulation of sodium') fail(`client outline rules: room names on arrival: ${arrived?.categories.map((c) => c.name).join('|')}`);
+    }
+
     // No categories: consecutive rooms of up to five with plain names, in the order given; 30 at most.
     const lines = Array.from({ length: 37 }, (_, i) => `Thing ${i + 1} - gloss ${i + 1}`);
     const big = designPalaceLocal({ text: lines.join('\n') });
@@ -1014,7 +1079,7 @@ try {
       modelItems.push({ ...oItem(3, 'c1'), term: 'a second fact with the id i3' }, { ...oItem(27, 'c6'), term: '   ' });
       const answerA = {
         title: 'Mock palace', kind: 'list', kit: 'workshop', kitReason: 'A cycle suits a garden.', focus: 'facts', focusReason: '',
-        categories: sizes.map((_, c) => ({ id: `c${c + 1}`, name: c === 0 ? 'Past tense forms here' : `Group ${c + 1}`, cycle: c === 3 })),
+        categories: sizes.map((_, c) => ({ id: `c${c + 1}`, name: c === 0 ? 'Lecture 7: The past tense forms of comer and their endings' : `Group ${c + 1}`, cycle: c === 3 })),
         items: modelItems,
         links: [
           { from: 'i1', to: 'i1', kind: 'becomes', label: '' },
@@ -1034,8 +1099,8 @@ try {
       if (o) {
         for (const s of o.steps) console.log(`      · (${s.kind}) ${s.label}`);
         check('outline: one fact per ref, empty terms dropped', o.items.length === 26 && new Set(o.items.map((i) => i.ref)).size === 26 && o.items.find((i) => i.ref === 'i3').term === 'fact 3', `${o.items.length} items`);
-        check('outline: seven rooms become six by merging two small neighbours', o.categories.map((c) => c.name).join('|') === 'Past tense forms|Group 2 & Group 3|Group 4|Group 5|Group 6', o.categories.map((c) => c.name).join('|'));
-        check('outline: category names are three words at most', o.categories.every((c) => c.name.split(' ').length <= 5 && !/here/.test(c.name)));
+        check('outline: seven rooms become six by merging two small neighbours', o.categories.map((c) => c.name).join('|') === 'The past tense forms|Group 2 & Group 3|Group 4|Group 5|Group 6', o.categories.map((c) => c.name).join('|'));
+        check('outline: a long category name is shortened at a boundary, without its lecture prefix', o.categories.every((c) => !nameFault(c.name)), o.categories.map((c) => `${c.name}: ${nameFault(c.name)}`).join('|'));
         check('outline: items are grouped by category, in order', o.items.map((i) => i.category).join('') === '0000000' + '1111' + '22222' + '33333' + '44444');
         check('outline: a category whose facts close a loop is a ring', o.categories[2].shape === 'ring' && o.categories.filter((c) => c.shape === 'ring').length === 1, o.categories.map((c) => c.shape).join());
         check('outline: repeated and unsafe pictures are dropped', o.items[0].picture === GLYPHS[1] && !o.items[1].picture && !o.items[2].picture && o.items.every((i) => !i.picture || isSafeGlyph(i.picture)));
@@ -1048,6 +1113,14 @@ try {
       const schema = JSON.stringify(seen[0]?.output_config?.format?.schema ?? {});
       check('outline request: one call, kits listed, limits stated, links only where stated', seen.length === 1 && /workshop: Workshop\. Machines in a line/.test(prompt) && /at most 30 facts/.test(prompt) && /only where the material states them/.test(prompt));
       check('outline request: schema pins item ids, category ids and kit ids', schema.includes('"i30"') && !schema.includes('"i31"') && schema.includes('"c6"') && schema.includes('"workshop"') && schema.includes('"mirrors"'));
+
+      // Room names (QA review 4, issue 9): the server's copy of the rule gives what the client's gives.
+      const headings = ['Lecture 7: The nephron', 'Distal tubule & collecting duct', 'Regulation of sodium and potassium balance in the distal nephron', 'Chapter 3. Pharmacokinetics and pharmacodynamics of anticoagulants', 'Loop of Henle: the countercurrent multiplier', 'Na and K in the loop'];
+      queue.push(answer(JSON.stringify({ title: 'Kidney', kind: 'pairs', kit: 'gothic', kitReason: '', focus: 'facts', focusReason: '', categories: headings.map((name, c) => ({ id: `c${c + 1}`, name, cycle: false })), items: headings.flatMap((_, c) => [oItem(c * 2 + 1, `c${c + 1}`), oItem(c * 2 + 2, `c${c + 1}`)]), links: [], overflow: [], grouping: '' })));
+      r = await call({ ...outlineBody, kit: 'gothic' });
+      const named = r.json?.outline?.categories.map((c) => c.name).join('|');
+      check('outline: room names are whole phrases, shortened at a boundary, as on the client', named === headings.map(roomName).join('|') && named.startsWith('The nephron|Distal tubule & collecting duct|Regulation of sodium|') && r.json.outline.categories.every((c) => !nameFault(c.name)), named);
+      check('outline request: the model is told how to name a room', /never end a name on an article, a conjunction, a preposition or a symbol/.test(prompt) && /Leave out a course or lecture prefix/.test(prompt) && !/three words or fewer, in the material/.test(prompt));
 
       // No real categories: plain consecutive rooms in the order given.
       queue.push(answer(JSON.stringify({ title: 'Plain', kind: 'list', kit: 'workshop', kitReason: '', focus: 'facts', focusReason: '', categories: [{ id: 'c1', name: '', cycle: false }], items: Array.from({ length: 12 }, (_, i) => oItem(i + 1, 'c1')), links: [], overflow: [], grouping: '' })));

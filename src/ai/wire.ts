@@ -47,6 +47,65 @@ export function toSteps(raw: unknown): ArchitectStep[] {
   });
 }
 
+// ───────────────────────── Room names ─────────────────────────
+
+/** A room is named in up to four words, or in about 28 characters when the words are short. */
+const ROOM_NAME_WORDS = 4;
+const ROOM_NAME_CHARS = 28;
+/** A spec keeps 40 characters of a name; four are left for the number of an annexe ("Past III"). */
+const ROOM_NAME_MAX = 36;
+/** A name never ends on one of these: an article, a conjunction or a preposition promises more. */
+const DANGLING = new Set('a an the and or nor but of in on at to for from with without by as into onto over under between among through during per via vs versus than'.split(' '));
+/** "Lecture 7: ", "Chapter 3. ", "Week 2 - ": where the heading stands in a course, not what the room holds. */
+const COURSE_PREFIX = /^(?:lecture|lec|chapter|ch|unit|week|module|lesson|topic|section|session|part)\.?\s*\d+[a-z]?\s*[:.)–—-]\s*/i;
+
+const isWord = (token: string): boolean => /[\p{L}\p{N}]/u.test(token);
+/** "Vitamin A" ends on a name, not on an article. */
+const dangles = (word: string): boolean => word !== 'A' && DANGLING.has(word.toLowerCase());
+
+/** Without the marks, symbols and dangling words at its ends: "Distal tubule &" → "Distal tubule". */
+function tidyName(text: string): string {
+  let t = text.trim().replace(/^[^\p{L}\p{N}("'“‘]+/u, '');
+  for (;;) {
+    const before = t;
+    t = t.replace(/[^\p{L}\p{N})"'”’?!%]+$/u, '');
+    const at = t.lastIndexOf(' ');
+    if (at > 0 && dangles(t.slice(at + 1))) t = t.slice(0, at);
+    if (t === before) return t;
+  }
+}
+
+const nameFits = (name: string): boolean => name.length <= ROOM_NAME_CHARS || (name.length <= ROOM_NAME_MAX && name.split(' ').filter(isWord).length <= ROOM_NAME_WORDS);
+
+/**
+ * The name of a room, from a heading of the notes or a category the Architect named. The
+ * heading whole when it fits. Otherwise shortened at a boundary, never in the middle of a
+ * phrase: "Lecture 7: The nephron" is "The nephron", and a long heading stops before a
+ * conjunction, a preposition, a symbol or a mark of punctuation ("Regulation of sodium and
+ * potassium balance" is "Regulation of sodium"), never on one ("Distal tubule &").
+ * Mirrored in api/architect.ts, which cannot import this file.
+ */
+export function roomName(heading: string): string {
+  const whole = heading.replace(/[;~]/g, ' ').replace(/\s+/g, ' ').trim();
+  const subject = tidyName(whole.replace(COURSE_PREFIX, ''));
+  // A prefix with nothing after it, or with only "The", is all the name there is.
+  const name = subject && !dangles(subject) ? subject : tidyName(whole);
+  // Two categories that share a room are named for both ("Loop of Henle & Distal tubule").
+  const halves = name.split(' & ');
+  if (nameFits(name) || (name.length <= ROOM_NAME_MAX + 4 && halves.length === 2 && halves.every(nameFits))) return name;
+  const tokens = name.split(' ');
+  let anywhere = '';
+  for (let n = tokens.length - 1; n >= 1; n--) {
+    const cut = tidyName(tokens.slice(0, n).join(' '));
+    if (!cut || !nameFits(cut)) continue;
+    const next = tokens[n];
+    // The longest opening that stops at the end of a phrase, else the longest that fits at all.
+    if (!isWord(next) || dangles(next) || /^[([–—-]/.test(next) || /[,:)\]–—]$/.test(tokens[n - 1])) return cut;
+    anywhere ||= cut;
+  }
+  return anywhere || name.slice(0, ROOM_NAME_MAX).trim();
+}
+
 // ───────────────────────── Outline ─────────────────────────
 
 export const LINK_KINDS: readonly LinkKind[] = ['becomes', 'needs', 'blocks', 'mirrors'];
@@ -311,10 +370,11 @@ export function toOutline(raw: unknown, ctx: { cap: number; kitIds?: readonly st
   const categories: OutlineCategory[] = [];
   for (const c of raw.categories) {
     if (!isRecord(c)) return null;
-    const name = cleanText(c.name, 40);
-    if (!name) return null;
     const room = typeof c.room === 'number' && Number.isInteger(c.room) && c.room >= 0 && c.room < (ctx.existingRooms ?? 0) ? c.room : undefined;
     if (c.room !== undefined && c.room !== null && room === undefined) return null;
+    // A room that stands keeps the name it has; a new one is named by the same rule as offline.
+    const name = room === undefined ? roomName(cleanText(c.name, 120) ?? '') : cleanText(c.name, 40);
+    if (!name) return null;
     categories.push({ name, shape: c.shape === 'ring' ? 'ring' : 'hall', ...(room !== undefined ? { room } : {}) });
   }
 

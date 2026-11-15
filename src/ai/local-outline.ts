@@ -3,7 +3,7 @@ import { MAX_PLACES, ROOM_CAPACITY } from '@/layouts/spec';
 import type { ArchitectStep } from './architect';
 import { wordCount } from './glyphs';
 import { extractFacts, parseLine, singularCounts, type ParsedFact } from './parse';
-import { arrangeRooms, cleanLinks, closesLoop, linkCap, roomSizes, type Outline, type OutlineCategory, type OutlineItem, type OutlineLink } from './wire';
+import { arrangeRooms, cleanLinks, closesLoop, linkCap, roomName, roomSizes, type Outline, type OutlineCategory, type OutlineItem, type OutlineLink } from './wire';
 
 /**
  * The offline outline: the same `Outline` the Architect's server returns, read from the
@@ -308,11 +308,11 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
         });
         return;
       }
-      // A heading that names a room that stands continues that room.
-      const room = rooms.findIndex((r) => norm(categoryOfRoom(r.name)) === norm(section.name));
       // New notes without a heading get a room of their own.
-      const name = section.name || (ctx.existing ? 'New notes' : 'General');
-      categories.push({ name: name.split(/\s+/).slice(0, 3).join(' '), shape: 'hall', ...(room >= 0 ? { room } : {}) });
+      const name = roomName(section.name) || (ctx.existing ? 'New notes' : 'General');
+      // A heading that names a room that stands continues that room (the room has the heading's short name).
+      const room = rooms.findIndex((r) => [norm(section.name), norm(name)].includes(norm(categoryOfRoom(r.name))));
+      categories.push({ name, shape: 'hall', ...(room >= 0 ? { room } : {}) });
       for (const fact of facts) place(fact, categories.length - 1);
     });
   } else {

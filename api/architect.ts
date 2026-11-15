@@ -677,7 +677,7 @@ const OUTLINE_RULES = `How to outline the palace:
 - kind: "list" when the order matters or each item is a standalone thing to recall at its place; "pairs" when each item is a cue with an answer (vocabulary, term and definition). If a kind is forced, use it.
 - term: the thing to remember, in the learner's own wording, five words or fewer. meaning: the answer (pairs), or a gloss of 15 words or fewer (list). Use only what the material says, plus a gloss you are certain is correct. If there is none, use an empty string. Do not add facts, and never cut a term or a meaning off in the middle: shorten by rewording, not by truncating.
 - When the lines share a generic head ("Element 1 - Hydrogen", "Step 2 - whisk"), the term is the specific part (Hydrogen), never the shared word or the number.
-- Categories become rooms: each category of the material is a physically separate room of the palace. Use the categories the material itself has: its headings, its named groups ("Past tense", "Noble gases"), the stages of a process. Name each in three words or fewer, in the material's own words where it has them. Related facts share a category. Never invent categories to decorate: if the material has no real categories, return exactly one category with an empty name, and the facts will be split in order into plain rooms. A category with a single fact is not a room: put that fact in the category nearest to it.
+- Categories become rooms: each category of the material is a physically separate room of the palace. Use the categories the material itself has: its headings, its named groups ("Past tense", "Noble gases"), the stages of a process. Name each in the material's own words where it has them: the heading whole when it is short (four words or fewer, or about 28 characters), otherwise a shorter phrase that still reads as a name. Leave out a course or lecture prefix ("Lecture 7: The nephron" is "The nephron"), and never end a name on an article, a conjunction, a preposition or a symbol ("Distal tubule", never "Distal tubule &"). Related facts share a category. Never invent categories to decorate: if the material has no real categories, return exactly one category with an empty name, and the facts will be split in order into plain rooms. A category with a single fact is not a room: put that fact in the category nearest to it.
 - A room holds at most ${ROOM_CAPACITY} facts and a palace at most ${MAX_ROOMS} rooms. A category with more than ${ROOM_CAPACITY} facts continues in a second room, which counts towards the ${MAX_ROOMS}. If the material has more categories than fit, merge the closest ones.
 - List the categories in the order they should be walked, which is the order of the material. List the items category by category in that order; inside a category keep the order of the material, so that a sequence stays in sequence.
 - cycle: true only when the facts of a category form a closed loop, each leading to the next and the last back to the first (the citric acid cycle, the water cycle). Otherwise false.
@@ -700,7 +700,63 @@ const LINK_PHRASE: Record<LinkKind, string> = {
   mirrors: 'is the matched pair of',
 };
 
-const firstWords = (s: string, n: number): string => s.split(/\s+/).filter(Boolean).slice(0, n).join(' ');
+/** A room is named in up to four words, or in about 28 characters when the words are short. */
+const ROOM_NAME_WORDS = 4;
+const ROOM_NAME_CHARS = 28;
+/** A spec keeps 40 characters of a name; four are left for the number of an annexe ("Past III"). */
+const ROOM_NAME_MAX = 36;
+/** A name never ends on one of these: an article, a conjunction or a preposition promises more. */
+const DANGLING = new Set('a an the and or nor but of in on at to for from with without by as into onto over under between among through during per via vs versus than'.split(' '));
+/** "Lecture 7: ", "Chapter 3. ", "Week 2 - ": where the heading stands in a course, not what the room holds. */
+const COURSE_PREFIX = /^(?:lecture|lec|chapter|ch|unit|week|module|lesson|topic|section|session|part)\.?\s*\d+[a-z]?\s*[:.)–—-]\s*/i;
+
+const isWord = (token: string): boolean => /[\p{L}\p{N}]/u.test(token);
+/** "Vitamin A" ends on a name, not on an article. */
+const dangles = (word: string): boolean => word !== 'A' && DANGLING.has(word.toLowerCase());
+
+/** Without the marks, symbols and dangling words at its ends: "Distal tubule &" → "Distal tubule". */
+function tidyName(text: string): string {
+  let t = text.trim().replace(/^[^\p{L}\p{N}("'“‘]+/u, '');
+  for (;;) {
+    const before = t;
+    t = t.replace(/[^\p{L}\p{N})"'”’?!%]+$/u, '');
+    const at = t.lastIndexOf(' ');
+    if (at > 0 && dangles(t.slice(at + 1))) t = t.slice(0, at);
+    if (t === before) return t;
+  }
+}
+
+const nameFits = (name: string): boolean => name.length <= ROOM_NAME_CHARS || (name.length <= ROOM_NAME_MAX && name.split(' ').filter(isWord).length <= ROOM_NAME_WORDS);
+
+/**
+ * The name of a room, from a heading of the notes or a category the Architect named. The
+ * heading whole when it fits. Otherwise shortened at a boundary, never in the middle of a
+ * phrase: "Lecture 7: The nephron" is "The nephron", and a long heading stops before a
+ * conjunction, a preposition, a symbol or a mark of punctuation ("Regulation of sodium and
+ * potassium balance" is "Regulation of sodium"), never on one ("Distal tubule &").
+ * Mirrors `roomName` in src/ai/wire.ts, where the client applies the same rule again on arrival.
+ */
+function roomName(heading: string): string {
+  const whole = heading.replace(/[;~]/g, ' ').replace(/\s+/g, ' ').trim();
+  const subject = tidyName(whole.replace(COURSE_PREFIX, ''));
+  // A prefix with nothing after it, or with only "The", is all the name there is.
+  const name = subject && !dangles(subject) ? subject : tidyName(whole);
+  // Two categories that share a room are named for both ("Loop of Henle & Distal tubule").
+  const halves = name.split(' & ');
+  if (nameFits(name) || (name.length <= ROOM_NAME_MAX + 4 && halves.length === 2 && halves.every(nameFits))) return name;
+  const tokens = name.split(' ');
+  let anywhere = '';
+  for (let n = tokens.length - 1; n >= 1; n--) {
+    const cut = tidyName(tokens.slice(0, n).join(' '));
+    if (!cut || !nameFits(cut)) continue;
+    const next = tokens[n];
+    // The longest opening that stops at the end of a phrase, else the longest that fits at all.
+    if (!isWord(next) || dangles(next) || /^[([–—-]/.test(next) || /[,:)\]–—]$/.test(tokens[n - 1])) return cut;
+    anywhere ||= cut;
+  }
+  return anywhere || name.slice(0, ROOM_NAME_MAX).trim();
+}
+
 const enumOf = (prefix: string, n: number): [string, ...string[]] => Array.from({ length: Math.max(1, n) }, (_, i) => `${prefix}${i + 1}`) as [string, ...string[]];
 
 /** True when `becomes` links run from fact to fact inside `refs` and come back to where they started. */
@@ -918,7 +974,7 @@ ${input.text}
   const byId = new Map<string, Category>();
   existing?.rooms.forEach((r, k) => byId.set(`x${k + 1}`, { name: r.name, cycle: false, room: k, items: [] }));
   for (const c of draft.categories) {
-    if (!byId.has(c.id)) byId.set(c.id, { name: firstWords(oneLine(c.name, 60).replace(/[;~]/g, ' '), 3), cycle: c.cycle, items: [] });
+    if (!byId.has(c.id)) byId.set(c.id, { name: roomName(oneLine(c.name, 120)), cycle: c.cycle, items: [] });
   }
   for (const it of usable.slice(0, cap)) {
     let category = byId.get(it.category);
