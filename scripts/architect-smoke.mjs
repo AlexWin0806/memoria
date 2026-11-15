@@ -690,6 +690,63 @@ try {
     if (needs.focus !== 'facts') fail('offline: one "becomes" among six facts is not a process');
     if (needs.links.map((l) => l.kind).join() !== 'needs,blocks,becomes,mirrors') fail(`offline: "requires", "blocks", "becomes", "<->" should give needs, blocks, becomes, mirrors: ${needs.links.map((l) => l.kind)}`);
 
+    // ── QA review 4, issues 10 and 17: what a judge sees when the venue Wi-Fi is down ──
+    {
+      const factsOf = (p) => p.items.map((it) => `${it.term}${it.meaning ? ` = ${it.meaning}` : ''}`);
+      const linksOf = (p) => p.links.map((l) => `${p.items.find((i) => i.id === l.from)?.term} ${l.kind} ${p.items.find((i) => i.id === l.to)?.term}`).join('; ');
+      const roomsOf = (p) => p.spec.rooms.map((r) => `${r.name}:${r.places}`).join();
+      // A line that reads as "term - meaning" is one fact, whatever words its meaning holds.
+      const drugs = designPalaceLocal({
+        text: ['## Beta blockers', 'propranolol - non-selective, avoid in asthma', 'metoprolol - beta-1 selective', 'carvedilol - also blocks alpha-1', '## ACE inhibitors', 'captopril - cough', 'lisinopril - once daily', 'enalapril - prodrug',
+          '## Calcium channel blockers', 'verapamil - constipation', 'amlodipine - ankle swelling', 'diltiazem - slows the AV node', '## Diuretics', 'furosemide - loses potassium', 'spironolactone - keeps potassium', 'hydrochlorothiazide - raises calcium'].join('\n'),
+      });
+      showPalace('term - meaning with a relation word (review 4, issue 10)', drugs);
+      checkPalace('offline term - meaning', drugs);
+      if (drugs.items.length !== 12 || !factsOf(drugs).includes('carvedilol = also blocks alpha-1') || drugs.items.some((it) => it.term === 'alpha-1' || it.meaning === 'also') || drugs.links.length !== 0) fail(`offline: "carvedilol - also blocks alpha-1" should be one fact and no link: ${factsOf(drugs).slice(0, 4).join(' | ')}; links ${linksOf(drugs)}`);
+      if (roomsOf(drugs) !== 'Beta blockers:3,ACE inhibitors:3,Calcium channel blockers:3,Diuretics:3') fail(`offline term - meaning: rooms ${roomsOf(drugs)}`);
+      const verbs2 = designPalaceLocal({ text: 'warfarin - inhibits vitamin K recycling\ninsulin: requires zinc for storage\npepsinogen - becomes pepsin in acid\nheparin = needs antithrombin\nADH: water in -> urine concentrated' });
+      if (verbs2.items.length !== 5 || verbs2.links.length !== 0 || verbs2.items.some((it) => !it.meaning)) fail(`offline: relation words and a single arrow inside a meaning are part of the meaning: ${factsOf(verbs2).join(' | ')}; links ${linksOf(verbs2)}`);
+
+      // "label: a -> b -> c -> d" on one line is a chain: the label names the process, the steps follow in order.
+      const chain = designPalaceLocal({ text: 'water cycle: evaporation -> condensation -> precipitation -> collection' });
+      showPalace('a labelled chain on one line (review 4, issue 17)', chain);
+      checkPalace('offline labelled chain', chain);
+      if (chain.title !== 'Water cycle' || chain.focus !== 'process' || factsOf(chain).join() !== 'evaporation,condensation,precipitation,collection' || roomsOf(chain) !== 'Water cycle:4') fail(`offline labelled chain: "${chain.title}", ${chain.focus}, ${factsOf(chain)}, rooms ${roomsOf(chain)}`);
+      if (linksOf(chain) !== 'evaporation becomes condensation; condensation becomes precipitation; precipitation becomes collection') fail(`offline labelled chain: links ${linksOf(chain)}`);
+      const twoChains = designPalaceLocal({ text: 'Glycolysis: glucose -> G6P -> F6P\nKrebs cycle: citrate -> isocitrate -> succinate' });
+      checkPalace('offline two labelled chains', twoChains);
+      if (roomsOf(twoChains) !== 'Glycolysis:3,Krebs cycle:3' || twoChains.links.length !== 4 || twoChains.items.some((it) => /Glycolysis|Krebs/.test(it.term))) fail(`offline two labelled chains: each label should name the room of its steps: ${roomsOf(twoChains)}; ${factsOf(twoChains)}`);
+
+      // A title line names the deck and is never a step or a fact.
+      const titled = designPalaceLocal({ text: 'The water cycle\nevaporation -> condensation\ncondensation -> precipitation\nprecipitation -> collection' });
+      if (titled.title !== 'The water cycle' || factsOf(titled).join() !== 'evaporation,condensation,precipitation,collection' || !titled.steps.some((s) => s.label === 'Read the first line as the title, not as a fact: "The water cycle".')) fail(`offline title line: "${titled.title}", ${factsOf(titled)}; ${titled.steps.map((s) => s.label).join(' | ')}`);
+      const hashed = designPalaceLocal({ text: '# Renal physiology\nnephron - the working unit\n## Proximal tubule\nglucose - reabsorbed with sodium\nbicarbonate - reclaimed\n## Loop of Henle\nurea - recycled\nsalt - pumped out' });
+      checkPalace('offline first heading', hashed);
+      if (hashed.title !== 'Renal physiology' || hashed.items.length !== 5 || /Renal/.test(roomsOf(hashed)) || hashed.items.some((it) => /Renal/.test(it.term))) fail(`offline: the first heading names the deck, never a room or a fact: "${hashed.title}", rooms ${roomsOf(hashed)}`);
+      const lecture = designPalaceLocal({ text: 'Lecture 7: The nephron\nglomerulus - filters plasma\nproximal tubule - reabsorbs most\ncollecting duct - concentrates' });
+      if (lecture.title !== 'Lecture 7: The nephron' || lecture.items.length !== 3 || lecture.items.some((it) => /Lecture/.test(it.term))) fail(`offline: "Lecture 7: The nephron" is a title, not the fact "Lecture 7 = The nephron": "${lecture.title}", ${factsOf(lecture)}`);
+      const planets = designPalaceLocal({ text: 'Mercury\nVenus\nEarth\nMars' });
+      if (planets.items.length !== 4 || planets.items[0].term !== 'Mercury') fail(`offline: the first item of a plain list is not a title: ${factsOf(planets)}`);
+
+      // What was read and not placed is counted: one line with no words, one second meaning for a name, one exact repeat.
+      const silly = designPalaceLocal({ text: 'asdf\nqwerty\n🙂🙂🙂\nasdf - again\nbanana banana banana\n42\nfoo - bar\nfoo - baz\nzzz\nqwerty' });
+      const leftOut = silly.steps.find((s) => /^Left out/.test(s.label))?.label;
+      console.log(`[ten silly lines]  ${silly.items.length} kept; ${leftOut}`);
+      if (silly.items.length !== 6 || silly.dropped !== 3 || leftOut !== 'Left out 3 lines: 1 with no words to picture, 2 that repeat a fact already read.') fail(`offline: ten lines, six facts, one gloss merged, three left out: kept ${silly.items.length}, dropped ${silly.dropped}, "${leftOut}"`);
+      if (drugs.dropped !== undefined || drugs.steps.some((s) => /^Left out/.test(s.label))) fail('offline: nothing was left out of the drug list, and the trace should not say otherwise');
+      const hollow = designPalaceLocal({ text: '## Metals\nIron\nCopper\nZinc\n## Gases\n## Liquids\nMercury\nBromine' });
+      if (hollow.dropped !== 1 || !hollow.steps.some((s) => s.label === 'Left out 1 line: 1 heading with nothing under it.')) fail(`offline: a heading with nothing under it is counted: ${hollow.steps.map((s) => s.label).join(' | ')}`);
+
+      // A table read from a PDF: each row is one fact, the first cell its term, the other cells its meaning.
+      const table = designPalaceLocal({ text: 'A\tRetinol\tNight blindness\nB1\tThiamine\tBeriberi\nC\tAscorbic acid\tScurvy\nK\tPhylloquinone\trequires bile - fat soluble' });
+      showPalace('table rows (review 4, issue 9)', table);
+      if (factsOf(table).join(' | ') !== 'A = Retinol; Night blindness | B1 = Thiamine; Beriberi | C = Ascorbic acid; Scurvy | K = Phylloquinone; requires bile - fat soluble' || table.kind !== 'pairs' || table.links.length !== 0) fail(`offline table rows: ${factsOf(table).join(' | ')}`);
+      const row = parseLine('  B12\t Cobalamin \t\tPernicious anaemia ');
+      if (row?.term !== 'B12' || row.meaning !== 'Cobalamin; Pernicious anaemia' || parseLine('scaphoid\tboat')?.meaning !== 'boat') fail(`parseLine: a row of cells should be the first cell and the others joined with "; ": ${JSON.stringify(row)}`);
+      const domusTable = planPalaceLocal({ ...base, text: 'A\tRetinol\tNight blindness\nB1\tThiamine\tBeriberi\nC\tAscorbic acid\tScurvy' });
+      if (domusTable.items.map((it) => `${it.term} = ${it.meaning}`).join(' | ') !== 'A = Retinol; Night blindness | B1 = Thiamine; Beriberi | C = Ascorbic acid; Scurvy') fail('offline table rows: the fixed-route planner reads them differently');
+    }
+
     // No categories: consecutive rooms of up to five with plain names, in the order given; 30 at most.
     const lines = Array.from({ length: 37 }, (_, i) => `Thing ${i + 1} - gloss ${i + 1}`);
     const big = designPalaceLocal({ text: lines.join('\n') });

@@ -94,6 +94,12 @@ export interface Outline {
   /** Terms left out, because the palace is full or the material held more than fits. */
   overflow: string[];
   steps: ArchitectStep[];
+  /**
+   * The offline planner only: how many lines (or sentences) it read and did not place for a
+   * reason other than space: no words to picture, a repeat of a fact already read, a heading
+   * with nothing under it. Its steps say the same in words. Absent = none.
+   */
+  dropped?: number;
 }
 
 /** Never more links than one and a half times the number of facts: a palace is not a web. */

@@ -100,6 +100,13 @@ export interface PalacePlan extends ArchitectPlan {
   lowConfidence: string[];
   /** Rooms whose images are still being drawn (their items hold offline drafts until then). Empty in the final plan. */
   pendingRooms: string[];
+  /**
+   * Offline plans only: how many lines of the text the planner read and did not place for a
+   * reason other than space (no words to picture, a repeat of a fact already read, a heading
+   * with nothing under it). One of the steps says the same in words. Absent = none. These are
+   * lines the app passed in, so they come on top of whatever the app removed before planning.
+   */
+  dropped?: number;
 }
 
 export interface PalaceOptions {
@@ -497,6 +504,7 @@ function build(outline: Outline, kit: PalaceKitChoice, source: 'api' | 'local', 
     ...(outline.focusReason ? { focusReason: outline.focusReason } : {}),
     lowConfidence: flagged(items, low),
     pendingRooms: [],
+    ...(outline.dropped ? { dropped: outline.dropped } : {}),
   };
   return { plan, low, rooms, ids, links };
 }

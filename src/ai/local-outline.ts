@@ -2,18 +2,26 @@ import type { DeckKind, LinkKind } from '@/core/types';
 import { MAX_PLACES, ROOM_CAPACITY } from '@/layouts/spec';
 import type { ArchitectStep } from './architect';
 import { wordCount } from './glyphs';
-import { extractFacts, singularCounts, type ParsedFact } from './parse';
+import { extractFacts, parseLine, singularCounts, type ParsedFact } from './parse';
 import { arrangeRooms, cleanLinks, closesLoop, linkCap, roomSizes, type Outline, type OutlineCategory, type OutlineItem, type OutlineLink } from './wire';
 
 /**
  * The offline outline: the same `Outline` the Architect's server returns, read from the
  * shape of the pasted text and nothing else.
  *
+ *   Title       the first heading when deeper headings follow ("# Renal" before "## Tubule"), a
+ *               lone heading, or a plain first line that the lines after it show to be a title
+ *               (see `plainTitle`). It names the deck and is never a fact or a step.
  *   Categories  markdown headings ("## Past tense"), a line that ends in a colon followed by
  *               items, or "Past tense: comí, comiste, comió" on every line.
+ *   Facts       one per line. A line that reads as "term - meaning" is one fact whatever words
+ *               its meaning holds; a row of tab-separated cells is one fact (see `parseLine`).
  *   Links       "A -> B -> C" and "A → B" (becomes), "A becomes B", "A turns into B",
  *               "A leads to B"; "A inhibits B", "A blocks B", "A prevents B"; "A requires B",
- *               "A needs B", "A depends on B"; "A <-> B", "A mirrors B".
+ *               "A needs B", "A depends on B"; "A <-> B", "A mirrors B". Only on a line that is
+ *               not already "term - meaning".
+ *   A chain     "Water cycle: evaporation -> condensation -> precipitation" on one line: the
+ *               label names the process (or its room) and the steps follow in order.
  *   Otherwise   consecutive rooms of up to five, in the order given.
  *   A process   when most facts are joined by arrows or "becomes": its steps are stations
  *               along a hall, never a room each (the room rules are `arrangeRooms` in ./wire).
@@ -45,44 +53,6 @@ function inlineSection(line: string): Section | null {
   return parts.length >= 3 && parts.every((p) => wordCount(p) <= 3) ? { name: m[1].trim(), lines: parts } : null;
 }
 
-function readSections(text: string): { title?: string; sections: Section[] } {
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return { sections: [] };
-
-  // Every line (after an optional title) is "Category: a, b, c".
-  const titled = lines.length >= 3 && HEADING.test(lines[0]);
-  const body = titled ? lines.slice(1) : lines;
-  const inline = body.map(inlineSection);
-  if (body.length >= 2 && inline.every((s): s is Section => s !== null)) {
-    const head = titled ? lines[0].match(HEADING) : null;
-    return { ...(head ? { title: (head[1] ?? head[2]).trim() } : {}), sections: inline };
-  }
-
-  const loose: Section = { name: '', lines: [] };
-  const named: Section[] = [];
-  let current = loose;
-  for (const line of lines) {
-    const h = line.match(HEADING);
-    if (h) {
-      current = { name: (h[1] ?? h[2]).replace(/\*+/g, '').trim(), lines: [] };
-      named.push(current);
-    } else current.lines.push(line);
-  }
-  let title: string | undefined;
-  // A heading with nothing under it, before the others, names the deck. So does a lone heading.
-  if (named.length >= 1 && loose.lines.length === 0 && (named.length === 1 || named[0].lines.length === 0)) {
-    title = named[0].name;
-    const [first, ...rest] = named;
-    if (rest.length === 0) return { title, sections: [{ name: '', lines: first.lines }] };
-    named.shift();
-  }
-  const sections = [...(loose.lines.length ? [loose] : []), ...named.filter((s) => s.lines.length > 0)];
-  return { ...(title ? { title } : {}), sections };
-}
-
 const VERB_LINKS: readonly (readonly [RegExp, LinkKind])[] = [
   [/^(.+?)\s+(?:<->|↔|⇄|mirrors|is the opposite of)\s+(.+)$/i, 'mirrors'],
   [/^(.+?)\s+(?:becomes|turns into|leads to|is converted (?:in)?to)\s+(.+)$/i, 'becomes'],
@@ -92,18 +62,125 @@ const VERB_LINKS: readonly (readonly [RegExp, LinkKind])[] = [
 const ARROW = /\s*(?:->|→|=>|⇒|➜)\s*/;
 const isEnd = (s: string): boolean => s.length > 0 && wordCount(s) <= 5 && !/[:=]/.test(s);
 
+/** The steps of "a -> b -> c", or null when the text is not a chain of short names. */
+function chainSteps(text: string, least: number): string[] | null {
+  if (!ARROW.test(text) || /<->/.test(text)) return null;
+  const parts = text.split(ARROW).map(clean);
+  return parts.length >= least && parts.every(isEnd) ? parts : null;
+}
+
+/** A label typed in lower case reads as a name: "water cycle" → "Water cycle". "mRNA" is left alone. */
+const asName = (label: string): string => (/^\p{Ll}+(?:\s|$)/u.test(label) ? label.charAt(0).toUpperCase() + label.slice(1) : label);
+
+/**
+ * "Water cycle: evaporation -> condensation -> precipitation": a process and its steps on one
+ * line. Three steps at least, so that "ADH: water in -> urine concentrated" stays the one fact
+ * it is (a term, and a meaning that happens to hold an arrow).
+ */
+function labelledChain(line: string): { label: string; chain: string } | null {
+  const m = clean(line).match(INLINE);
+  return m && chainSteps(m[2], 3) ? { label: asName(m[1].trim()), chain: m[2] } : null;
+}
+
 /** The links written on one line in a plain form, as pairs of names; null when the line is an ordinary fact. */
 function readLinkLine(line: string): { from: string; to: string; kind: LinkKind }[] | null {
+  // A line that already reads as "term - meaning" is one fact, whatever its meaning says:
+  // "carvedilol - also blocks alpha-1" is not a link from "carvedilol - also" to "alpha-1".
+  if (parseLine(line)?.meaning) return null;
   const text = clean(line);
   for (const [pattern, kind] of VERB_LINKS) {
     const m = text.match(pattern);
     if (m && isEnd(clean(m[1])) && isEnd(clean(m[2]))) return [{ from: clean(m[1]), to: clean(m[2]), kind }];
   }
-  if (ARROW.test(text) && !/<->/.test(text)) {
-    const parts = text.split(ARROW).map(clean);
-    if (parts.length >= 2 && parts.every(isEnd)) return parts.slice(1).map((to, i) => ({ from: parts[i], to, kind: 'becomes' as const }));
+  const steps = chainSteps(text, 2);
+  return steps ? steps.slice(1).map((to, i) => ({ from: steps[i], to, kind: 'becomes' as const })) : null;
+}
+
+/** A sentence, or a line too long to be a name. */
+const looksLikeProse = (line: string): boolean => line.length > 64 || wordCount(line) > 8 || /[.!?]$/.test(line);
+/** "Lecture 7: The nephron" opens a set of notes. It is never the fact "Lecture 7 = The nephron". */
+const COURSE_LINE = /^(?:lecture|chapter|unit|week|module|lesson|topic|session)\s+\d+\b/i;
+
+/**
+ * A first line with no heading mark that is still the title: a short plain name followed by
+ * lines of another kind (every one a "term - meaning", a link or chain, a heading or a
+ * sentence). "Photosynthesis" above an arrow chain is the title, not the first step; "Mercury"
+ * above "Venus" and "Earth" is the first item of a list.
+ */
+function plainTitle(lines: readonly string[]): string | null {
+  const [first, ...rest] = lines;
+  if (!first || rest.length === 0 || HEADING.test(first) || looksLikeProse(first) || labelledChain(first)) return null;
+  if (COURSE_LINE.test(first)) return first;
+  if (parseLine(first)?.meaning || readLinkLine(first)) return null;
+  const others = rest.filter((l) => !HEADING.test(l));
+  const plain = (l: string): boolean => !parseLine(l)?.meaning && !readLinkLine(l) && !labelledChain(l) && !looksLikeProse(l);
+  if (others.length === 0 || others.some(plain)) return null;
+  return others.length >= 2 || others.some((l) => readLinkLine(l) || labelledChain(l)) ? first : null;
+}
+
+interface ReadSections {
+  title?: string;
+  /** The title was a plain first line, recognised by what follows it: the trace says so. */
+  plain?: boolean;
+  sections: Section[];
+  /** Headings with nothing under them (the title apart): they place nothing, and are counted. */
+  emptyHeadings: number;
+}
+
+function readSections(text: string): ReadSections {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return { sections: [], emptyHeadings: 0 };
+
+  let title: string | undefined;
+  let plain = false;
+  let body = lines;
+  const top = lines[0].match(/^#\s+(.+?)\s*#*$/);
+  const lone = plainTitle(lines);
+  if (top && lines.slice(1).some((l) => /^#{2,6}\s/.test(l))) {
+    // "# Renal physiology" above "## Proximal tubule": the first heading is the title, never a room.
+    title = top[1].replace(/\*+/g, '').trim();
+    body = lines.slice(1);
+  } else if (lone) {
+    title = lone;
+    plain = true;
+    body = lines.slice(1);
   }
-  return null;
+
+  // Every line (after an optional title) is "Category: a, b, c".
+  const titled = !title && lines.length >= 3 && HEADING.test(lines[0]);
+  const rows = titled ? lines.slice(1) : body;
+  const inline = rows.map(inlineSection);
+  if (rows.length >= 2 && inline.every((s): s is Section => s !== null)) {
+    const head = titled ? lines[0].match(HEADING) : null;
+    const name = head ? (head[1] ?? head[2]).trim() : title;
+    return { ...(name ? { title: name } : {}), ...(plain ? { plain } : {}), sections: inline, emptyHeadings: 0 };
+  }
+
+  const loose: Section = { name: '', lines: [] };
+  const named: Section[] = [];
+  let current = loose;
+  for (const line of body) {
+    const chain = labelledChain(line);
+    const h = chain ? null : line.match(HEADING);
+    // A labelled chain is a room of its own; the lines after it still belong to the heading above it.
+    if (chain) named.push({ name: chain.label, lines: [chain.chain] });
+    else if (h) {
+      current = { name: (h[1] ?? h[2]).replace(/\*+/g, '').trim(), lines: [] };
+      named.push(current);
+    } else current.lines.push(line);
+  }
+  // A heading with nothing under it, before the others, names the deck. So does a lone heading.
+  if (!title && named.length >= 1 && loose.lines.length === 0 && (named.length === 1 || named[0].lines.length === 0)) {
+    title = named[0].name;
+    const [first, ...rest] = named;
+    if (rest.length === 0) return { title, sections: [{ name: '', lines: first.lines }], emptyHeadings: 0 };
+    named.shift();
+  }
+  const sections = [...(loose.lines.length ? [loose] : []), ...named.filter((s) => s.lines.length > 0)];
+  return { ...(title ? { title } : {}), ...(plain ? { plain } : {}), sections, emptyHeadings: named.filter((s) => s.lines.length === 0).length };
 }
 
 export interface LocalOutlineContext {
@@ -122,7 +199,7 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
   const say = (kind: ArchitectStep['kind'], label: string): void => void steps.push({ kind, label: singularCounts(label) });
   say('fallback', 'Working offline: this is a rough draft from a built-in word list, not the Architect. Rewrite each image in your own words.');
 
-  const { title, sections } = readSections(text);
+  const { title, plain: plainTitled, sections, emptyHeadings } = readSections(text);
   // When a palace is extended, a lone heading names the room for these notes, not a deck.
   if (ctx.existing && title && sections.length === 1 && !sections[0].name) sections[0].name = title;
   const standing = new Map((ctx.existing?.terms ?? []).map((t, i) => [norm(t), `e${i + 1}`] as const));
@@ -136,23 +213,33 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
   const byTerm = new Map<string, Found>();
   const wanted: { from: string; to: string; kind: LinkKind }[] = [];
   let repeats = 0;
+  // What was read and not placed, for a reason other than space: counted, so the trace can say so.
+  let empty = 0;
+  let again = 0;
+  let sentences = false;
   sections.forEach((section, index) => {
     const lines: string[] = [];
     // Names that are only here because a link line mentions them.
     const ends = new Set<string>();
     for (const line of section.lines) {
       const linked = readLinkLine(line);
-      if (!linked) lines.push(line);
-      else {
+      if (!linked) {
+        // A name that a link line has already brought in is that same fact, not a repeat of it.
+        if (!ends.has(norm(clean(line)))) lines.push(line);
+      } else {
         wanted.push(...linked);
         for (const end of linked.flatMap((l) => [l.from, l.to])) {
-          if (lines.some((l) => norm(l) === norm(end))) continue;
+          if (lines.some((l) => norm(clean(l)) === norm(end))) continue;
           lines.push(end);
           ends.add(norm(end));
         }
       }
     }
-    for (const fact of extractFacts(lines.join('\n')).facts) {
+    const read = extractFacts(lines.join('\n'));
+    empty += read.empty;
+    again += read.repeated;
+    if (read.mode === 'notes' && read.read > 1) sentences = true;
+    for (const fact of read.facts) {
       const key = norm(fact.term);
       const earlier = byTerm.get(key);
       if (standing.has(key)) repeats += ends.has(key) ? 0 : 1;
@@ -161,8 +248,11 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
         byTerm.set(key, entry);
         found.push(entry);
       } else if (!earlier.meaning && fact.meaning) Object.assign(earlier, { meaning: fact.meaning, pair: fact.pair });
+      // The same name again with nothing to add: still one fact, and the line counts as left out.
+      else if (!ends.has(key)) again++;
     }
   });
+  const dropped = empty + again + emptyHeadings;
 
   const kept = found.slice(0, Math.min(ctx.cap, MAX_PLACES));
   const overflow = found.slice(kept.length).map((f) => f.term);
@@ -248,6 +338,15 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
   else if (overflow.length > 0) {
     say('plan', `Kept the first ${items.length} of ${found.length} ${ctx.existing ? 'new ' : ''}facts: ${ctx.existing ? `the palace had room for ${ctx.cap} more` : `a palace holds at most ${MAX_PLACES} places, in rooms of ${ROOM_CAPACITY}`}.`);
   } else say('plan', `Found ${count(items.length)}, one per line or sentence.`);
+  if (plainTitled && title && !ctx.existing) say('plan', `Read the first line as the title, not as a fact: "${title}".`.slice(0, 200));
+  if (dropped > 0) {
+    const why = [
+      empty ? `${empty} with no words to picture` : '',
+      again ? `${again} that ${again === 1 ? 'repeats' : 'repeat'} a fact already read` : '',
+      emptyHeadings ? `${emptyHeadings} ${emptyHeadings === 1 ? 'heading' : 'headings'} with nothing under ${emptyHeadings === 1 ? 'it' : 'them'}` : '',
+    ].filter(Boolean);
+    say('plan', `Left out ${dropped} ${dropped === 1 ? 'line' : sentences ? 'lines or sentences' : 'lines'}: ${why.join(', ')}.`);
+  }
   if (repeats > 0 && items.length > 0) say('plan', `Skipped ${repeats} already in the palace.`);
   if (items.length > 0) {
     const spread = categories.map((c, i) => `${c.name} (${items.filter((it) => it.category === i).length})`).join(', ');
@@ -279,5 +378,6 @@ export function outlineLocally(text: string, ctx: LocalOutlineContext): Outline 
     links,
     overflow,
     steps,
+    ...(dropped > 0 ? { dropped } : {}),
   };
 }
