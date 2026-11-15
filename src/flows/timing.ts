@@ -83,7 +83,7 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
 export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; label: string }> = {
   default: { measuredSeconds: 123, label: 'Try it in 2 minutes' },
   pitch: { measuredSeconds: 77, label: 'Try it in 90 seconds' },
-  short: { measuredSeconds: 67, label: 'Try it in 70 seconds' },
+  short: { measuredSeconds: 67, label: 'Try it in 75 seconds' },
 };
 
 /**

@@ -213,7 +213,7 @@ const COMER = {
   total: 15,
   answers: Object.fromEntries([...read('src/ai/fixtures/spanish-tenses.ts').matchAll(/^\s*'([^']+)', '([^']+)',\s*$/gm)].map((m) => [m[2], m[1]])),
 };
-const CYCLE = { title: 'The citric acid cycle, as a cycle', total: 8, answers: {} };
+const CYCLE = { title: 'The five stages of the cell cycle', total: 5, answers: {} };
 if (Object.keys(COMER.answers).length !== COMER.total) {
   console.error('Could not read the fifteen forms of the Comer deck.');
   process.exit(1);
