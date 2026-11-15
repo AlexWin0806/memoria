@@ -7,6 +7,7 @@ import type { PalaceRoomSpec, PalaceSpec } from '@/core/types';
  * A generated palace is identified by its whole specification, encoded into the layout id:
  *
  *   gen:<kit>;<room id>~<places>~<shape>~<name>;<room id>~...
+ *   gen:<kit>@<seed>;...        the same, furnished in the order that seed gives (see PalaceSpec.seed)
  *
  * so that a deck needs nothing but its `layoutId` to rebuild its palace, and so that every
  * place that calls `getLayout(layoutId)` works for generated palaces unchanged.
@@ -29,6 +30,25 @@ export function isGeneratedId(layoutId: string | null | undefined): layoutId is 
   return typeof layoutId === 'string' && layoutId.startsWith(GENERATED_PREFIX);
 }
 
+/** A seed is a few lower-case letters and digits. */
+const SEED = /^[a-z0-9]{1,8}$/;
+
+/** A seed for a palace that is being planned for the first time. */
+export function newPalaceSeed(): string {
+  return Math.floor(Math.random() * 36 ** 5).toString(36).padStart(5, '0');
+}
+
+/**
+ * The seed as a whole number, for a generator that needs one. 0 for a palace without a seed:
+ * a generator must furnish such a palace in its kit's own order, as before seeds existed.
+ */
+export function seedNumber(spec: PalaceSpec): number {
+  if (!spec.seed || !SEED.test(spec.seed)) return 0;
+  let h = 2166136261;
+  for (let i = 0; i < spec.seed.length; i++) h = Math.imul(h ^ spec.seed.charCodeAt(i), 16777619);
+  return (h >>> 0) || 1;
+}
+
 const clampPlaces = (n: number) => Math.max(1, Math.min(ROOM_CAPACITY, Math.round(Number.isFinite(n) ? n : 1)));
 
 /** A spec that the generator can always build: at most MAX_ROOMS rooms, 1..ROOM_CAPACITY places each, unique ids. */
@@ -44,7 +64,9 @@ export function normalizeSpec(spec: PalaceSpec): PalaceSpec {
     rooms.push(room);
   }
   if (!rooms.length) rooms.push({ id: 'r1', name: 'Room 1', places: 3 });
-  return { kit: /^[a-z0-9-]+$/.test(spec.kit) ? spec.kit : 'gothic', rooms };
+  const out: PalaceSpec = { kit: /^[a-z0-9-]+$/.test(spec.kit) ? spec.kit : 'gothic', rooms };
+  if (spec.seed && SEED.test(spec.seed)) out.seed = spec.seed;
+  return out;
 }
 
 export function palaceLayoutId(spec: PalaceSpec): string {
@@ -52,13 +74,14 @@ export function palaceLayoutId(spec: PalaceSpec): string {
   // `~` separates the fields and encodeURIComponent leaves it alone, so it is escaped by hand:
   // a room called "Cells ~ tissues" would otherwise be cut short when the id is read back.
   const rooms = s.rooms.map((r) => [r.id, r.places, r.shape === 'ring' ? 'ring' : 'hall', encodeURIComponent(r.name).replace(/~/g, '%7E')].join('~'));
-  return `${GENERATED_PREFIX}${s.kit};${rooms.join(';')}`;
+  return `${GENERATED_PREFIX}${s.kit}${s.seed ? `@${s.seed}` : ''};${rooms.join(';')}`;
 }
 
 /** The spec inside a generated layout id, or null for a handcrafted palace or a damaged id. */
 export function parsePalaceId(layoutId: string | null | undefined): PalaceSpec | null {
   if (!isGeneratedId(layoutId)) return null;
-  const [kit, ...parts] = layoutId.slice(GENERATED_PREFIX.length).split(';');
+  const [head, ...parts] = layoutId.slice(GENERATED_PREFIX.length).split(';');
+  const [kit, seed] = (head ?? '').split('@');
   if (!kit || !parts.length) return null;
   const rooms: PalaceRoomSpec[] = [];
   for (const part of parts) {
@@ -72,7 +95,7 @@ export function parsePalaceId(layoutId: string | null | undefined): PalaceSpec |
     }
     rooms.push({ id, name: decoded, places: Number(places), ...(shape === 'ring' ? { shape: 'ring' as const } : {}) });
   }
-  return normalizeSpec({ kit, rooms });
+  return normalizeSpec({ kit, rooms, ...(seed ? { seed } : {}) });
 }
 
 /** `<room id>-<n>`: the id of the n-th place (from 1) of a room. */
@@ -145,7 +168,7 @@ export function extendSpec(spec: PalaceSpec, growth: Growth[]): { spec: PalaceSp
     }
     added.push(ids);
   }
-  return { spec: { kit: spec.kit, rooms }, added };
+  return { spec: { kit: spec.kit, rooms, ...(spec.seed ? { seed: spec.seed } : {}) }, added };
 }
 
 const roman = (n: number) => ['', 'I', 'II', 'III', 'IV', 'V', 'VI'][n] ?? String(n);
@@ -154,8 +177,9 @@ const roman = (n: number) => ['', 'I', 'II', 'III', 'IV', 'V', 'VI'][n] ?? Strin
  * A first palace for material that falls into categories: one room per category in the order
  * given, a category of more than ROOM_CAPACITY items continuing in a second room. Returns the
  * spec and, per category, the place ids for its items in order (short if the palace is full).
+ * `seed`: pass `newPalaceSeed()` for a learner's new palace; leave it out for built-in decks.
  */
-export function planSpec(kit: string, categories: { name: string; count: number; shape?: 'hall' | 'ring' }[]): { spec: PalaceSpec; places: string[][] } {
+export function planSpec(kit: string, categories: { name: string; count: number; shape?: 'hall' | 'ring' }[], seed?: string): { spec: PalaceSpec; places: string[][] } {
   const rooms: PalaceRoomSpec[] = [];
   const places: string[][] = [];
   let total = 0;
@@ -175,5 +199,5 @@ export function planSpec(kit: string, categories: { name: string; count: number;
     }
     places.push(ids);
   }
-  return { spec: normalizeSpec({ kit, rooms }), places };
+  return { spec: normalizeSpec({ kit, rooms, ...(seed ? { seed } : {}) }), places };
 }

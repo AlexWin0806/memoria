@@ -107,6 +107,14 @@ export interface ItemLink {
 export interface PalaceSpec {
   /** Kit id, e.g. `gothic`, `zen`, `castle`. An unknown kit falls back to the default kit. */
   kit: string;
+  /**
+   * Which of the kit's objects stand where. Two palaces in the same style with different seeds
+   * are furnished differently, so that one route is not mistaken for another (research
+   * principle 8). Fixed for the life of a palace: it is given when the palace is first planned
+   * and kept when it grows or changes style. Absent = the kit's own order (palaces built
+   * before seeds existed, and the built-in decks).
+   */
+  seed?: string;
   /** In route order. */
   rooms: PalaceRoomSpec[];
 }
