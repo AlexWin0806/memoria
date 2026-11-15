@@ -5,7 +5,7 @@ Status: `todo`, `doing`, `done`, `blocked`. Feature ids match `docs/plan-snapsho
 
 ## Part 2, started Sat 2:10 PM ET (direction from Alex)
 
-First wave merged to `main` and deployed at Sat 4:57 PM ET (commit `6e8e54e`). On that build: `smoke.mjs` 15 of 15,
+Third batch live at Sat 7:23 PM ET (commit `4bc54eb`): everything in the table below marked live. First wave merged to `main` and deployed at Sat 4:57 PM ET (commit `6e8e54e`). On that build: `smoke.mjs` 15 of 15,
 `ab-smoke.mjs` 3 of 3, `pdf-smoke.mjs` 5 of 5, `architect-smoke.mjs` and `palace-invariance.mjs` pass, and
 `live-check.mjs` passes against the deployed site (with and without the browser). Not verified: anything on a real
 GPU, `drive-walk.mjs` (fails on time budgets under machine load, also on the old build), a quiet-machine pitch timing.
@@ -27,12 +27,18 @@ to 30 places; past scores and trends. The build that was demo-ready before Part 
 | Architect: categories to rooms, links, facts or process, kit suggestion, 30 items, extension; two showcase decks | AI | done, live 4:57 PM; one fix running | Live: 30 facts in 16 s, a process in 13 s, extension in 9 s. Fix running: a process must not get one room per step |
 | Evidence for the diagnostic, rooms and links; facts about Mnemorium and memoryOS | Researcher | doing | `docs/research.md`, new Part 2 section |
 | Upload a PDF: its text is read in the browser and becomes the notes | App | done, live 4:57 PM | `scripts/pdf-smoke.mjs` 5 of 5; real lecture PDFs untested |
-| Compose: choose the architecture and rooms, edit links, facts or process, extend a palace | App | doing | `agent/app-compose` |
-| Links drawn between places | Engine | doing | `agent/engine-links` |
-| Workshop kit (Alex, 3:00 PM: instead of the castle; it suits processes) | Engine | done, merged | Ten stations, a floor channel through every hall, a mill-house ring room |
-| Zen garden kit | Engine | doing | `agent/kit-zen` |
-| Process mode: a process deck's walk asks how each step leads on and has the learner reorder the steps (confirmed by Alex); walks for newly added places only; every new deck starts with the survey | App | doing | `agent/app-process` |
-| QA review 4; pitch, README, Devpost, Doc, media for Part 2 | QA, Scribe | todo | |
+| Compose: choose the architecture and rooms, links, facts or process, extend a palace, edit a saved palace in place | App | done, live 7:19 PM | `scripts/compose-smoke.mjs` 10 of 11 on the merged build: case b's premise is stale (a never-opened palace is now surveyed whole when extended); being updated. Live Architect through this screen: 6 s to the proposal |
+| Links drawn between places | Engine | done, live 6:21 PM | Four kinds told apart in line alone; lanes along the route through the doorways |
+| Workshop kit (Alex, 3:00 PM: instead of the castle; it suits processes) | Engine | done, live 6:21 PM | Ten stations, a floor channel through every hall, a mill-house ring room |
+| Zen garden kit | Engine | done, live 6:21 PM | Ten places of its own, six court variants; three courts seen in greybox only |
+| Process mode: a process deck's walk asks how each step leads on and has the learner reorder the steps (confirmed by Alex); walks for newly added places only; every new deck starts with the survey | App | done, live 7:19 PM | Smoke 18 of 18 on the merged build. A missed link question holds the answer back when it names a place not yet asked |
+| PDF reader: a plain list stays a list; a wrapped slide bullet is one line | App | done, live 7:23 PM | `scripts/pdf-smoke.mjs` 6 of 6; real lecture PDFs still untested |
+| Exam Mode (no palace, shuffled, either direction; walk back to the places missed), from the team's notes | App | doing | `agent/app-exam` |
+| Fact-check of the two showcase decks | Researcher | done | Nothing wrong; nine Spanish glosses made unambiguous; `docs/research.md` section 9 |
+| QA review 4 | QA | doing | `docs/qa/review-4.md` |
+| Pitch draft 5, README, Devpost, Doc for Part 2 | Scribe | first pass done | Second pass owed: final timings, which features are live, media |
+| Media re-render for Part 2; quiet-machine pitch timing; `drive-walk.mjs` on a quiet machine | Lead | todo | After the agents finish |
+| From the team's notes, not tonight: drill on commonly confused items; a palace from a returned exam | | roadmap | |
 | Parked by Alex (Sat 3:00 PM), keep in mind: an optional "things you know well" field (basketball, cooking) that the Architect draws memory images from, with no named people, characters, teams or titles | AI, App | parked | Not to be built unless Alex asks; roadmap material for the pitch |
 
 ## Status at Sat 12:55 PM ET

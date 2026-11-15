@@ -287,6 +287,24 @@ export function startSection(deckId: string, itemIds: string[]): void {
   begin('survey', deck, stops, false, { section: true });
 }
 
+/**
+ * A study walk over only these items' places, in route order: the way back from an exam to
+ * the places it missed (src/flows/exam.ts). An ordinary study walk in every other respect, so
+ * the usual recall walk follows it. Only places whose image has been placed before are walked:
+ * a first image is never placed here, ahead of the place's survey (principle 9).
+ */
+export function startStudyOf(deckId: string, itemIds: string[]): void {
+  const deck = getDeck(deckId);
+  if (!deck) return;
+  const cards = useReview.getState().cards;
+  const placed = itemIds.filter((id) => cards[id]?.studiedAt !== undefined || (cards[id]?.reps ?? 0) > 0);
+  const stops = stopsFor(deck, getLayout(deck.layoutId), placed);
+  if (!stops.length) return;
+  // An exam can be opened over the results of an earlier walk: its answers are not this walk's.
+  useSession.setState({ results: [] });
+  begin('encode', deck, stops, false);
+}
+
 /** Recall walk over the whole deck, or only over the loci whose items are due. */
 export function startRecall(deckId: string, scope: 'all' | 'due', judge = false): void {
   const deck = getDeck(deckId);
