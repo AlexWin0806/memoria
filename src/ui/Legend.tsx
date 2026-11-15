@@ -11,3 +11,17 @@ export function RepairLegend() {
     </p>
   );
 }
+
+/**
+ * What the ruins mean, on a Judge run: one line under the walk label. A judge who is alone
+ * with the screen otherwise meets a palace that looks broken, and nothing names the rubble
+ * until the legend on the results (QA review 4, issue 1). It is product description, like the
+ * legend, and it is not announced again at every stop: it sits outside the live regions.
+ */
+export function RuinsLine() {
+  return (
+    <p className="state" data-testid="judge-ruins">
+      In ruins: you have not learned these yet. Each place is rebuilt as you study it.
+    </p>
+  );
+}

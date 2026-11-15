@@ -13,10 +13,12 @@ import {
 import { numberWord, termLength } from '@/flows/format';
 import { useCountdown, useTimedStop, useWalkKeys } from '@/flows/hooks';
 import { studyLines } from '@/flows/process';
+import { JUDGE_RUINS_LINE_STOPS, JUDGE_STARTS_IN_RUINS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { useReview } from '@/state/review';
 import { isLastStop, useSession } from '@/state/session';
+import { RuinsLine } from './Legend';
 import './process.css';
 
 /** The one wording for the advance key, used on every walk screen. */
@@ -83,6 +85,8 @@ export function Familiarize() {
     return (
       <section className="screen" data-testid="familiarize">
         <h1 className="label">Route preview</h1>
+        {/* The preview flies over rubble for nine seconds: this says why. */}
+        {JUDGE_STARTS_IN_RUINS && <RuinsLine />}
         <div aria-live="polite">
           <p className="label" data-testid="walk-label">
             Place {step + 1} of {stops.length}
@@ -293,6 +297,8 @@ export function Encode() {
       <h1 className="label" data-testid="walk-label">
         Place {step + 1} of {stops.length} · {locus.name}
       </h1>
+      {/* A Judge run: what the ruins mean, from the first screen until a place or two has been rebuilt. */}
+      {judge && JUDGE_STARTS_IN_RUINS && step < JUDGE_RUINS_LINE_STOPS && <RuinsLine />}
       {/* The live region stays mounted so that each new image is announced when it appears. */}
       <div aria-live="polite">
         {arrived ? (

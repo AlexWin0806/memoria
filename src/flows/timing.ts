@@ -69,6 +69,14 @@ export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; labe
  */
 export const JUDGE_STARTS_IN_RUINS = true;
 
+/**
+ * A Judge run says what the ruins mean (RuinsLine in src/ui/Legend.tsx) over the route preview
+ * and on this many stops of the study walk, counted from the first. By the second stop a place
+ * has been rebuilt in front of the judge and the line has been true on screen; after that it
+ * would only be one more thing to read in four seconds. It sets no timer either.
+ */
+export const JUDGE_RUINS_LINE_STOPS = 2;
+
 /** If the engine has not reported `arrived` after this long, the walk carries on anyway. */
 export const ARRIVED_FALLBACK_MS = 6000;
 
