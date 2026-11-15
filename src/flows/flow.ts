@@ -530,7 +530,12 @@ export function answerRecall(result: WalkResult): void {
   recordWalk();
 }
 
-/** "I was right": the learner overrules the grader on a typed miss. The schedule follows. */
+/**
+ * "I was right": the learner overrules the grader on a typed miss. The claim is kept, shown as
+ * theirs and counted in the score. Neither the place nor the schedule follows it (research
+ * principle 10: state comes from answers, never from self-rating): the place stays under
+ * repair and the card goes to the first box, so the next real recall decides (useReview.record).
+ */
 export function markRight(itemId: string): void {
   const s = useSession.getState();
   const was = s.results.find((r) => r.itemId === itemId);

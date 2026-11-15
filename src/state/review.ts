@@ -1,8 +1,23 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Deck, RecallResult, ReviewCard } from '@/core/types';
-import { newCard, schedule } from '@/srs/leitner';
+import { newCard, schedule, scheduleUnverified } from '@/srs/leitner';
 import { cleanReviewState, newTally, STORE_KEYS } from './storage';
+
+/** A recall answer as a walk records it: the grader's verdict, or the learner's own claim (`WalkResult` in ./session). */
+type RecordedAnswer = RecallResult & { selfMarked?: boolean };
+
+/**
+ * A card whose last answer the learner marked right themselves. The mark is kept on the card,
+ * beside the fields of the contract, and stored with it; the next graded answer drops it. A
+ * card that carries it is scheduled in the first box and its place is under repair, not
+ * restored (research principle 10).
+ */
+type MarkedCard = ReviewCard & { selfMarked?: true };
+
+export function isSelfMarked(card: ReviewCard | undefined): boolean {
+  return (card as MarkedCard | undefined)?.selfMarked === true;
+}
 
 /**
  * What one recall walk has recorded so far. Each answer is scheduled from the card as it
@@ -23,9 +38,10 @@ interface ReviewState {
   /**
    * Record recall answers. Called once per answer as it is given and again at the end of
    * the walk; with the same `walkId` the second call is a no-op. Without a `walkId` every
-   * call counts as a walk of its own.
+   * call counts as a walk of its own. An answer the learner marked right themselves is not
+   * scheduled as a right answer: see `scheduleUnverified`.
    */
-  record: (deckId: string, results: RecallResult[], opts?: { walkId?: string; now?: number }) => void;
+  record: (deckId: string, results: RecordedAnswer[], opts?: { walkId?: string; now?: number }) => void;
   /**
    * Keep what the survey found for each item, and the answer the learner gave (`given`: an
    * empty string for "I don't know", absent for a place the survey never reached). It changes
@@ -54,7 +70,10 @@ export const useReview = create<ReviewState>()(
           for (const r of results) {
             if (walk.given[r.itemId] === r.correct) continue;
             if (!(r.itemId in walk.before)) walk.before[r.itemId] = cards[r.itemId] ?? null;
-            cards[r.itemId] = schedule(walk.before[r.itemId] ?? newCard(r.itemId, deckId), r, now);
+            // From the card as it was before the walk, without any earlier self-mark: this answer replaces it.
+            const { selfMarked: _earlier, ...before }: MarkedCard = walk.before[r.itemId] ?? newCard(r.itemId, deckId);
+            const marked: MarkedCard = { ...scheduleUnverified(before, now), selfMarked: true };
+            cards[r.itemId] = r.selfMarked ? marked : schedule(before, r, now);
             walk.given[r.itemId] = r.correct;
           }
           return { cards, walk };
@@ -101,6 +120,7 @@ function studied(card: ReviewCard | undefined): card is ReviewCard {
  * How whole an item's place is, from what is saved about the item (see `SceneView.integrity`):
  *   recalled, and the last answer was right       1    restored
  *   recalled, and the last answer was a miss      0.3  damaged (a miss sends the card to box 1)
+ *   recalled, and the learner marked it right     0.6  under repair: a claim restores nothing
  *   known in the survey, not recalled yet         1    it never fell
  *   studied, not recalled yet                     0.6  under repair
  *   unknown in the survey, or never surveyed      0    in ruins
@@ -109,7 +129,7 @@ function studied(card: ReviewCard | undefined): card is ReviewCard {
 export const INTEGRITY = { ruins: 0, damaged: 0.3, repair: 0.6, whole: 1 } as const;
 
 export function savedIntegrity(card: ReviewCard | undefined): number {
-  if (card && card.reps > 0) return card.box >= 2 ? INTEGRITY.whole : INTEGRITY.damaged;
+  if (card && card.reps > 0) return isSelfMarked(card) ? INTEGRITY.repair : card.box >= 2 ? INTEGRITY.whole : INTEGRITY.damaged;
   if (card?.survey === 'known') return INTEGRITY.whole;
   return card?.studiedAt !== undefined ? INTEGRITY.repair : INTEGRITY.ruins;
 }

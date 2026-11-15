@@ -216,6 +216,8 @@ export function Results() {
           const card = judge ? undefined : cards[item.id];
           const d = drafts[item.id];
           const ok = Boolean(result?.correct);
+          // Marked right by the learner: it counts in the score, and it neither restores the place nor earns an interval.
+          const claimed = ok && result?.selfMarked === true;
           return (
             <li key={item.id} className="place" data-state={ok ? 'right' : 'wrong'} data-testid="result-row">
               <div className="place__line">
@@ -226,8 +228,8 @@ export function Results() {
                   <span className="place__term">{item.term}</span>
                   <span className="place__meta" data-testid="result-meta">
                     {locus.name} · {ok ? (result?.selfMarked ? 'right (self-marked)' : 'right') : 'missed'}
-                    {ruins ? ` · ${ok ? 'restored' : 'needs another repair'}` : ''}
-                    {card ? ` · ${ok ? 'next review' : 'again'} ${formatWhen(card.dueAt, now)}` : ''}
+                    {ruins ? ` · ${claimed ? 'under repair' : ok ? 'restored' : 'needs another repair'}` : ''}
+                    {card ? ` · ${ok && !claimed ? 'next review' : 'again'} ${formatWhen(card.dueAt, now)}` : ''}
                   </span>
                 </span>
               </div>

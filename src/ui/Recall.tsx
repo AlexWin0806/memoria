@@ -249,10 +249,20 @@ export function Recall() {
                 ))}
               </ul>
             )}
-            {/* In a surveyed palace the answer also decides the state of the place (a timed Judge run has no time for the line). */}
-            {!judge && deck.surveyedAt !== undefined && (
+            {/*
+              In a surveyed palace the answer also decides the state of the place (a timed Judge run has no time
+              for the line). An answer the learner marked right themselves decides nothing: said here, where the
+              button was pressed, in any palace.
+            */}
+            {!judge && (deck.surveyedAt !== undefined || result.selfMarked) && (
               <p className="state" data-testid="recall-place-state">
-                {result.correct ? 'This place is restored.' : 'This place needs another repair: it comes back for review soon.'}
+                {result.selfMarked
+                  ? deck.surveyedAt !== undefined
+                    ? 'Marked by you. This place stays under repair until you recall it.'
+                    : 'Marked by you. It comes back for review soon, and that recall decides.'
+                  : result.correct
+                    ? 'This place is restored.'
+                    : 'This place needs another repair: it comes back for review soon.'}
               </p>
             )}
           </div>
