@@ -216,7 +216,7 @@ State at Sun 3:00 AM ET. Each entry says what is known and what would make the r
 - "It reads your PDF": true for PDFs with a text layer; tested on PDFs we generated, not on real lecture PDFs. Scans, locked and damaged files are refused in words. Do not say "any PDF". Real lecture PDFs tried: (to fill in).
 - "The file never leaves your device": true of the PDF file, which is read in the browser. The text the learner then sends to the Architect does go to our server function, so do not say "your notes never leave your device".
 - The venue numbers in "Does it work?" must be filled in from the real test, or the sentence dropped. No people have done the test yet.
-- "It runs on an ordinary laptop", "60 frames a second", "the statue no longer flickers", anything about how the collapse and rebuild or the smoothed camera look in motion: not checked on a real GPU. The flicker fix was confirmed in stills only. Say it once a human has checked on the demo laptop: (to fill in).
+- "It runs on an ordinary laptop", "60 frames a second", "the statue no longer flickers", anything about how the collapse and rebuild look in motion: not checked on a real GPU. The flicker fix was confirmed in stills only. Say it once a human has checked on the demo laptop: (to fill in).
 - "It works with a screen reader": not tested. Do not say it.
 - The short demo's length with a person answering on the demo laptop: (to fill in), as under Timing notes. Until then say "about a minute and a quarter", not a number of seconds.
 

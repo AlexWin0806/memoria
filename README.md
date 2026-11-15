@@ -303,7 +303,7 @@ Confirmed on the live site after the last deployment: (to fill in).
 
 Since Saturday night (Sunday 15 November, ET):
 
-- **Live since 2:52 AM**: the smoothed camera; darker grey stone for the Gothic library and brown wood for the Workshop; the Architect endpoint accepts JSON requests only; saving a palace with the browser's storage full says that nothing was saved instead of failing silently. A break test of the build with the new camera and palettes (`docs/qa/break-test.md`, 2:05 to 2:40 AM) found no blocker; its one major issue was that silent failure, fixed after it.
+- **Live since 2:52 AM**: darker grey stone for the Gothic library and brown wood for the Workshop; the Architect endpoint accepts JSON requests only; saving a palace with the browser's storage full says that nothing was saved instead of failing silently. A break test of the build with the new palettes (and a smoothed camera, reverted at 5:12 AM at the team's request) (`docs/qa/break-test.md`, 2:05 to 2:40 AM) found no blocker; its one major issue was that silent failure, fixed after it.
 - **Deployed at about 3:30 AM, after its tests, and written on this page as live**: the short demo, `/?judge=short`, on the five stages of the cell cycle in the Workshop; the cell cycle as the process showcase, walked from the list as a full process deck; both citric acid cycle decks off the list of palaces (the comparison test still uses the citric acid cycle as its second list). Confirmed on the live site: (to fill in).
 
 Checked on the deployed site, single runs, not averages:
