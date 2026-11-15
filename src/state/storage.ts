@@ -145,9 +145,12 @@ function onePerPlace(items: MemoryItem[], layoutId: unknown, t: Tally): MemoryIt
  */
 function cleanLink(v: unknown, known: (id: string) => boolean, t: Tally): ItemLink | null {
   if (!isObj(v) || !str(v.from) || !str(v.to) || v.from === v.to || !oneOf(v.kind, LINK_KINDS) || !known(v.from) || !known(v.to)) return null;
-  if (v.label === undefined || str(v.label)) return v as unknown as ItemLink;
+  const label = v.label === undefined || str(v.label);
+  const note = v.note === undefined || str(v.note);
+  if (label && note) return v as unknown as ItemLink;
+  // A label or a note that is not text is dropped; the link itself is kept.
   t.dropped = true;
-  return { from: v.from, to: v.to, kind: v.kind };
+  return { from: v.from, to: v.to, kind: v.kind, ...(label && v.label !== undefined ? { label: v.label as string } : {}), ...(note && v.note !== undefined ? { note: v.note as string } : {}) };
 }
 
 /**

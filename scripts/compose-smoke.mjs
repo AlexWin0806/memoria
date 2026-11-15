@@ -1118,7 +1118,7 @@ const cases = {
     assert((await picked(page, 'focus')) === 'process', 'the choice should start at what the Architect decided');
     const rows = await linkRows(page);
     assert(rows[0] === 'Citrate becomes Isocitrate: isomerisation' && rows.length >= 6, `links: ${rows}`);
-    assert(rows.includes('Succinyl-CoA holds back Citrate: inhibits citrate synthase') && !rows.some((r) => / blocks | mirrors /.test(r)), `a link that regulates should read "holds back", with its label as the precise statement: ${rows}`);
+    assert(rows.includes('Succinyl-CoA inhibits citrate synthase · affects Citrate') && !rows.some((r) => / blocks | mirrors | holds back Citrate/.test(r)), `a link that regulates should be worded from its label, never from its kind: ${rows}`);
     const ops = calls.map((c) => JSON.parse(c).op);
     assert(ops[0] === 'outline' && ops.filter((o) => o === 'images').length === 2, `requests: ${ops}`);
     const sent = JSON.parse(calls[0]);

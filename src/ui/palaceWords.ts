@@ -37,8 +37,14 @@ export const LINK_KIND_WORDS: Record<LinkKind, string> = {
   mirrors: 'pairs with',
 };
 
-/** "Citrate becomes isocitrate: isomerisation"; "Succinyl-CoA holds back citrate: inhibits citrate synthase". */
+/**
+ * "Citrate becomes isocitrate: isomerisation". A link that regulates is never worded from its
+ * kind when it says more (docs/research.md 9.4): its note is the sentence, or else its label is
+ * the statement ("Succinyl-CoA inhibits citrate synthase") and the other end is only named.
+ */
 export function linkInWords(link: ItemLink, termOf: (id: string) => string): string {
+  if (link.note) return link.note;
+  if (link.kind === 'blocks' && link.label) return `${termOf(link.from)} ${link.label} · affects ${termOf(link.to)}`;
   return `${termOf(link.from)} ${LINK_KIND_WORDS[link.kind]} ${termOf(link.to)}${link.label ? `: ${link.label}` : ''}`;
 }
 

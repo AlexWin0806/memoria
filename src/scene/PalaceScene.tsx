@@ -125,7 +125,8 @@ export function PalaceScene({ layout, qa, veil }: { layout: PalaceLayout; qa: Qa
     if ((mode !== 'recall' && mode !== 'survey') || still) return;
     const given = results.find((r) => !before.includes(r));
     const here = layout.loci[stops[step]];
-    if (!given || !here || (mode === 'survey' && !given.correct)) return;
+    // A self-marked answer ("I was right") is the learner's claim, not a recall: the place stays under repair, so no ring.
+    if (!given || !here || given.selfMarked || (mode === 'survey' && !given.correct)) return;
     if (deck?.items.some((it) => it.locusId === here.id && it.id === given.itemId)) startFlourish(flourish, here.index, given.correct);
   }, [results, mode, still, layout, stops, step, deck, flourish]);
   useEffect(() => {
