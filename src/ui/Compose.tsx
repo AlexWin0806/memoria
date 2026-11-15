@@ -25,7 +25,7 @@ import { withDeadline } from '@/flows/deadline';
 import { getLayout } from '@/layouts';
 import { KIT_LIST } from '@/layouts/kits/list';
 import { MAX_PLACES, MAX_ROOMS, palaceLayoutId, parsePalaceId, placeId, ROOM_CAPACITY, specPlaces, specRoomLeft } from '@/layouts/spec';
-import { useDecks } from '@/state/decks';
+import { useDecks, decksWriteFailed } from '@/state/decks';
 import { ARCH_AUTO, ARCH_HOUSE, draftSubject, editChanges, editIsDirty, hasDraft, useDraft, type DraftPlan } from '@/state/draft';
 import { repairCounts, useReview } from '@/state/review';
 import { useSession } from '@/state/session';
@@ -41,6 +41,7 @@ const sameScene = (a: string, b: string) => a.trim().toLowerCase() === b.trim().
 const sameImago = (a: Imago, b: Imago) => a.scene === b.scene && a.source === b.source && a.glyphs.join() === b.glyphs.join();
 const count = (n: number): string => n.toLocaleString('en-US');
 
+const STORAGE_FULL = 'Your browser\'s storage is full, so this was not saved. Delete a palace you no longer need, then try again. Your notes and images are kept here.';
 /** The places of a palace as the Architect is told about them, so that each image can act on what stands at its place. */
 const placesOf = (layoutId: string) => getLayout(layoutId).loci;
 
@@ -578,6 +579,11 @@ export function Compose() {
       // A link whose fact is deleted goes with it; every other link is left as it is.
       ...(deck.links && gone.size > 0 ? { links: deck.links.filter((l) => !gone.has(l.from) && !gone.has(l.to)) } : {}),
     });
+    if (decksWriteFailed()) {
+      useDecks.getState().upsert(deck);
+      setError(STORAGE_FULL);
+      return;
+    }
     forgetProgress([...changes.facts, ...changes.removed]);
     // The route is the same route with another name over a door: what the learner knows of it carries over.
     if (changes.layoutId !== deck.layoutId && useSettings.getState().familiarized[deck.layoutId]) useSettings.getState().markFamiliarized(changes.layoutId);
@@ -618,6 +624,11 @@ export function Compose() {
         items: [...deck.items, ...placed].sort((a, b) => at(a) - at(b)),
         ...(allLinks.length ? { links: allLinks } : {}),
       });
+      if (decksWriteFailed()) {
+        useDecks.getState().upsert(deck);
+        setError(STORAGE_FULL);
+        return;
+      }
       useDraft.getState().discard();
       saved.current = true;
       // Only the new places are walked: their survey, their study walk, their recall walk.
@@ -635,6 +646,11 @@ export function Compose() {
         focus,
       };
       useDecks.getState().upsert(deck);
+      if (decksWriteFailed()) {
+        useDecks.getState().remove(deck.id);
+        setError(STORAGE_FULL);
+        return;
+      }
       useDraft.getState().discard();
       saved.current = true;
       startEncode(deck.id);
