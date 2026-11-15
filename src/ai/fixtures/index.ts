@@ -25,6 +25,12 @@ export const FIXTURE_DECKS: Deck[] = [CARPALS, CRANIAL_NERVES, MOHS, SPANISH_KIT
  * saved progress of a learner who walked it where it was. Keep the set on one line: scripts/smoke.mjs reads it.
  */
 export const UNLISTED_DECK_IDS: ReadonlySet<string> = new Set([KREBS.id]);
+/**
+ * Built-in decks that were shipped once and have since been removed ("The citric acid cycle, as
+ * a cycle", taken out on Sun 3:00 AM). A browser that walked one keeps a stored copy of it
+ * (a survey stores the deck with its date); that copy is not listed among the palaces either.
+ */
+export const RETIRED_DECK_IDS: ReadonlySet<string> = new Set(['fixture-krebs-cycle']);
 export const JUDGE_DECK_ID = CARPALS.id;
 /** The deck of the short Judge run (`?judge=short`). */
 export const SHORT_JUDGE_DECK_ID = CELL_CYCLE.id;

@@ -54,6 +54,25 @@ const storage = createJSONStorage<Pick<DecksState, 'decks'>>(() => ({
   },
 }));
 
+/**
+ * A stored copy of a built-in deck (a survey stores the deck with its date; an edit stores the
+ * edited deck) keeps the palace the deck had when it was copied. When a built-in deck has since
+ * moved to another palace (the cell cycle, from the Roman house to the Workshop on Sun 3:00 AM),
+ * the copy would keep it in the old one: it is replaced by the shipped deck, keeping only the
+ * date of its survey. Its review cards are keyed by item id and carry over unchanged.
+ * A function, not a lookup table: it runs while the store hydrates, before the module's later constants exist.
+ */
+function followMovedFixtures(decks: Record<string, Deck>): Record<string, Deck> {
+  let out = decks;
+  for (const shipped of FIXTURE_DECKS) {
+    const stored = decks[shipped.id];
+    if (!stored || stored.layoutId === shipped.layoutId) continue;
+    if (out === decks) out = { ...decks };
+    out[shipped.id] = stored.surveyedAt === undefined ? shipped : { ...shipped, surveyedAt: stored.surveyedAt };
+  }
+  return out;
+}
+
 export const useDecks = create<DecksState>()(
   persist(
     (set) => ({
@@ -83,7 +102,7 @@ export const useDecks = create<DecksState>()(
       storage,
       partialize: (s) => ({ decks: s.decks }),
       // Whatever is read (at start, or when another tab writes) is cleaned first: see ./storage.
-      merge: (stored, current) => ({ ...current, ...cleanDecksState(stored, newTally()) }),
+      merge: (stored, current) => ({ ...current, decks: followMovedFixtures(cleanDecksState(stored, newTally()).decks) }),
     },
   ),
 );

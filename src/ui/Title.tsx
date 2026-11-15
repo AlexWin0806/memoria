@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CompareLink } from '@/ab/CompareLink';
-import { UNLISTED_DECK_IDS } from '@/ai/fixtures';
+import { RETIRED_DECK_IDS, UNLISTED_DECK_IDS } from '@/ai/fixtures';
 import type { Deck, ReviewCard } from '@/core/types';
 import { canExam, startExam } from '@/flows/exam';
 import { discardSavedWalk, judgeVariantFromUrl, openProgress, resumeWalk, startEncode, startJudge, startRecall, useFlow } from '@/flows/flow';
@@ -42,7 +42,7 @@ export function deckStatus(deck: Deck, cards: Record<string, ReviewCard>, now: n
 /** Title screen: set low on the left, straight over the scene, with no panel. */
 export function Title() {
   // A built-in deck kept only for the comparison test is not offered here (see UNLISTED_DECK_IDS).
-  const decks = useAllDecks().filter((d) => !UNLISTED_DECK_IDS.has(d.id));
+  const decks = useAllDecks().filter((d) => !UNLISTED_DECK_IDS.has(d.id) && !RETIRED_DECK_IDS.has(d.id));
   const cards = useReview((s) => s.cards);
   const now = useNow();
   const [deleting, setDeleting] = useState<string | null>(null);
