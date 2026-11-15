@@ -1027,11 +1027,11 @@ const SCENARIOS = {
     },
   },
 
-  /** The citric acid cycle in the Workshop, walked as a process: ui-process, a question about a link, with the links on the floor. */
+  /** The cell cycle in the Workshop, walked as a process: ui-process, a question about a link, with the links on the floor. */
   'stills-process': {
     query: 'debug=stores',
     async run(rec) {
-      const k = num('place', 8);
+      const k = num('place', 5);
       await learnerRun(rec, CYCLE, {}, {
         async linkQuestion(i) {
           if (i !== k) return;
