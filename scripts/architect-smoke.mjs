@@ -9,12 +9,17 @@
  *     Krebs-cycle prose, "Element n - name" lines), on the card names and vocabulary
  *     variety asked for in QA review 2 (issue 7), and on offline "Strengthen".
  *     Then generated palaces offline: rooms from headings, links from arrows and plain
- *     phrases, the 30-place limit, extension, and the link rules.
+ *     phrases, the 30-place limit, extension, and the link rules. And the faults of QA
+ *     review 4: a "term - meaning" line with a relation word in it, a labelled arrow chain
+ *     on one line, a title line, table rows, the count of what was left out, room names
+ *     shortened at a boundary, the note on a link, the seed of a new palace.
  *  3. Exercises the API handler's guard rails without a network (405, 400, 503, 429),
  *     then its plan/regenerate logic, and the outline / room images / link check of a
  *     generated palace, against canned answers from a localhost stand-in for the Messages
  *     API (no real model involved). Then the client end to end: a 30-fact palace drawn
- *     room by room in parallel, the cache, a room that fails, a process, an extension.
+ *     room by room in parallel, the cache, a room that fails, a process, an extension; and
+ *     the image rules of QA review 4 (words-only scenes, the places of the palace, no two
+ *     images of a room with one first glyph, whatever the model answers).
  *  4. Only when ANTHROPIC_API_KEY is set (environment or .env.local): calls the real
  *     `plan` and `regenerate` paths once each.
  *
@@ -47,12 +52,29 @@ try {
   const { DOMUS_META } = await load('/src/layouts/domus/meta.ts');
   const { planPalace, planPalaceLocal, regenerateImago, isNoStrongerSuggestion, parseLine, designPalace, designPalaceLocal, extendPalace, extendPalaceLocal } = await load('/src/ai/architect.ts');
   const { parsePalaceId, specPlaces, isGeneratedId, MAX_ROOMS, ROOM_CAPACITY, MAX_PLACES } = await load('/src/layouts/spec.ts');
-  const { toOutline, cleanLinks, linkCap } = await load('/src/ai/wire.ts');
-  const { isSafeGlyph, wordCount, IMAGO_ACTIONS } = await load('/src/ai/glyphs.ts');
+  const { toOutline, toImago, cleanLinks, linkCap, roomName } = await load('/src/ai/wire.ts');
+  const { isSafeGlyph, wordCount, hasEmoji, IMAGO_ACTIONS } = await load('/src/ai/glyphs.ts');
   const { LEXICON } = await load('/src/ai/lexicon.ts');
   const { nameSentences, deriveTerm, singularCounts } = await load('/src/ai/parse.ts');
 
   // ── Checks shared by everything that builds a generated palace ──────────────
+  /**
+   * What is wrong with a room's name, or null. A name is a whole phrase: it never ends on an article, a
+   * conjunction, a preposition or a symbol, and it is short (four words, or about 28 characters; two
+   * categories that share a room are named for both).
+   */
+  const nameFault = (name) => {
+    if (!name.trim() || name.length > 40) return 'is empty or longer than 40 characters';
+    if (/\s(?:a|an|the|and|or|nor|but|of|in|on|at|to|for|from|with|by|as|vs)$/.test(name) || /\s(?:An|The|And|Or|Of|In|On|At|To|For|From|With|By|As)$/.test(name)) return 'ends on an article, a conjunction or a preposition';
+    if (/[^\p{L}\p{N})"'”’?!%]$/u.test(name)) return 'ends on a symbol or a mark of punctuation';
+    if (/^(?:lecture|chapter|week|unit|module|lesson)\s*\d+\s*[:.)-]/i.test(name)) return 'keeps a course or lecture prefix';
+    const words = name.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+    if (words > 4 && name.length > 28 && !/ & /.test(name)) return 'is longer than four words and 28 characters';
+    return null;
+  };
+  /** As PalaceSpec.seed is checked in src/layouts/spec.ts. */
+  const SEED = /^[a-z0-9]{1,8}$/;
+  const seedOf = (layoutId) => parsePalaceId(layoutId)?.seed;
   const checkLinkList = (label, links, ids, facts) => {
     const pairs = new Set();
     for (const l of links) {
@@ -63,6 +85,7 @@ try {
       pairs.add(pair);
       if (!['becomes', 'needs', 'blocks', 'mirrors'].includes(l.kind)) fail(`${label}: unknown link kind ${l.kind}`);
       if (l.label !== undefined && (!l.label || wordCount(l.label) > 4)) fail(`${label}: the link label "${l.label}" is empty or longer than four words`);
+      if (l.note !== undefined && (typeof l.note !== 'string' || !l.note.trim() || l.note.length > 200)) fail(`${label}: the link note is empty or longer than 200 characters`);
     }
     if (links.length > Math.floor(facts * 1.5)) fail(`${label}: ${links.length} links for ${facts} facts (the cap is one and a half per fact)`);
   };
@@ -71,7 +94,9 @@ try {
     const spec = parsePalaceId(plan.layoutId);
     if (!spec) return fail(`${label}: layoutId is not a generated palace: ${plan.layoutId}`);
     if (plan.spec && JSON.stringify(spec) !== JSON.stringify(plan.spec)) fail(`${label}: layoutId and spec disagree`);
+    if (plan.spec && plan.spec.seed !== spec.seed) fail(`${label}: the seed in the spec (${plan.spec.seed}) is not the one in the layoutId (${spec.seed})`);
     if (spec.rooms.length > MAX_ROOMS || spec.rooms.some((r) => r.places < 1 || r.places > ROOM_CAPACITY)) fail(`${label}: more than ${MAX_ROOMS} rooms, or a room with more than ${ROOM_CAPACITY} places`);
+    for (const r of spec.rooms) if (nameFault(r.name)) fail(`${label}: the room name "${r.name}" ${nameFault(r.name)}`);
     if (plan.items.length > MAX_PLACES) fail(`${label}: ${plan.items.length} items`);
     // A new palace has no room of a single place. (Only a palace that is extended can: nothing in it may move.)
     if (!lone && plan.items.length > 1 && spec.rooms.some((r) => r.places === 1)) fail(`${label}: a room of one place: ${spec.rooms.map((r) => `${r.name} (${r.places})`).join(', ')}`);
@@ -88,7 +113,7 @@ try {
       const inCategory = plan.categories.flatMap((c) => c.itemIds);
       if (inCategory.length !== plan.items.length || new Set(inCategory).size !== plan.items.length) fail(`${label}: every item should be in exactly one category`);
       for (const c of plan.categories) {
-        if (c.name.split(/\s+/).length > 3 && !/ & /.test(c.name) && !/^Steps \d+ to \d+$/.test(c.name)) fail(`${label}: the category name "${c.name}" is longer than three words`);
+        if (nameFault(c.name)) fail(`${label}: the category name "${c.name}" ${nameFault(c.name)}`);
         for (const id of c.itemIds) if (!c.roomIds.includes(roomOf(plan.items.find((i) => i.id === id)?.locusId ?? ''))) fail(`${label}: an item of ${c.name} is not in one of its rooms`);
         for (const roomId of c.roomIds) if ((spec.rooms.find((r) => r.id === roomId)?.shape === 'ring') !== (c.shape === 'ring')) fail(`${label}: the room ${roomId} of ${c.name} has the wrong shape`);
       }
@@ -134,7 +159,8 @@ try {
     createdAt: z.number(),
     fixture: z.literal(true),
     items: z.array(Item).min(1).max(MAX_PLACES),
-    links: z.array(z.object({ from: z.string(), to: z.string(), kind: z.enum(['becomes', 'needs', 'blocks', 'mirrors']), label: z.string().optional() }).strict()).optional(),
+    // `note`: one exact sentence shown instead of a sentence built from the kind (ItemLink.note). Hand-written only.
+    links: z.array(z.object({ from: z.string(), to: z.string(), kind: z.enum(['becomes', 'needs', 'blocks', 'mirrors']), label: z.string().optional(), note: z.string().min(8).max(200).optional() }).strict()).optional(),
     focus: z.enum(['facts', 'process']).optional(),
   });
 
@@ -267,6 +293,9 @@ try {
     const blocks = cycle.links.filter((l) => l.kind === 'blocks');
     if (cycle.links.filter((l) => l.kind === 'becomes').length !== 8 || blocks.length < 1 || blocks.length > 2 || cycle.links.some((l) => !l.label)) fail('fixture-krebs-cycle: expected eight labelled "becomes" links and one or two labelled "blocks" links');
     if (cycle.focus !== 'process') fail('fixture-krebs-cycle: focus should be process');
+    // Regulation is stated in an exact sentence (research 9.4): "X blocks Y" built from the kind would be false here.
+    const inhibition = blocks.find((l) => l.from === cycle.items[3].id && l.to === cycle.items[0].id);
+    if (inhibition?.note !== 'Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate.') fail(`fixture-krebs-cycle: the inhibition link should carry its exact sentence, got ${JSON.stringify(inhibition)}`);
   }
   // The comparison test swaps its two materials between the palace arm and the list arm.
   // That is only fair if a deck and its plain list are the same material (same terms, same
@@ -632,6 +661,11 @@ try {
     if (snapshots.length !== 1 || snapshots[0].pendingRooms.length !== 0) fail('offline headings: onProgress should be called once with nothing pending');
     const again = designPalaceLocal({ text: verbs, kits: kitList });
     if (JSON.stringify(again.items.map((i) => [i.term, i.locusId, i.imago])) !== JSON.stringify(plan.items.map((i) => [i.term, i.locusId, i.imago]))) fail('offline headings: not deterministic');
+    // A learner's new palace carries a seed (which of the kit's objects stand where), so that two palaces
+    // in one style are not furnished alike. The layoutId holds it; the built-in decks have none.
+    if (!SEED.test(plan.spec.seed ?? '') || seedOf(plan.layoutId) !== plan.spec.seed || !plan.layoutId.startsWith(`gen:gothic@${plan.spec.seed};`)) fail(`offline: a new palace should carry a seed, in its spec and in its layoutId: ${plan.spec.seed} / ${plan.layoutId}`);
+    if (again.spec.seed === plan.spec.seed || again.layoutId === plan.layoutId) fail(`offline: two palaces planned from the same notes share the seed ${plan.spec.seed}`);
+    if (FIXTURE_DECKS.some((d) => seedOf(d.layoutId) !== undefined)) fail('a built-in deck carries a seed: built-in palaces keep the kit\'s own order');
 
     const colon = designPalaceLocal({ text: 'Verb tenses:\nPast tense:\ncomí\ncomiste\ncomió\nPresent tense:\ncomo\ncomes\ncome' });
     checkPalace('offline colon headings', colon);
@@ -676,6 +710,117 @@ try {
     if (needs.focus !== 'facts') fail('offline: one "becomes" among six facts is not a process');
     if (needs.links.map((l) => l.kind).join() !== 'needs,blocks,becomes,mirrors') fail(`offline: "requires", "blocks", "becomes", "<->" should give needs, blocks, becomes, mirrors: ${needs.links.map((l) => l.kind)}`);
 
+    // ── QA review 4, issues 10 and 17: what a judge sees when the venue Wi-Fi is down ──
+    {
+      const factsOf = (p) => p.items.map((it) => `${it.term}${it.meaning ? ` = ${it.meaning}` : ''}`);
+      const linksOf = (p) => p.links.map((l) => `${p.items.find((i) => i.id === l.from)?.term} ${l.kind} ${p.items.find((i) => i.id === l.to)?.term}`).join('; ');
+      const roomsOf = (p) => p.spec.rooms.map((r) => `${r.name}:${r.places}`).join();
+      // A line that reads as "term - meaning" is one fact, whatever words its meaning holds.
+      const drugs = designPalaceLocal({
+        text: ['## Beta blockers', 'propranolol - non-selective, avoid in asthma', 'metoprolol - beta-1 selective', 'carvedilol - also blocks alpha-1', '## ACE inhibitors', 'captopril - cough', 'lisinopril - once daily', 'enalapril - prodrug',
+          '## Calcium channel blockers', 'verapamil - constipation', 'amlodipine - ankle swelling', 'diltiazem - slows the AV node', '## Diuretics', 'furosemide - loses potassium', 'spironolactone - keeps potassium', 'hydrochlorothiazide - raises calcium'].join('\n'),
+      });
+      showPalace('term - meaning with a relation word (review 4, issue 10)', drugs);
+      checkPalace('offline term - meaning', drugs);
+      if (drugs.items.length !== 12 || !factsOf(drugs).includes('carvedilol = also blocks alpha-1') || drugs.items.some((it) => it.term === 'alpha-1' || it.meaning === 'also') || drugs.links.length !== 0) fail(`offline: "carvedilol - also blocks alpha-1" should be one fact and no link: ${factsOf(drugs).slice(0, 4).join(' | ')}; links ${linksOf(drugs)}`);
+      if (roomsOf(drugs) !== 'Beta blockers:3,ACE inhibitors:3,Calcium channel blockers:3,Diuretics:3') fail(`offline term - meaning: rooms ${roomsOf(drugs)}`);
+      const verbs2 = designPalaceLocal({ text: 'warfarin - inhibits vitamin K recycling\ninsulin: requires zinc for storage\npepsinogen - becomes pepsin in acid\nheparin = needs antithrombin\nADH: water in -> urine concentrated' });
+      if (verbs2.items.length !== 5 || verbs2.links.length !== 0 || verbs2.items.some((it) => !it.meaning)) fail(`offline: relation words and a single arrow inside a meaning are part of the meaning: ${factsOf(verbs2).join(' | ')}; links ${linksOf(verbs2)}`);
+
+      // "label: a -> b -> c -> d" on one line is a chain: the label names the process, the steps follow in order.
+      const chain = designPalaceLocal({ text: 'water cycle: evaporation -> condensation -> precipitation -> collection' });
+      showPalace('a labelled chain on one line (review 4, issue 17)', chain);
+      checkPalace('offline labelled chain', chain);
+      if (chain.title !== 'Water cycle' || chain.focus !== 'process' || factsOf(chain).join() !== 'evaporation,condensation,precipitation,collection' || roomsOf(chain) !== 'Water cycle:4') fail(`offline labelled chain: "${chain.title}", ${chain.focus}, ${factsOf(chain)}, rooms ${roomsOf(chain)}`);
+      if (linksOf(chain) !== 'evaporation becomes condensation; condensation becomes precipitation; precipitation becomes collection') fail(`offline labelled chain: links ${linksOf(chain)}`);
+      const twoChains = designPalaceLocal({ text: 'Glycolysis: glucose -> G6P -> F6P\nKrebs cycle: citrate -> isocitrate -> succinate' });
+      checkPalace('offline two labelled chains', twoChains);
+      if (roomsOf(twoChains) !== 'Glycolysis:3,Krebs cycle:3' || twoChains.links.length !== 4 || twoChains.items.some((it) => /Glycolysis|Krebs/.test(it.term))) fail(`offline two labelled chains: each label should name the room of its steps: ${roomsOf(twoChains)}; ${factsOf(twoChains)}`);
+
+      // A title line names the deck and is never a step or a fact.
+      const titled = designPalaceLocal({ text: 'The water cycle\nevaporation -> condensation\ncondensation -> precipitation\nprecipitation -> collection' });
+      if (titled.title !== 'The water cycle' || factsOf(titled).join() !== 'evaporation,condensation,precipitation,collection' || !titled.steps.some((s) => s.label === 'Read the first line as the title, not as a fact: "The water cycle".')) fail(`offline title line: "${titled.title}", ${factsOf(titled)}; ${titled.steps.map((s) => s.label).join(' | ')}`);
+      const hashed = designPalaceLocal({ text: '# Renal physiology\nnephron - the working unit\n## Proximal tubule\nglucose - reabsorbed with sodium\nbicarbonate - reclaimed\n## Loop of Henle\nurea - recycled\nsalt - pumped out' });
+      checkPalace('offline first heading', hashed);
+      if (hashed.title !== 'Renal physiology' || hashed.items.length !== 5 || /Renal/.test(roomsOf(hashed)) || hashed.items.some((it) => /Renal/.test(it.term))) fail(`offline: the first heading names the deck, never a room or a fact: "${hashed.title}", rooms ${roomsOf(hashed)}`);
+      const lecture = designPalaceLocal({ text: 'Lecture 7: The nephron\nglomerulus - filters plasma\nproximal tubule - reabsorbs most\ncollecting duct - concentrates' });
+      if (lecture.title !== 'Lecture 7: The nephron' || lecture.items.length !== 3 || lecture.items.some((it) => /Lecture/.test(it.term))) fail(`offline: "Lecture 7: The nephron" is a title, not the fact "Lecture 7 = The nephron": "${lecture.title}", ${factsOf(lecture)}`);
+      const planets = designPalaceLocal({ text: 'Mercury\nVenus\nEarth\nMars' });
+      if (planets.items.length !== 4 || planets.items[0].term !== 'Mercury') fail(`offline: the first item of a plain list is not a title: ${factsOf(planets)}`);
+      const headed = designPalaceLocal({ text: 'Cardiac drugs\ncaptopril - cough\nlisinopril - once daily\nenalapril - prodrug' });
+      if (headed.title !== 'Cardiac drugs' || headed.items.length !== 3) fail(`offline: a plain line above three lines of "term - meaning" is the title: "${headed.title}", ${factsOf(headed)}`);
+      const shortList = designPalaceLocal({ text: 'apple\nbanana - yellow\ncherry - red' });
+      if (shortList.items.length !== 3 || shortList.items[0].term !== 'apple') fail(`offline: a short list never loses its first item to a guessed title: ${factsOf(shortList)}`);
+
+      // What was read and not placed is counted: one line with no words, one second meaning for a name, one exact repeat.
+      const silly = designPalaceLocal({ text: 'asdf\nqwerty\n🙂🙂🙂\nasdf - again\nbanana banana banana\n42\nfoo - bar\nfoo - baz\nzzz\nqwerty' });
+      const leftOut = silly.steps.find((s) => /^Left out/.test(s.label))?.label;
+      console.log(`[ten silly lines]  ${silly.items.length} kept; ${leftOut}`);
+      if (silly.items.length !== 6 || silly.dropped !== 3 || leftOut !== 'Left out 3 lines: 1 with no words to picture, 2 that repeat a fact already read.') fail(`offline: ten lines, six facts, one gloss merged, three left out: kept ${silly.items.length}, dropped ${silly.dropped}, "${leftOut}"`);
+      if (drugs.dropped !== undefined || drugs.steps.some((s) => /^Left out/.test(s.label))) fail('offline: nothing was left out of the drug list, and the trace should not say otherwise');
+      const hollow = designPalaceLocal({ text: '## Metals\nIron\nCopper\nZinc\n## Gases\n## Liquids\nMercury\nBromine' });
+      if (hollow.dropped !== 1 || !hollow.steps.some((s) => s.label === 'Left out 1 line: 1 heading with nothing under it.')) fail(`offline: a heading with nothing under it is counted: ${hollow.steps.map((s) => s.label).join(' | ')}`);
+
+      // A table read from a PDF: each row is one fact, the first cell its term, the other cells its meaning.
+      const table = designPalaceLocal({ text: 'A\tRetinol\tNight blindness\nB1\tThiamine\tBeriberi\nC\tAscorbic acid\tScurvy\nK\tPhylloquinone\trequires bile - fat soluble' });
+      showPalace('table rows (review 4, issue 9)', table);
+      if (factsOf(table).join(' | ') !== 'A = Retinol; Night blindness | B1 = Thiamine; Beriberi | C = Ascorbic acid; Scurvy | K = Phylloquinone; requires bile - fat soluble' || table.kind !== 'pairs' || table.links.length !== 0) fail(`offline table rows: ${factsOf(table).join(' | ')}`);
+      const row = parseLine('  B12\t Cobalamin \t\tPernicious anaemia ');
+      if (row?.term !== 'B12' || row.meaning !== 'Cobalamin; Pernicious anaemia' || parseLine('scaphoid\tboat')?.meaning !== 'boat') fail(`parseLine: a row of cells should be the first cell and the others joined with "; ": ${JSON.stringify(row)}`);
+      const domusTable = planPalaceLocal({ ...base, text: 'A\tRetinol\tNight blindness\nB1\tThiamine\tBeriberi\nC\tAscorbic acid\tScurvy' });
+      if (domusTable.items.map((it) => `${it.term} = ${it.meaning}`).join(' | ') !== 'A = Retinol; Night blindness | B1 = Thiamine; Beriberi | C = Ascorbic acid; Scurvy') fail('offline table rows: the fixed-route planner reads them differently');
+    }
+
+    // ── QA review 4, issue 9: a room name is never cut in the middle of a phrase ──
+    {
+      const NAMES = [
+        ['Lecture 7: The nephron', 'The nephron'],
+        ['Distal tubule & collecting duct', 'Distal tubule & collecting duct'],
+        // The two names the review saw, should a heading ever arrive already cut.
+        ['Lecture 7: The', 'Lecture 7'],
+        ['Distal tubule &', 'Distal tubule'],
+        ['Distal tubule & collecting duct of the nephron', 'Distal tubule & collecting duct'],
+        ['Regulation of sodium and potassium balance in the distal nephron', 'Regulation of sodium'],
+        ['Loop of Henle: the countercurrent multiplier', 'Loop of Henle'],
+        ['Week 2 - Acids, bases and buffers in the blood', 'Acids, bases and buffers'],
+        ['Chapter 3. Calcium channel blockers', 'Calcium channel blockers'],
+        ['Na and K in the loop', 'Na and K in the loop'],
+        ['Vitamin A', 'Vitamin A'],
+        ['Past tense forms here', 'Past tense forms here'],
+        ['Steps 1 to 5', 'Steps 1 to 5'],
+        ['Part 2', 'Part 2'],
+        ['Group 2 & Group 3', 'Group 2 & Group 3'],
+        ['Citrate to succinyl-CoA', 'Citrate to succinyl-CoA'],
+      ];
+      for (const [heading, expected] of NAMES) {
+        const got = roomName(heading);
+        if (got !== expected) fail(`room name: "${heading}" should be "${expected}", got "${got}"`);
+        if (nameFault(got)) fail(`room name: "${got}" (from "${heading}") ${nameFault(got)}`);
+        if (roomName(got) !== got) fail(`room name: shortening "${got}" again changes it to "${roomName(got)}"`);
+      }
+      console.log(`[room names]  ${NAMES.filter(([h, e]) => h !== e).map(([h, e]) => `"${h}" → "${e}"`).join('; ')}`);
+      // Any long heading at all: whole words, a whole phrase, 40 characters at most.
+      const longOnes = ['Pharmacokinetics and pharmacodynamics of anticoagulants', 'The role of the kidney in the regulation of blood pressure (RAAS)', 'Antidisestablishmentarianism versus pseudopseudohypoparathyroidism', 'Causes, signs and treatment of diabetic ketoacidosis and of the hyperosmolar state'];
+      for (const heading of longOnes) {
+        const got = roomName(heading);
+        if (nameFault(got) || !heading.startsWith(got.split(' ')[0])) fail(`room name: "${got}" (from "${heading}") ${nameFault(got)}`);
+        if (!got.split(' ').every((w) => heading.split(' ').includes(w) || heading.split(' ').includes(`${w},`))) fail(`room name: "${got}" cuts a word of "${heading}"`);
+      }
+      // Offline: the headings of lecture slides.
+      const slides = designPalaceLocal({ text: '## Lecture 7: The nephron and its blood supply\nglomerulus - filters plasma\nproximal tubule - reabsorbs most\n## Distal tubule & collecting duct\naldosterone - sodium in, potassium out\nADH - water channels' });
+      checkPalace('offline slide headings', slides);
+      if (slides.spec.rooms.map((r) => r.name).join('|') !== 'The nephron|Distal tubule & collecting duct') fail(`offline slide headings: rooms ${slides.spec.rooms.map((r) => r.name).join('|')}`);
+      // The same heading, later, continues the room that was named from it.
+      const more = extendPalaceLocal({ id: 'deck-slides', title: 'Kidney', kind: 'pairs', layoutId: slides.layoutId, items: slides.items, createdAt: 1 }, '## Lecture 7: The nephron and its blood supply\nmacula densa - senses salt\nmesangium - holds the tuft');
+      if (more.spec.rooms.map((r) => `${r.name}:${r.places}`).join('|') !== 'The nephron:4|Distal tubule & collecting duct:2') fail(`offline slide headings: an extension under the same heading should join its room: ${more.spec.rooms.map((r) => `${r.name}:${r.places}`).join('|')}`);
+      // On arrival: whatever the server sends is named by the same rule.
+      const arrived = toOutline(
+        { title: 'Kidney', kind: 'pairs', categories: [{ name: 'Lecture 7: The', shape: 'hall' }, { name: 'Distal tubule &', shape: 'hall' }, { name: 'Regulation of sodium and potassium balance in the distal nephron', shape: 'hall' }], items: [0, 0, 1, 1, 2, 2].map((category, i) => ({ ref: `i${i + 1}`, term: `t${i + 1}`, category })), links: [], overflow: [], steps: [] },
+        { cap: 30 },
+      );
+      if (arrived?.categories.map((c) => c.name).join('|') !== 'Lecture 7|Distal tubule|Regulation of sodium') fail(`client outline rules: room names on arrival: ${arrived?.categories.map((c) => c.name).join('|')}`);
+    }
+
     // No categories: consecutive rooms of up to five with plain names, in the order given; 30 at most.
     const lines = Array.from({ length: 37 }, (_, i) => `Thing ${i + 1} - gloss ${i + 1}`);
     const big = designPalaceLocal({ text: lines.join('\n') });
@@ -712,12 +857,19 @@ try {
     if (ext.added.map((i) => i.locusId).join() !== 'r1-4,r3-4,r4-1,r4-2') fail(`offline extension: expected one more in Past, two in a new "Past II", and the lone conditional in Future: ${ext.added.map((i) => `${i.term}@${i.locusId}`)}`);
     if (!ext.steps.some((s) => s.label === '"Conditional" had one fact and shares a room with "Future".')) fail(`offline extension: the steps do not say where the lone fact went: ${ext.steps.map((s) => s.label).join(' | ')}`);
     if (ext.spec.rooms.map((r) => `${r.id}:${r.name}:${r.places}`).join() !== 'r1:Past:4,r2:Present:3,r3:Future:4,r4:Past II:2') fail(`offline extension: rooms ${ext.spec.rooms.map((r) => `${r.id}:${r.name}:${r.places}`)}`);
+    // The seed is fixed for the life of a palace: growing it keeps the furniture that stands.
+    if (ext.spec.seed !== plan.spec.seed || seedOf(ext.deck.layoutId) !== plan.spec.seed || seedOf(ext.layoutId) !== plan.spec.seed) fail(`offline extension: the seed ${plan.spec.seed} did not survive: ${ext.deck.layoutId}`);
     const future1 = deck.items.find((i) => i.term === 'comeré');
     if (ext.links.length !== 1 || ext.links[0].from !== future1.id || ext.links[0].to !== ext.added.find((i) => i.term === 'comería').id || ext.links[0].kind !== 'becomes') fail(`offline extension: the link from an old fact to a new one is missing: ${JSON.stringify(ext.links)}`);
     if (ext.deck.links.length !== 3 || ext.deck.id !== deck.id) fail('offline extension: the grown deck should keep its id and its old links');
     const heroesBefore = new Set(deck.items.map((i) => i.imago.glyphs[0]));
     if (ext.added.some((i) => heroesBefore.has(i.imago.glyphs[0]))) fail('offline extension: a new image reuses a picture that is already in the palace');
     if (ext.steps.some((s) => /Skipped/.test(s.label)) === false) fail('offline extension: "comí" is already in the palace and should be reported as skipped');
+    // A note on a link that stands (a fixture, a saved deck) goes through an extension untouched; new links never carry one.
+    const noted = { ...deck, links: [{ ...deck.links[0], note: 'Comí and como are the same person, in the past and in the present.' }, ...deck.links.slice(1)] };
+    const notedExt = extendPalaceLocal(noted, '## Conditional\ncomería - I would eat\ncomerías - you would eat\ncomeré -> comería');
+    if (notedExt.deck.links[0] !== noted.links[0] || notedExt.deck.links.filter((l) => l.note).length !== 1) fail(`offline extension: the note on a standing link was lost or copied: ${JSON.stringify(notedExt.deck.links)}`);
+    if (notedExt.links.length !== 1 || notedExt.links.some((l) => 'note' in l)) fail(`offline extension: a new link should have no note: ${JSON.stringify(notedExt.links)}`);
     const wing = extendPalaceLocal(deck, '## Conditional\ncomería - I would eat\ncomerías - you would eat');
     if (wing.spec.rooms.map((r) => `${r.name}:${r.places}`).join() !== 'Past:3,Present:3,Future:3,Conditional:2' || wing.added.map((i) => i.locusId).join() !== 'r4-1,r4-2') fail(`offline extension: a new category of two should open its own room at the end: ${wing.spec.rooms.map((r) => `${r.name}:${r.places}`)}`);
     // A plain palace simply continues.
@@ -747,7 +899,7 @@ try {
         items: [{ ref: 'i1', term: 'one', category: 0, picture: '🍋' }, { ref: 'i2', term: 'two', category: 1, picture: '🍋' }, { ref: 'i3', term: 'three', category: 0, picture: '👨‍👩‍👧' }, { ref: 'i4', term: 'four', category: 1 }],
         links: [
           { from: 'i1', to: 'i1', kind: 'becomes' }, { from: 'i1', to: 'i2', kind: 'becomes', label: 'a label of far too many words' }, { from: 'i2', to: 'i1', kind: 'mirrors' },
-          { from: 'i1', to: 'i9', kind: 'needs' }, { from: 'i3', to: 'i4', kind: 'explodes' }, { from: 'i3', to: 'i4', kind: 'blocks', label: 'two words' },
+          { from: 'i1', to: 'i9', kind: 'needs' }, { from: 'i3', to: 'i4', kind: 'explodes' }, { from: 'i3', to: 'i4', kind: 'blocks', label: 'two words', note: 'The Architect does not write notes.' },
           { from: 'i1', to: 'i3', kind: 'needs' }, { from: 'i1', to: 'i4', kind: 'needs' }, { from: 'i2', to: 'i3', kind: 'needs' }, { from: 'i2', to: 'i4', kind: 'needs' }, { from: 'e1', to: 'i1', kind: 'needs' },
         ],
         overflow: ['left'], steps: [{ kind: 'plan', label: 'Found 1 facts.' }, { kind: 'nope', label: 'x' }],
@@ -757,6 +909,7 @@ try {
     const got = dirty?.links.map((l) => `${l.from}>${l.to}:${l.kind}${l.label ? `:${l.label}` : ''}`).join(' ');
     console.log(`[link rules]  ${got}`);
     if (got !== 'i1>i2:becomes i3>i4:blocks:two words i1>i3:needs i1>i4:needs i2>i3:needs i2>i4:needs') fail(`client link rules: ${got}`);
+    if (dirty.links.some((l) => 'note' in l)) fail('client link rules: a note arrived over the wire; notes are hand-written (fixtures, saved decks), never the Architect\'s');
     if (dirty.items.map((i) => i.ref).join() !== 'i1,i3,i2,i4' || dirty.items[2].picture || dirty.items[1].picture) fail('client outline rules: items should be in walking order, with repeated or unsafe pictures removed');
     if (dirty.steps.length !== 1 || dirty.steps[0].label !== 'Found 1 fact.' || dirty.kit?.id !== 'workshop') fail('client outline rules: steps or kit not cleaned');
     if (toOutline({ title: 'T', kind: 'list', categories: [{ name: 'A' }], items: [{ ref: 'i1', term: 'one', category: 3 }] }, { cap: 30 })) fail('client outline rules: an item in a category that does not exist was accepted');
@@ -935,7 +1088,7 @@ try {
       modelItems.push({ ...oItem(3, 'c1'), term: 'a second fact with the id i3' }, { ...oItem(27, 'c6'), term: '   ' });
       const answerA = {
         title: 'Mock palace', kind: 'list', kit: 'workshop', kitReason: 'A cycle suits a garden.', focus: 'facts', focusReason: '',
-        categories: sizes.map((_, c) => ({ id: `c${c + 1}`, name: c === 0 ? 'Past tense forms here' : `Group ${c + 1}`, cycle: c === 3 })),
+        categories: sizes.map((_, c) => ({ id: `c${c + 1}`, name: c === 0 ? 'Lecture 7: The past tense forms of comer and their endings' : `Group ${c + 1}`, cycle: c === 3 })),
         items: modelItems,
         links: [
           { from: 'i1', to: 'i1', kind: 'becomes', label: '' },
@@ -955,8 +1108,8 @@ try {
       if (o) {
         for (const s of o.steps) console.log(`      · (${s.kind}) ${s.label}`);
         check('outline: one fact per ref, empty terms dropped', o.items.length === 26 && new Set(o.items.map((i) => i.ref)).size === 26 && o.items.find((i) => i.ref === 'i3').term === 'fact 3', `${o.items.length} items`);
-        check('outline: seven rooms become six by merging two small neighbours', o.categories.map((c) => c.name).join('|') === 'Past tense forms|Group 2 & Group 3|Group 4|Group 5|Group 6', o.categories.map((c) => c.name).join('|'));
-        check('outline: category names are three words at most', o.categories.every((c) => c.name.split(' ').length <= 5 && !/here/.test(c.name)));
+        check('outline: seven rooms become six by merging two small neighbours', o.categories.map((c) => c.name).join('|') === 'The past tense forms|Group 2 & Group 3|Group 4|Group 5|Group 6', o.categories.map((c) => c.name).join('|'));
+        check('outline: a long category name is shortened at a boundary, without its lecture prefix', o.categories.every((c) => !nameFault(c.name)), o.categories.map((c) => `${c.name}: ${nameFault(c.name)}`).join('|'));
         check('outline: items are grouped by category, in order', o.items.map((i) => i.category).join('') === '0000000' + '1111' + '22222' + '33333' + '44444');
         check('outline: a category whose facts close a loop is a ring', o.categories[2].shape === 'ring' && o.categories.filter((c) => c.shape === 'ring').length === 1, o.categories.map((c) => c.shape).join());
         check('outline: repeated and unsafe pictures are dropped', o.items[0].picture === GLYPHS[1] && !o.items[1].picture && !o.items[2].picture && o.items.every((i) => !i.picture || isSafeGlyph(i.picture)));
@@ -969,6 +1122,14 @@ try {
       const schema = JSON.stringify(seen[0]?.output_config?.format?.schema ?? {});
       check('outline request: one call, kits listed, limits stated, links only where stated', seen.length === 1 && /workshop: Workshop\. Machines in a line/.test(prompt) && /at most 30 facts/.test(prompt) && /only where the material states them/.test(prompt));
       check('outline request: schema pins item ids, category ids and kit ids', schema.includes('"i30"') && !schema.includes('"i31"') && schema.includes('"c6"') && schema.includes('"workshop"') && schema.includes('"mirrors"'));
+
+      // Room names (QA review 4, issue 9): the server's copy of the rule gives what the client's gives.
+      const headings = ['Lecture 7: The nephron', 'Distal tubule & collecting duct', 'Regulation of sodium and potassium balance in the distal nephron', 'Chapter 3. Pharmacokinetics and pharmacodynamics of anticoagulants', 'Loop of Henle: the countercurrent multiplier', 'Na and K in the loop'];
+      queue.push(answer(JSON.stringify({ title: 'Kidney', kind: 'pairs', kit: 'gothic', kitReason: '', focus: 'facts', focusReason: '', categories: headings.map((name, c) => ({ id: `c${c + 1}`, name, cycle: false })), items: headings.flatMap((_, c) => [oItem(c * 2 + 1, `c${c + 1}`), oItem(c * 2 + 2, `c${c + 1}`)]), links: [], overflow: [], grouping: '' })));
+      r = await call({ ...outlineBody, kit: 'gothic' });
+      const named = r.json?.outline?.categories.map((c) => c.name).join('|');
+      check('outline: room names are whole phrases, shortened at a boundary, as on the client', named === headings.map(roomName).join('|') && named.startsWith('The nephron|Distal tubule & collecting duct|Regulation of sodium|') && r.json.outline.categories.every((c) => !nameFault(c.name)), named);
+      check('outline request: the model is told how to name a room', /never end a name on an article, a conjunction, a preposition or a symbol/.test(prompt) && /Leave out a course or lecture prefix/.test(prompt) && !/three words or fewer, in the material/.test(prompt));
 
       // No real categories: plain consecutive rooms in the order given.
       queue.push(answer(JSON.stringify({ title: 'Plain', kind: 'list', kit: 'workshop', kitReason: '', focus: 'facts', focusReason: '', categories: [{ id: 'c1', name: '', cycle: false }], items: Array.from({ length: 12 }, (_, i) => oItem(i + 1, 'c1')), links: [], overflow: [], grouping: '' })));
@@ -1148,6 +1309,65 @@ try {
       check('links: unsupported links are dropped, unjudged ones kept', r.status === 200 && JSON.stringify(r.json.keep) === '[true,false,true]' && /dropped 1 that the notes do not support/.test(r.json.steps[0].label), JSON.stringify(r.json));
       check('links request: the notes and each link in words', /<material>\nCitrate becomes isocitrate\.\n<\/material>/.test(linkPrompt) && /l1\. "Citrate" becomes, or leads to, "Isocitrate" \(rearranged\)/.test(linkPrompt) && /l2\. "Malate" blocks, or inhibits, "Citrate"/.test(linkPrompt) && /even if the link is true in the world/.test(String(seen[0]?.system?.[0]?.text)));
 
+      // QA review 4, issue 15: what one live run of twelve images got wrong, all in one room.
+      const faultyBody = {
+        op: 'images', title: 'Heart drugs', kind: 'pairs', room: { name: 'Diuretics', shape: 'hall', index: 3 },
+        items: [
+          { ref: 'i1', term: 'furosemide', meaning: 'loses potassium', picture: '🚿', place: { name: 'The Gargoyle', hint: 'A stone gargoyle with a spout.' } },
+          { ref: 'i2', term: 'spironolactone', meaning: 'keeps potassium', picture: '🔒', place: { name: 'The Chained Lectern', hint: 'An oak lectern with a chained book.' } },
+          { ref: 'i3', term: 'captopril', meaning: 'cough', picture: '😷', place: { name: 'The Rose Window', hint: 'A round window of red glass.' } },
+          { ref: 'i4', term: 'amiloride', meaning: 'spares potassium', place: { name: 'The Ladder Bookcase', hint: 'A tall bookcase with a ladder.' } },
+        ],
+        places: ['The Gargoyle', 'The Chained Lectern', 'The Rose Window', 'The Ladder Bookcase', 'The Hourglass', 'The Anchor'],
+      };
+      const faultyDraft = {
+        images: [
+          { id: 'i1', scene: 'A banana 🍌 shoots out of the gargoyle, shouting "furosemide".', glyphs: ['🚿', '🍌'], action: 'spin', reason: 'Furosemide loses potassium; bananas are full of it.' },
+          { id: 'i2', scene: 'A banana is locked to the lectern, shouting "spironolactone".', glyphs: ['🍌', '🔒'], action: 'bob', reason: 'Spironolactone keeps potassium.' },
+          { id: 'i3', scene: 'An hourglass coughs sand at the rose window, shouting "captopril".', glyphs: ['⌛', '😷'], action: 'pulse', reason: 'Captopril causes a cough.' },
+          { id: 'i4', scene: 'A padlock swings from the ladder of the bookcase.', glyphs: ['🔐', '📚'], action: 'hop', reason: 'Amiloride spares potassium.' },
+        ],
+      };
+      const faultyReview = {
+        verdicts: [{ id: 'i1', ok: false, issue: 'emoji in the sentence' }, { id: 'i2', ok: false, issue: 'shares the banana' }, { id: 'i3', ok: false, issue: 'an hourglass is a place' }, { id: 'i4', ok: true, issue: '' }],
+        revisions: [
+          { id: 'i1', scene: 'A hose floods the gargoyle until it spits out salt.', glyphs: ['🚿', '🧂'], action: 'spin', reason: 'Furosemide flushes potassium out.' },
+          // The critic can miss one: the sentence still leaves in words only.
+          { id: 'i2', scene: 'A safe 🔒 swallows the lectern\'s chain and clicks shut 🍌.', glyphs: ['🔒', '⛓️'], action: 'bob', reason: 'Spironolactone locks potassium in.' },
+          { id: 'i3', scene: 'A masked doctor coughs dust over the rose window.', glyphs: ['😷', '💨'], action: 'pulse', reason: 'Captopril causes a cough.' },
+        ],
+      };
+      seen.length = 0;
+      queue.push(answer(JSON.stringify(faultyDraft)), answer(JSON.stringify(faultyReview)));
+      r = await call(faultyBody);
+      const fDraft = String(seen[0]?.messages?.[0]?.content);
+      const fCritic = String(seen[1]?.messages?.[0]?.content);
+      const fRules = String(seen[0]?.system?.[0]?.text);
+      const fCriticRules = String(seen[1]?.system?.[0]?.text);
+      check('images (quality): still two model calls for a room, no more', r.status === 200 && seen.length === 2 && r.json.images?.length === 4, `HTTP ${r.status}, ${seen.length} upstream calls`);
+      check(
+        'images (quality): the places of the palace are passed to the draft and to the critic, compactly, with the rule',
+        [fDraft, fCritic].every((text) => text.includes('The places of this palace, each an object that stands somewhere on the route: Gargoyle, Chained Lectern, Rose Window, Ladder Bookcase, Hourglass, Anchor.') && text.includes('None of these objects may be the hero of an image')),
+        fDraft.split('The places of this palace')[1]?.slice(0, 160),
+      );
+      check(
+        'images (quality): the rules say words only, varied endings, no shared glyph in a room, no place object as hero',
+        [fRules, fCriticRules].every((text) => /no emoji characters inside the sentence/.test(text) && /the scene need not say the term at all/.test(text) && /Within one room no glyph appears in two images/.test(text) && /never make such an object the hero of an image/.test(text) && /Scenes that stand in one room do not end the same way/.test(text)) && /Four faults seen in real palaces/.test(fCriticRules) && /let no two scenes end the same way/.test(fDraft),
+      );
+      check(
+        'images (quality): the critic is told each fault as a measured problem',
+        ['furosemide [i1]: the scene sentence has emoji characters in it', 'spironolactone [i2] and furosemide both show 🍌', 'captopril [i3]: the scene uses the object of another place of this palace (The Hourglass)', 'furosemide [i1], spironolactone [i2], captopril [i3] end the same way (shouting "…")'].every((f) => fCritic.includes(f)) && !fCritic.includes('amiloride [i4]: the scene uses the object of another place'),
+        fCritic.split('Measured problems')[1]?.slice(0, 700),
+      );
+      check('images (quality): the review counts the sentences it took emoji out of', r.json.review?.worded === 1 && r.json.review.checked === true, JSON.stringify(r.json.review));
+      check('images (quality): a scene sentence leaves in words only, and the trace says so', r.json.images[1].scene === 'A safe swallows the lectern\'s chain and clicks shut.' && r.json.images.every((im) => !hasEmoji(im.scene)) && r.json.steps.some((st) => st.kind === 'revise' && st.label === 'Took the emoji out of 1 scene sentence in Diuretics: the glyphs carry the picture.'), r.json.images.map((im) => im.scene).join(' | '));
+      expect('images with 31 place names', await call({ ...faultyBody, places: Array.from({ length: 31 }, (_, i) => `Place ${i}`) }), 400);
+      queue.push(answer(JSON.stringify({ scene: 'A pear 🍐 drums on the bench 🥁.', glyphs: ['🍐', '🥁'], action: 'shake', reason: 'Because.' })));
+      seen.length = 0;
+      r = await call({ op: 'regenerate', item: { term: 'pera', meaning: 'pear', scene: 'Old scene.', glyphs: ['🍎'], action: 'bob' }, locus: { name: 'The Bench', hint: 'A stone bench.' }, others: [], places: ['The Bench', 'The Hourglass'] });
+      check('regenerate (quality): words only, and the places of the palace are ruled out as heroes', r.status === 200 && r.json.imago.scene === 'A pear drums on the bench.' && String(seen[0]?.messages?.[0]?.content).includes('Bench, Hourglass. None of these objects may be the hero of the image.'), r.json?.imago?.scene);
+      if (toImago({ scene: 'A pear 🍐 drums 🥁 on the bench.', glyphs: ['🍐'], action: 'hop', reason: 'x' })?.scene !== 'A pear drums on the bench.' || toImago({ scene: '🍐🥁', glyphs: ['🍐'], action: 'hop' }) !== null) fail('client: an image that arrives with emoji in its sentence should be cleaned, and one with nothing else refused');
+
       expect('outline with 31 items', await call({ ...outlineBody, maxItems: 31 }), 400);
       expect('images with six facts in one room', await call({ ...roomBody, items: Array.from({ length: 6 }, (_, i) => ({ ref: `i${i + 1}`, term: `t${i}` })) }), 400);
       expect('images with the same ref twice', await call({ ...roomBody, items: [{ ref: 'i1', term: 'a' }, { ref: 'i1', term: 'b' }] }), 400);
@@ -1265,12 +1485,16 @@ try {
       check('palace: the trace covers plan, draw, check', ['plan', 'generate', 'check'].every((kind) => palace.steps.some((s) => s.kind === kind)) && palace.steps.some((s) => /Drew 30 images room by room, 6 rooms at the same time/.test(s.label)) && palace.steps.some((s) => /Checked 30 images/.test(s.label)) && palace.steps.some((s) => /dropped 1 that the notes do not support/.test(s.label)) && said[0] === 'Reading your notes' && said.some((l) => /^Drew 5 images for Group/.test(l)), palace.steps.map((s) => s.label).join(' | ').slice(0, 300));
       const prompts = seen.map((b) => String(b.messages?.[0]?.content));
       check('palace: each image is asked to act on the feature of its place', prompts.some((p) => p.includes('locus: Stone r4-2: A grey stone numbered r4-2.')));
+      const drafts30 = prompts.filter((p) => p.startsWith('Write one memory image for each'));
+      check('palace: every room is given the names of all thirty places of the palace', drafts30.length === 6 && drafts30.every((p) => p.includes('The places of this palace') && p.includes('Stone r1-1, Stone r1-2') && p.includes('Stone r6-5.')), drafts30[0]?.split('The places of this palace')[1]?.slice(0, 120));
 
       let before = fetches;
       const cachedPalace = await designPalace({ text: thirty, kits: kitList }, { places: stones });
       const newIds = new Set(cachedPalace.items.map((it) => it.id));
       check('palace: the same request is served from the cache, with fresh ids and the links remapped', fetches === before && cachedPalace.source === 'api' && cachedPalace.items.length === 30 && cachedPalace.items[0].id !== palace.items[0].id && cachedPalace.links.length === 2 && cachedPalace.links.every((l) => newIds.has(l.from) && newIds.has(l.to)) && cachedPalace.items.every((it, i) => it.imago.scene === palace.items[i].imago.scene), `${fetches - before} request(s)`);
       checkPalace('client cached palace', cachedPalace);
+      // The cached images act on the objects of the first palace's places, so the cached seed is kept, not replaced.
+      check('palace: a new palace carries a seed; served again from the cache it keeps that seed', SEED.test(palace.spec.seed ?? '') && seedOf(palace.layoutId) === palace.spec.seed && cachedPalace.spec.seed === palace.spec.seed && cachedPalace.layoutId === palace.layoutId, `${palace.spec.seed} then ${cachedPalace.spec.seed}`);
 
       // One room never answers: its places keep their offline drafts, flagged, and nothing is cached.
       script.delay = 0;
@@ -1283,11 +1507,28 @@ try {
       script.failRoom = null;
       const retried = await designPalace({ text: `${thirty}\nthing 31 - gloss 31`, kits: kitList });
       check('palace: an incomplete palace is not cached', fetches > before && retried.items.every((it) => it.imago.source === 'architect'), `${fetches - before} request(s)`);
+      check('palace: each newly planned palace has a seed of its own', new Set([palace, partial, retried].map((pl) => pl.spec.seed)).size === 3 && [partial, retried].every((pl) => SEED.test(pl.spec.seed ?? '')), [palace, partial, retried].map((pl) => pl.spec.seed).join(' '));
 
       // Two rooms choose the same picture at the same time: the later one is redrawn.
       script.clash = { i6: GLYPHS[0] };
       const clashing = await designPalace({ text: `${thirty}\nthing 32 - gloss 32`, kits: kitList });
       check('palace: a picture chosen by two rooms is redrawn once', script.redraws === 1 && new Set(clashing.items.map((it) => it.imago.glyphs[0])).size === 30 && clashing.items[5].imago.glyphs[0] === '☄️' && clashing.steps.some((s) => s.kind === 'revise' && /same picture once: redrew thing 6/.test(s.label)), clashing.steps.filter((s) => s.kind === 'revise').map((s) => s.label).join(' | '));
+      script.clash = {};
+
+      // QA review 4, issue 15: two neighbours in one room with the same picture. Things 7 and 8 come back
+      // with the picture of thing 6 (their room), and three more share one with another room. The stand-in
+      // redraws everything as a comet, so only one redraw can be kept: the rule must hold without it.
+      script.clash = { i7: GLYPHS[5], i8: GLYPHS[5], i12: GLYPHS[0], i17: GLYPHS[0], i22: GLYPHS[0] };
+      script.redraws = 0;
+      seen.length = 0;
+      const twinned = await designPalace({ text: `${thirty}\nthing 33 - gloss 33`, kits: kitList });
+      const heroesByRoom = twinned.spec.rooms.map((room) => twinned.items.filter((it) => it.locusId.startsWith(`${room.id}-`)).map((it) => it.imago.glyphs[0]));
+      const redrawnFor = seen.map((b) => String(b.messages?.[0]?.content)).filter((text) => text.startsWith('Write one new memory image')).map((text) => text.match(/thing \d+/)?.[0]);
+      console.log(`[within a room]  ${heroesByRoom.map((h) => h.join('')).join(' | ')}`);
+      check('palace: no two images of a room share a first glyph, whatever the model answered', heroesByRoom.every((h) => new Set(h).size === h.length) && heroesByRoom[1][0] === GLYPHS[5], heroesByRoom.map((h) => h.join('')).join(' | '));
+      check('palace: the clashes inside a room are redrawn first, and no call is added for the rule', script.redraws === 3 && redrawnFor.includes('thing 7') && redrawnFor.includes('thing 8'), `${script.redraws} redraws: ${redrawnFor.join(', ')}`);
+      check('palace: the trace says which image was led by another glyph', twinned.steps.some((st) => st.kind === 'revise' && /^Two images in one room had the same picture: thing [78] now leads with /.test(st.label)), twinned.steps.filter((st) => st.kind === 'revise').map((st) => st.label).join(' | '));
+      checkPalace('client within-room rule', twinned);
       script.clash = {};
 
       // A process: the chain of steps is whole, the loop closed, and the link check cannot cut it.
@@ -1323,6 +1564,7 @@ try {
       check('extend: the Architect is shown what stands, and the images that stand beside the new ones', extPrompts[0].includes('This palace already stands ("Comer")') && extPrompts.some((p) => p.startsWith('Write one memory image') && p.includes('Images that already stand in this room') && p.includes(stand.items[0].imago.scene)));
       check('extend: progress is reported as rooms arrive', snapsE.length >= 3 && snapsE[0].pendingRooms.length === 2 && snapsE.at(-1).pendingRooms.length === 0 && snapsE[0].deck.items.length === 7);
       checkPalace('client extension', { items: grownDeck.deck.items, links: grownDeck.deck.links, spec: grownDeck.spec, layoutId: grownDeck.deck.layoutId, categories: null });
+      check('extend: the palace keeps its seed', SEED.test(stand.spec.seed ?? '') && grownDeck.spec.seed === stand.spec.seed && seedOf(grownDeck.deck.layoutId) === stand.spec.seed, `${stand.spec.seed} then ${grownDeck.spec.seed}`);
       responder = null;
 
       before = fetches;

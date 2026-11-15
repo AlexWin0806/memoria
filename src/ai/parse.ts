@@ -10,11 +10,20 @@ export interface ParsedFact {
   score?: number;
 }
 
-/** Splits "term - meaning", "term: meaning" or "term<TAB>meaning". */
+/**
+ * Splits "term - meaning", "term: meaning" or "term = meaning". A line with tabs is a row of a
+ * table (as a PDF reader gives one): the first cell is the term and the other cells are its
+ * meaning, joined with "; ", whatever else the cells contain.
+ */
 export function parseLine(line: string): ParsedFact | null {
   const clean = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim();
   if (!clean) return null;
-  const m = clean.match(/^(.+?)\s*(?:\t| [-–—] |: |\s=\s)\s*(.+)$/);
+  if (clean.includes('\t')) {
+    const cells = clean.split(/\t+/).map((c) => c.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    if (cells.length === 0) return null;
+    return cells.length === 1 ? { term: cells[0] } : { term: cells[0], meaning: cells.slice(1).join('; ') };
+  }
+  const m = clean.match(/^(.+?)\s*(?: [-–—] |: |\s=\s)\s*(.+)$/);
   return m ? { term: m[1].trim(), meaning: m[2].trim() } : { term: clean };
 }
 
@@ -26,8 +35,12 @@ export interface ExtractedFacts {
   mode: 'lines' | 'notes';
   /** Notes: sentences read. Lines: lines read. */
   read: number;
-  /** Lines or sentences left out because they were empty, punctuation only, or repeats. */
+  /** Lines or sentences left out because they were empty, punctuation only, or repeats: `empty + repeated`. */
   dropped: number;
+  /** Of those, the ones with nothing to picture: no letter or digit, or (notes) no word of substance. */
+  empty: number;
+  /** Of those, the exact repeats of a line or sentence already read. */
+  repeated: number;
 }
 
 /** A term longer than this is prose: the whole text becomes the meaning and a short name is derived. */
@@ -368,12 +381,17 @@ export function extractFacts(text: string): ExtractedFacts {
   const used = new Set<string>();
   const seen = new Set<string>();
   const facts: ParsedFact[] = [];
-  let dropped = 0;
+  let empty = 0;
+  let repeated = 0;
   const add = (fact: ParsedFact): void => {
     const id = key(`${fact.term}|${fact.meaning ?? ''}`);
     // Punctuation-only lines and exact repeats are not facts.
-    if (!hasContent(fact.term) || seen.has(id)) {
-      dropped++;
+    if (!hasContent(fact.term)) {
+      empty++;
+      return;
+    }
+    if (seen.has(id)) {
+      repeated++;
       return;
     }
     seen.add(id);
@@ -384,13 +402,13 @@ export function extractFacts(text: string): ExtractedFacts {
   if (looksLikeList) {
     for (const line of rawLines) {
       const parsed = parseLine(line);
-      if (!parsed) dropped++;
+      if (!parsed) empty++;
       else if (parsed.meaning) add({ ...parsed, pair: true });
       // A long line with no separator is a sentence: keep all of it and name it.
       else if (isProse(parsed.term)) add({ term: deriveTerm(parsed.term, used), meaning: parsed.term });
       else add(parsed);
     }
-    return { title, facts, mode: 'lines', read: rawLines.length, dropped };
+    return { title, facts, mode: 'lines', read: rawLines.length, dropped: empty + repeated, empty, repeated };
   }
 
   const sentences = rawLines.flatMap(splitSentences);
@@ -398,7 +416,7 @@ export function extractFacts(text: string): ExtractedFacts {
     const list = listFromSentence(sentences[0]);
     if (list) {
       list.forEach((term) => add({ term }));
-      return { title, facts, mode: 'lines', read: list.length, dropped };
+      return { title, facts, mode: 'lines', read: list.length, dropped: empty + repeated, empty, repeated };
     }
   }
 
@@ -408,9 +426,9 @@ export function extractFacts(text: string): ExtractedFacts {
   const heard = new Set<string>();
   for (const sentence of sentences) {
     // Nothing to picture or recall in "And so on." or a stray bullet.
-    if (!readWords(sentence).some((w) => w.content && w.text.length >= 3)) dropped++;
+    if (!readWords(sentence).some((w) => w.content && w.text.length >= 3)) empty++;
     else if (!isProse(sentence) && !/[.!?]$/.test(sentence)) drafts.push(parseLine(sentence) ?? { term: sentence });
-    else if (heard.has(key(sentence))) dropped++;
+    else if (heard.has(key(sentence))) repeated++;
     else {
       heard.add(key(sentence));
       drafts.push({ sentence });
@@ -428,7 +446,7 @@ export function extractFacts(text: string): ExtractedFacts {
     if ('sentence' in d) add({ term: names[named++], meaning: d.sentence, score: factScore(d.sentence) });
     else add(d);
   }
-  return { title, facts, mode: 'notes', read: sentences.length, dropped };
+  return { title, facts, mode: 'notes', read: sentences.length, dropped: empty + repeated, empty, repeated };
 }
 
 /** "Drafted 1 images" → "Drafted 1 image": step labels are built from counts, here and on the server. */

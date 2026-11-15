@@ -1,6 +1,6 @@
 import type { Deck, DeckFocus, DeckKind, Imago, ItemLink, MemoryItem, PalaceSpec } from '@/core/types';
 import { DEFAULT_KIT_ID, KIT_LIST } from '@/layouts/kits/list';
-import { MAX_PLACES, MAX_ROOMS, ROOM_CAPACITY, extendSpec, palaceLayoutId, parsePalaceId, planSpec, specPlaces, specRoomLeft, type Growth } from '@/layouts/spec';
+import { MAX_PLACES, MAX_ROOMS, ROOM_CAPACITY, extendSpec, newPalaceSeed, palaceLayoutId, parsePalaceId, planSpec, specPlaces, specRoomLeft, type Growth } from '@/layouts/spec';
 import type { ArchitectPlan, ArchitectStep } from './architect';
 import { describeDrafts, draftImagos, newId, type Place } from './local';
 import { categoryOfRoom, outlineLocally } from './local-outline';
@@ -78,6 +78,10 @@ export interface PalaceCategory {
 export interface PalacePlan extends ArchitectPlan {
   /** The deck's `layoutId`: `palaceLayoutId(spec)`. */
   layoutId: string;
+  /**
+   * A newly planned palace carries a seed (`spec.seed`, and `@<seed>` in `layoutId`), so that
+   * two palaces in one style are furnished differently. An extension keeps the palace's seed.
+   */
   spec: PalaceSpec;
   kit: PalaceKitChoice;
   /** In walking order. Every item's `locusId` is a place of one of its category's rooms. */
@@ -96,6 +100,13 @@ export interface PalacePlan extends ArchitectPlan {
   lowConfidence: string[];
   /** Rooms whose images are still being drawn (their items hold offline drafts until then). Empty in the final plan. */
   pendingRooms: string[];
+  /**
+   * Offline plans only: how many lines of the text the planner read and did not place for a
+   * reason other than space (no words to picture, a repeat of a fact already read, a heading
+   * with nothing under it). One of the steps says the same in words. Absent = none. These are
+   * lines the app passed in, so they come on top of whatever the app removed before planning.
+   */
+  dropped?: number;
 }
 
 export interface PalaceOptions {
@@ -144,6 +155,10 @@ const LINKS_TIMEOUT_MS = 17_000;
 const REDRAW_TIMEOUT_MS = 22_000;
 const MAX_TEXT = 12_000;
 const MAX_REDRAWS = 3;
+/** As `PalaceSpec.seed` is checked in src/layouts/spec.ts. */
+const SEED = /^[a-z0-9]{1,8}$/;
+/** Bumped when what is cached changes shape: version 2 holds the palace's seed. Older entries are never read. */
+const CACHE_VERSION = 2;
 
 const roomOf = (placeId: string): string => placeId.slice(0, placeId.lastIndexOf('-'));
 /** As `planSpec` numbers the rooms a category continues in. */
@@ -178,6 +193,12 @@ function placesOf(layoutId: string, places: PalaceOptions['places']): Map<string
   }
 }
 
+/** The names of the places of a palace, in route order, cut to what the server accepts. Empty when the app gave none. */
+const namesOf = (spec: PalaceSpec, info: ReadonlyMap<string, PlaceInfo>): string[] =>
+  specPlaces(spec)
+    .flatMap((p) => info.get(p.id)?.name.trim().slice(0, 60) || [])
+    .slice(0, MAX_PLACES);
+
 // ───────────────────────── Drawing rooms ─────────────────────────
 
 /** A new fact that has a place and is waiting for its image. */
@@ -205,6 +226,8 @@ interface DrawJob {
   rooms: RoomJob[];
   /** Items that already stand in the palace (extension). */
   standing: MemoryItem[];
+  /** The name of every place of the palace, in route order: no image may take one of these objects as its hero. */
+  placeNames: string[];
   /** By ref: `i…` a new fact, `e…` a standing one. */
   links: OutlineLink[];
   termOf: (ref: string) => string | undefined;
@@ -233,6 +256,8 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
   const unchecked: string[] = [];
   const rewritten: string[] = [];
   let checked = 0;
+  /** Scene sentences the server took emoji out of: the prompt asks for words only, and this counts where it did not hold. */
+  let worded = 0;
   const standingHeroes = job.standing.flatMap((s) => s.imago.glyphs[0] ?? []);
 
   const drawRoom = async (room: RoomJob): Promise<void> => {
@@ -253,6 +278,7 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
             ...(f.place ? { place: { name: f.place.name.slice(0, 60), hint: f.place.hint.slice(0, 240) } } : {}),
           })),
           taken: [...standingHeroes, ...all.filter((f) => !here.has(f.ref)).flatMap((f) => f.picture ?? [])].slice(0, 80),
+          ...(job.placeNames.length ? { places: job.placeNames } : {}),
           beside: job.standing
             .filter((s) => roomOf(s.locusId) === room.roomId)
             .map((s) => ({ term: s.term.slice(0, 160), scene: s.imago.scene.slice(0, 400), glyphs: s.imago.glyphs.slice(0, 3), action: s.imago.action })),
@@ -281,6 +307,7 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
           if (review.checked === true) checked += got;
           else unchecked.push(room.name);
           if (Array.isArray(review.rewritten)) rewritten.push(...review.rewritten.flatMap((r) => cleanText(r, 120) ?? []));
+          if (typeof review.worded === 'number' && review.worded > 0) worded += Math.min(Math.round(review.worded), got);
           toSteps(answer.steps).forEach(job.say);
         }
       }
@@ -321,16 +348,26 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
 
   await Promise.all([...job.rooms.map(drawRoom), checkLinks()]);
 
-  // Rooms are drawn at the same time, so two of them can still choose the same picture.
+  // Rooms are drawn at the same time, so two of them can still choose the same picture; and
+  // a room's own self-check can leave two of its images with one (seen live: two neighbours
+  // with a banana). The clashes inside a room are redrawn first: they stand side by side.
+  const roomIdOf = new Map(job.rooms.flatMap((r) => r.facts.map((f) => [f.ref, r.roomId] as const)));
   const heroes = new Set(standingHeroes);
-  const clashes: Fresh[] = [];
+  const keeper = new Map<string, string>(job.standing.flatMap((s) => (s.imago.glyphs[0] ? [[s.imago.glyphs[0], roomOf(s.locusId)] as const] : [])));
+  const found: { fact: Fresh; near: boolean }[] = [];
   for (const fact of all) {
     const hero = images[fact.ref]?.glyphs[0];
     if (!hero) continue;
-    if (heroes.has(hero)) clashes.push(fact);
-    else heroes.add(hero);
+    if (heroes.has(hero)) found.push({ fact, near: keeper.get(hero) === roomIdOf.get(fact.ref) });
+    else {
+      heroes.add(hero);
+      keeper.set(hero, roomIdOf.get(fact.ref) ?? '');
+    }
   }
+  const clashes = [...found.filter((c) => c.near), ...found.filter((c) => !c.near)].map((c) => c.fact);
   let redrawn = 0;
+  /** Clashes that were put right, by a redraw or by leading with another glyph. */
+  const settled = new Set<string>();
   await Promise.all(
     clashes.slice(0, MAX_REDRAWS).map(async (fact) => {
       const current = images[fact.ref];
@@ -347,6 +384,7 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
               .slice(0, 14)
               .map((f) => ({ scene: images[f.ref].scene, glyphs: images[f.ref].glyphs, action: images[f.ref].action })),
             avoid: [...heroes].slice(0, 80),
+            ...(job.placeNames.length ? { places: job.placeNames } : {}),
           },
           REDRAW_TIMEOUT_MS,
         );
@@ -356,13 +394,43 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
           images[fact.ref] = fresh;
           job.setImago(fact.id, fresh);
           redrawn++;
+          settled.add(fact.ref);
         }
       } catch {
         // Reported below: the two images keep the same picture.
       }
     }),
   );
-  if (clashes.length > 0) job.progress();
+  // The rule that no two images of a room share a first glyph holds whatever the model
+  // answered, without another call: an image that still repeats its neighbour's picture is
+  // led by another glyph of its own scene (or by the picture planned for it in the outline).
+  const led: string[] = [];
+  const twins: string[] = [];
+  for (const room of job.rooms) {
+    const inRoom = new Set(job.standing.filter((s) => roomOf(s.locusId) === room.roomId).flatMap((s) => s.imago.glyphs[0] ?? []));
+    for (const fact of room.facts) {
+      const current = images[fact.ref];
+      const hero = current?.glyphs[0];
+      if (!current || !hero) continue;
+      if (!inRoom.has(hero)) {
+        inRoom.add(hero);
+        continue;
+      }
+      const lead = [...current.glyphs.slice(1), ...(fact.picture ? [fact.picture] : [])].find((g) => g !== hero && g !== NO_GLYPH && !heroes.has(g) && !inRoom.has(g));
+      if (!lead) {
+        twins.push(fact.term);
+        continue;
+      }
+      const fixed: Imago = { ...current, glyphs: [lead, ...current.glyphs.filter((g) => g !== lead && g !== hero)].slice(0, 3) };
+      images[fact.ref] = fixed;
+      job.setImago(fact.id, fixed);
+      heroes.add(lead);
+      inRoom.add(lead);
+      settled.add(fact.ref);
+      led.push(`${fact.term} now leads with ${lead}`);
+    }
+  }
+  if (clashes.length > 0 || led.length > 0) job.progress();
 
   const count = Object.keys(images).length;
   const rooms = job.rooms.length - job.rooms.filter((r) => r.facts.every((f) => !images[f.ref])).length;
@@ -374,17 +442,21 @@ async function drawRooms(job: DrawJob): Promise<Drawn> {
     }
     if (rewritten.length > 0) steps.push({ kind: 'revise', label: `Rewrote ${rewritten.length}: ${rewritten.join('; ')}.`.slice(0, 200) });
     if (unchecked.length > 0) steps.push({ kind: 'check', label: `The self-check did not finish in ${unchecked.join(', ')}: those images are unchecked first drafts.`.slice(0, 200) });
+    if (worded > 0) steps.push({ kind: 'revise', label: `Took the emoji out of ${plural(worded, 'scene sentence')}: the glyphs carry the picture.` });
   }
   if (clashes.length > 0) {
-    const still = clashes.length - redrawn;
+    // Only what is still shared is handed to the learner; what a redraw or another glyph settled is not.
+    const open = clashes.filter((f) => !settled.has(f.ref));
     steps.push({
       kind: 'revise',
       label:
-        still === 0
+        redrawn === clashes.length
           ? `Two rooms chose the same picture ${clashes.length === 1 ? 'once' : `${clashes.length} times`}: redrew ${clashes.map((f) => f.term).join(', ')}.`.slice(0, 200)
-          : `${clashes.map((f) => f.term).join(', ')}: the same picture is used in another room. Redrew ${redrawn} of ${clashes.length}; regenerate the rest yourself.`.slice(0, 200),
+          : `${plural(clashes.length, 'image')} chose a picture that was already in the palace: redrew ${redrawn}.${open.length ? ` ${open.map((f) => f.term).join(', ')} still ${open.length === 1 ? 'shares' : 'share'} a picture with another room: regenerate ${open.length === 1 ? 'it' : 'them'} yourself.` : ''}`.slice(0, 200),
     });
   }
+  if (led.length > 0) steps.push({ kind: 'revise', label: `Two images in one room had the same picture: ${led.join('; ')}.`.slice(0, 200) });
+  if (twins.length > 0) steps.push({ kind: 'revise', label: `${twins.join(', ')}: the same picture as a neighbour in the room, and no other was to hand. Regenerate ${twins.length === 1 ? 'it' : 'them'} yourself.`.slice(0, 200) });
   steps.push(...linkSteps);
   const offline = all.length - count;
   if (offline > 0) {
@@ -406,6 +478,8 @@ const pairOf = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${
 
 interface Built {
   plan: PalacePlan;
+  /** The name of every place of the palace, when the app said what stands where. */
+  placeNames: string[];
   /** Ids of items whose offline draft is a generic stand-in. */
   low: Set<string>;
   rooms: RoomJob[];
@@ -415,15 +489,19 @@ interface Built {
   links: OutlineLink[];
 }
 
-/** Turns an outline into a palace: rooms from the categories, a place for every fact, an offline draft in every place. */
-function build(outline: Outline, kit: PalaceKitChoice, source: 'api' | 'local', seed: string, places: PalaceOptions['places']): Built {
+/**
+ * Turns an outline into a palace: rooms from the categories, a place for every fact, an offline draft in every place.
+ * `seed` gives the offline drafts their stable variety (the notes themselves). `furnishing` is
+ * the palace's own seed (`PalaceSpec.seed`): which of the kit's objects stand where.
+ */
+function build(outline: Outline, kit: PalaceKitChoice, source: 'api' | 'local', seed: string, places: PalaceOptions['places'], furnishing: string): Built {
   const groups = outline.categories.map((c, k) => ({ ...c, items: outline.items.filter((it) => it.category === k) })).filter((g) => g.items.length > 0);
   // A category of more than five continues next door ("Past", "Past II"), and never with a
   // last room of one place: six are three and three (see `roomSizes`).
   const wings = groups.flatMap((g, group) =>
     roomSizes(g.items.length).map((count, part) => ({ group, name: part === 0 ? g.name : `${g.name} ${ROMAN[part + 1] ?? part + 1}`, count, shape: g.shape })),
   );
-  const built = planSpec(kit.id, wings.map(({ name, count, shape }) => ({ name, count, shape })));
+  const built = planSpec(kit.id, wings.map(({ name, count, shape }) => ({ name, count, shape })), furnishing);
   const planned = { spec: built.spec, places: groups.map((_, group) => wings.flatMap((w, i) => (w.group === group ? (built.places[i] ?? []) : []))) };
   const spec = planned.spec;
   const layoutId = palaceLayoutId(spec);
@@ -485,8 +563,9 @@ function build(outline: Outline, kit: PalaceKitChoice, source: 'api' | 'local', 
     ...(outline.focusReason ? { focusReason: outline.focusReason } : {}),
     lowConfidence: flagged(items, low),
     pendingRooms: [],
+    ...(outline.dropped ? { dropped: outline.dropped } : {}),
   };
-  return { plan, low, rooms, ids, links };
+  return { plan, placeNames: namesOf(spec, info), low, rooms, ids, links };
 }
 
 /** The kit asked for by id, if it exists. A kit that is not in the list is never built: the default takes its place. */
@@ -520,12 +599,17 @@ function pace(say: (step: ArchitectStep) => void): () => void {
   return () => timers.forEach(clearTimeout);
 }
 
-/** Rebuilds a palace from the cache. Item ids are minted again, so two decks from one text never share ids. */
+/**
+ * Rebuilds a palace from the cache. Item ids are minted again, so two decks from one text
+ * never share ids. The seed is the cached one, not a new one: every cached image acts on the
+ * object that stands at its place, and a new seed would put other objects there. (The same
+ * notes are the same topic, so the same furnishing twice does not break one route per topic.)
+ */
 function fromCache(value: unknown, req: PalaceRequest, kits: KitOption[], cap: number, places: PalaceOptions['places']): PalacePlan | null {
-  if (!isRecord(value) || !isRecord(value.images)) return null;
+  if (!isRecord(value) || !isRecord(value.images) || typeof value.seed !== 'string' || !SEED.test(value.seed)) return null;
   const outline = toOutline(value.outline, { cap, kitIds: kits.map((k) => k.id) });
   if (!outline) return null;
-  const built = build(outline, kitFor(req, kits, outline), 'api', req.text, places);
+  const built = build(outline, kitFor(req, kits, outline), 'api', req.text, places, value.seed);
   const steps = toSteps(value.steps);
   const refs = new Map([...built.ids].map(([ref, id]) => [id, ref]));
   const items: MemoryItem[] = [];
@@ -551,7 +635,7 @@ export async function designPalace(req: PalaceRequest, opts?: PalaceOptions): Pr
     const cap = clampCap(req.maxItems);
     if (text && text.length <= MAX_TEXT) {
       const body = { op: 'outline' as const, text, ...(req.kind ? { kind: req.kind } : {}), maxItems: cap, kit: req.kit && req.kit !== 'auto' ? (askedKit(req, kits) ?? DEFAULT_KIT) : 'auto', kits };
-      const key = cacheKey({ palace: 1, ...body });
+      const key = cacheKey({ palace: CACHE_VERSION, ...body });
       const cached = fromCache(readCache(key), req, kits, cap, opts?.places);
       if (cached) {
         say({ kind: 'plan', label: 'Found the palace the Architect designed for this text earlier' });
@@ -564,7 +648,8 @@ export async function designPalace(req: PalaceRequest, opts?: PalaceOptions): Pr
         stop();
         const outline = isRecord(answer) ? toOutline(answer.outline, { cap, kitIds: kits.map((k) => k.id) }) : null;
         if (outline && isRecord(answer)) {
-          const built = build(outline, kitFor(req, kits, outline), 'api', text, opts?.places);
+          // A learner's new palace is furnished in its own order, so that it is not mistaken for another in the same style.
+          const built = build(outline, kitFor(req, kits, outline), 'api', text, opts?.places, newPalaceSeed());
           const plan = built.plan;
           plan.pendingRooms = built.rooms.map((r) => r.roomId);
           plan.steps.forEach(say);
@@ -580,6 +665,7 @@ export async function designPalace(req: PalaceRequest, opts?: PalaceOptions): Pr
             text,
             rooms: built.rooms,
             standing: [],
+            placeNames: built.placeNames,
             links: built.links,
             termOf: (ref) => outline.items.find((it) => it.ref === ref)?.term,
             setImago: (id, imago) => {
@@ -600,7 +686,7 @@ export async function designPalace(req: PalaceRequest, opts?: PalaceOptions): Pr
           if (drawn.count === 0) plan.source = 'local';
           if (drawn.complete) {
             const raw = isRecord(answer.outline) ? answer.outline : {};
-            writeCache(key, { outline: { ...raw, links }, images: drawn.images, steps: plan.steps });
+            writeCache(key, { outline: { ...raw, links }, images: drawn.images, steps: plan.steps, seed: plan.spec.seed });
           }
           emit(plan, opts?.onProgress);
           return plan;
@@ -623,12 +709,12 @@ export function designPalaceLocal(req: PalaceRequest, opts?: PalaceOptions): Pal
   let plan: PalacePlan;
   try {
     const outline = outlineLocally(req.text, { cap: clampCap(req.maxItems), kind: req.kind });
-    plan = build(outline, kit, 'local', req.text, opts?.places).plan;
+    plan = build(outline, kit, 'local', req.text, opts?.places, newPalaceSeed()).plan;
     if (kit.chosenBy === 'default' && kits.length > 1 && (!req.kit || req.kit === 'auto')) {
       plan.steps.push({ kind: 'plan', label: `No kit was suggested offline: this palace uses ${kits.find((k) => k.id === kit.id)?.name ?? kit.id}. Choose another if it suits the material better.` });
     }
   } catch {
-    const spec = planSpec(kit.id, []).spec;
+    const spec = planSpec(kit.id, [], newPalaceSeed()).spec;
     plan = {
       title: 'Untitled palace',
       kind: req.kind ?? 'list',
@@ -678,6 +764,7 @@ function categoryNameOf(spec: PalaceSpec, room: number): string {
 
 interface Grown {
   extension: PalaceExtension;
+  placeNames: string[];
   low: Set<string>;
   rooms: RoomJob[];
   ids: Map<string, string>;
@@ -808,7 +895,7 @@ function grow(deck: Deck, standing: StandingPalace, outline: Outline, source: 'a
     pendingRooms: [],
   };
   settle(extension, deck);
-  return { extension, low, rooms, ids, links: refLinks };
+  return { extension, placeNames: namesOf(grownSpec, info), low, rooms, ids, links: refLinks };
 }
 
 /** Rebuilds `extension.deck` from the deck that stands and the additions as they are now. */
@@ -902,6 +989,7 @@ export async function extendPalace(deck: Deck, newText: string, opts?: ExtendOpt
           text,
           rooms: grown.rooms,
           standing: standing.items,
+          placeNames: grown.placeNames,
           links: grown.links,
           termOf: (ref) => outline.items.find((it) => it.ref === ref)?.term ?? (ref.startsWith('e') ? standing.items[Number(ref.slice(1)) - 1]?.term : undefined),
           setImago: (id, imago) => {

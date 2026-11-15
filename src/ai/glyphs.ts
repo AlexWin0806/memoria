@@ -51,3 +51,22 @@ export function cleanGlyphs(glyphs: unknown, fallback = '❓'): string[] {
 }
 
 export const wordCount = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
+
+/** Emoji, and the characters that only join or style them. */
+const EMOJI = /\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]|[\u{1F3FB}-\u{1F3FF}]|\u{FE0F}|\u{200D}|\u{20E3}/gu;
+
+/** True when a sentence has an emoji character in it. */
+export const hasEmoji = (text: string): boolean => /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}]/u.test(text);
+
+/**
+ * A scene sentence in words only: the glyphs of an image are its picture, so an emoji inside
+ * the sentence shows the picture twice (seen in a live run). Takes them out, with the gaps
+ * they leave. The server does the same before it answers; this is the check on arrival.
+ */
+export const wordsOnly = (scene: string): string =>
+  scene
+    .replace(EMOJI, ' ')
+    .replace(/\(\s*\)/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
