@@ -3,7 +3,7 @@ import { answerOf, buildChoices, typedMatches } from '@/flows/answers';
 import { advanceRecall, answerRecall, itemAt, judgeTiming, markRight, useFlow } from '@/flows/flow';
 import { termLength } from '@/flows/format';
 import { useTimedStop, useWalkKeys } from '@/flows/hooks';
-import { arrivalLines, buildLinkChoices, linkQuestions, orderTask } from '@/flows/process';
+import { arrivalLines, buildLinkChoices, orderTask, walkLinkQuestions } from '@/flows/process';
 import { LinkStop, OrderTask } from './Process';
 import { ADVANCE_KEYS, ProgressBar } from './Walk';
 import { getLayout } from '@/layouts';
@@ -17,8 +17,9 @@ import { useSettings } from '@/state/settings';
  * until the learner has committed. Committing is what reveals the image in the scene.
  *
  * In a process deck the place's question comes first and is unchanged; once it is answered
- * and the item revealed, each link that leaves the step is asked about (LinkStop), and after
- * the last place the steps are put in order (OrderTask). Those answers are scored apart.
+ * and the item revealed, the step's links are asked about (LinkStop), and after the last place
+ * the steps are put in order (OrderTask). Those answers are scored apart. No question about a
+ * link, and no feedback to one, names a step whose place has not been asked yet.
  */
 export function Recall() {
   const { stops, step, arrived, judge, layoutId, deckId, results } = useSession();
@@ -34,11 +35,11 @@ export function Recall() {
   // A process deck (never a Judge run): the questions about this step's links, the one on screen
   // if any, and the ordering task that follows the walk.
   const linkAt = useFlow((s) => s.linkAt);
-  const questions = judge ? [] : linkQuestions(deck, item);
-  const question = result ? questions[linkAt - 1] : undefined;
   const walkItems = stops.flatMap((index) => itemAt(deck, layout.loci[index])?.id ?? []);
+  const questions = judge || !item ? [] : (walkLinkQuestions(deck, walkItems).get(item.id) ?? []);
+  const question = result ? questions[linkAt - 1] : undefined;
   const task = judge || !deck ? null : orderTask(deck, walkItems);
-  // The places of this walk that have not been answered: nothing asked about a link may name what is at them.
+  // The places of this walk that have not been answered: nothing said about a link may name what is at them.
   const ahead = new Set(walkItems.filter((id) => !results.some((r) => r.itemId === id)));
   const ordering = useFlow((s) => s.phase) === 'order' && task !== null;
   const aside = ordering || question !== undefined;
@@ -132,7 +133,6 @@ export function Recall() {
         choices={linkChoices}
         input={input}
         onward={!lastQuestion ? 'Next question' : last ? afterWalk : 'Next place'}
-        ahead={ahead}
       />
     );
   }
@@ -241,7 +241,7 @@ export function Recall() {
             </p>
             {item.meaning && <p className="body">{item.meaning}</p>}
             <p className="scene">{item.imago.scene}</p>
-            {/* A process deck: what led here, from the steps already answered. A question about a link that was missed back there gets its answer now. */}
+            {/* A process deck: what led here, from the steps already answered. The question back there was answered with what happens, not with this step's name. */}
             {ledHere.length > 0 && (
               <ul className="links links--reveal" data-testid="recall-links">
                 {ledHere.map((line) => (
@@ -249,10 +249,20 @@ export function Recall() {
                 ))}
               </ul>
             )}
-            {/* In a surveyed palace the answer also decides the state of the place (a timed Judge run has no time for the line). */}
-            {!judge && deck.surveyedAt !== undefined && (
+            {/*
+              In a surveyed palace the answer also decides the state of the place (a timed Judge run has no time
+              for the line). An answer the learner marked right themselves decides nothing: said here, where the
+              button was pressed, in any palace.
+            */}
+            {!judge && (deck.surveyedAt !== undefined || result.selfMarked) && (
               <p className="state" data-testid="recall-place-state">
-                {result.correct ? 'This place is restored.' : 'This place needs another repair: it comes back for review soon.'}
+                {result.selfMarked
+                  ? deck.surveyedAt !== undefined
+                    ? 'Marked by you. This place stays under repair until you recall it.'
+                    : 'Marked by you. It comes back for review soon, and that recall decides.'
+                  : result.correct
+                    ? 'This place is restored.'
+                    : 'This place needs another repair: it comes back for review soon.'}
               </p>
             )}
           </div>

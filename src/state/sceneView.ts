@@ -18,7 +18,8 @@ export interface SceneView {
   /**
    * 0..1 per locus index: how whole the place itself is. 0 = in ruins (the survey found the
    * fact unknown), 0.3 = damaged (the last recall was a miss), 0.6 = under repair (the fact
-   * has been studied but not yet recalled), 1 = restored. The engine takes the feature apart
+   * has been studied but not yet recalled, or the learner marked their own answer right),
+   * 1 = restored. The engine takes the feature apart
    * and puts it back together from this value. All 1 for a deck that has never been surveyed,
    * and for places that hold nothing.
    */
@@ -32,7 +33,11 @@ interface Input {
   stops: number[];
   step: number;
   arrived: boolean;
-  results: RecallResult[];
+  /**
+   * `session.results`. An answer may carry `selfMarked` (the learner overruled the grader:
+   * `WalkResult` in ./session): it counts in the score, and it restores nothing here.
+   */
+  results: (RecallResult & { selfMarked?: boolean })[];
   cards: Record<string, ReviewCard>;
   /** `session.imagesHidden`: the screen between the two walks is up, so no image is shown. Default false. */
   imagesHidden?: boolean;
@@ -52,7 +57,8 @@ const RUIN_DEVELOPMENT = 0.18;
  *   title / overview, no deck      fully developed, to show the place at its best
  *   familiarize, survey            a light sketch everywhere
  *   encode                         a locus fills in to 0.65 once its image has been placed
- *   recall                         a correct answer completes the locus (1); a miss drops it to 0.3
+ *   recall                         a correct answer completes the locus (1); a miss drops it to 0.3;
+ *                                  an answer the learner marked right themselves leaves it at 0.65
  *   results / review               from the Leitner box of each item
  * A Judge run writes no review cards and reads none: its colours follow its own answers only.
  * A place in ruins is never coloured, whatever the rule above says.
@@ -66,7 +72,8 @@ const RUIN_DEVELOPMENT = 0.18;
  *   survey summary (every outcome is on its card)    saved: unknown 0, known 1
  *   familiarize (route walk after the survey)        saved
  *   encode                                           saved, and at least 0.6 once the camera has arrived there
- *   recall, results                                  right 1; miss 0.3; not answered: saved
+ *   recall, results                                  right 1; miss 0.3; marked right by the learner 0.6;
+ *                                                    not answered: saved
  *   title, review, compose                           saved
  *   Judge run (JUDGE_STARTS_IN_RUINS)                preview 0; encode 0, then 0.6 on arrival; recall and
  *                                                    results right 1, miss 0.3, not asked 0.6
@@ -107,6 +114,9 @@ export function deriveSceneView(i: Input): SceneView {
     const card = judge ? undefined : cards[item.id];
     const boxDev = developmentForBox(card?.box ?? 0);
     const r = answered.get(item.id);
+    // A self-marked answer is a claim (research principle 10): the place looks as it does after study, no more.
+    const answerDev = r ? (r.selfMarked ? 0.65 : r.correct ? 1 : 0.3) : undefined;
+    const answerWhole = r ? (r.selfMarked ? INTEGRITY.repair : r.correct ? INTEGRITY.whole : INTEGRITY.damaged) : undefined;
     const here = reached.has(locus.index);
     let visible = false;
     let dev = boxDev;
@@ -117,7 +127,7 @@ export function deriveSceneView(i: Input): SceneView {
         break;
       case 'recall':
         visible = Boolean(r);
-        dev = r ? (r.correct ? 1 : 0.3) : 0.18;
+        dev = answerDev ?? 0.18;
         break;
       case 'familiarize':
       case 'survey':
@@ -125,7 +135,7 @@ export function deriveSceneView(i: Input): SceneView {
         break;
       case 'results':
         visible = true;
-        dev = r ? (r.correct ? 1 : 0.3) : boxDev;
+        dev = answerDev ?? boxDev;
         break;
       case 'review':
         visible = true;
@@ -137,7 +147,7 @@ export function deriveSceneView(i: Input): SceneView {
 
     let whole: number = INTEGRITY.whole;
     if (ruins && judge) {
-      if (mode === 'recall' || mode === 'results') whole = r ? (r.correct ? INTEGRITY.whole : INTEGRITY.damaged) : INTEGRITY.repair;
+      if (mode === 'recall' || mode === 'results') whole = answerWhole ?? INTEGRITY.repair;
       else whole = mode === 'encode' && here ? INTEGRITY.repair : INTEGRITY.ruins;
     } else if (ruins) {
       const saved = savedIntegrity(card);
@@ -146,7 +156,7 @@ export function deriveSceneView(i: Input): SceneView {
       if (mode === 'survey' && !walked.has(item.id)) whole = surveyed ? saved : INTEGRITY.whole;
       else if (mode === 'survey' && !summary) whole = r && !r.correct ? INTEGRITY.ruins : INTEGRITY.whole;
       else if (mode === 'encode') whole = here ? Math.max(saved, INTEGRITY.repair) : saved;
-      else if ((mode === 'recall' || mode === 'results') && r) whole = r.correct ? INTEGRITY.whole : INTEGRITY.damaged;
+      else if ((mode === 'recall' || mode === 'results') && answerWhole !== undefined) whole = answerWhole;
       else whole = saved;
     }
     if (whole === INTEGRITY.ruins) {

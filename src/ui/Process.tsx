@@ -27,23 +27,20 @@ interface LinkStopProps {
   input: 'choice' | 'typed';
   /** What the button that moves on says: the next question, the next place, or what follows the walk. */
   onward: string;
-  /** The items this walk has still to ask about at their own places. */
-  ahead: ReadonlySet<string>;
 }
 
 /**
- * One question about a link, asked at the place of the step it leaves, after that place has
- * been answered and its item revealed. Answered in the same way as the place (picked or
- * typed), with "I don't know" always there and never preselected; nothing about the answer
- * is shown before the learner commits.
+ * One question about a link, asked after the place of the step it is about has been answered
+ * and its item revealed. Answered in the same way as the place (picked or typed), with "I
+ * don't know" always there and never preselected; nothing about the answer is shown before
+ * the learner commits.
  *
- * The feedback is the right answer and what the link says. One case holds the name back: the
- * learner missed, and the right answer is a step whose own place this walk has not asked yet.
- * Naming it would answer that place for them, and the place is what sets the review. They
- * are told what the link does; the name follows at its own place, once that is answered
- * (arrivalLines).
+ * The feedback is the right answer and what the link says. Neither the question nor the
+ * feedback ever names a step whose own place the walk has still to ask (see src/flows/process.ts):
+ * what a step turns into is asked and answered as what happens to it, and a question that
+ * must name a later step is asked after the last place.
  */
-export function LinkStop({ question, index, count, choices, input, onward, ahead }: LinkStopProps) {
+export function LinkStop({ question, index, count, choices, input, onward }: LinkStopProps) {
   const { stops, step } = useSession();
   const answer = useFlow((s) => s.linkAnswers.find((a) => a.id === question.id));
   const [typed, setTyped] = useState('');
@@ -73,13 +70,11 @@ export function LinkStop({ question, index, count, choices, input, onward, ahead
     back: backRecall,
   });
 
-  // After a miss, a right answer that is still to be asked at its own place is not named.
-  const shown = question.answers.filter((a) => answer?.correct || !ahead.has(a.itemId));
-  const held = question.answers.filter((a) => !shown.includes(a));
-  const right = new Set(shown.map((a) => a.term));
+  const right = new Set(question.answers.map((a) => a.text));
+  // What the links say, once each: two links may say the same thing.
+  const facts = [...new Set(question.answers.map((a) => a.fact))];
   // Only a typed answer can be overruled: the grader may be wrong about wording, never about a picked option.
-  // And only against an answer that is shown: there is nothing to compare a held-back one with.
-  const canOverrule = input === 'typed' && answer !== undefined && !answer.correct && !answer.unknown && answer.given.trim() !== '' && held.length === 0;
+  const canOverrule = input === 'typed' && answer !== undefined && !answer.correct && !answer.unknown && answer.given.trim() !== '';
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (typed.trim()) commit(typed);
@@ -90,7 +85,7 @@ export function LinkStop({ question, index, count, choices, input, onward, ahead
       <p className="label" data-testid="walk-label">
         Place {step + 1} of {stops.length} · Link{count > 1 ? ` ${index} of ${count}` : ''}
       </p>
-      <h1 className="question" tabIndex={-1} ref={questionRef} data-testid="link-question" data-kind={question.kind}>
+      <h1 className="question" tabIndex={-1} ref={questionRef} data-testid="link-question" data-kind={question.kind} data-asks={question.asks}>
         {question.prompt}
       </h1>
       {input === 'choice' ? (
@@ -173,21 +168,11 @@ export function LinkStop({ question, index, count, choices, input, onward, ahead
             </p>
             {input === 'typed' && answer.given && (answer.selfMarked || !answer.correct) && <p className="muted">You wrote: {answer.given}</p>}
             {/* The right answer, and what the link says about it. */}
-            {shown.map((a) => (
-              <p key={a.term} className="link__fact" data-testid="link-fact">
-                {a.sentence}
+            {facts.map((fact) => (
+              <p key={fact} className="link__fact" data-testid="link-fact">
+                {fact}
               </p>
             ))}
-            {held.map((a) => (
-              <p key={a.term} className="link__fact" data-testid="link-fact" data-held="true">
-                {a.held}
-              </p>
-            ))}
-            {held.length > 0 && (
-              <p className="state" data-testid="link-held">
-                Its name waits at its own place, which you have not been asked about yet.
-              </p>
-            )}
           </div>
         )}
       </div>
@@ -197,7 +182,7 @@ export function LinkStop({ question, index, count, choices, input, onward, ahead
           ? `Links are scored apart from the places. ${ADVANCE_KEYS}: next.`
           : input === 'choice'
             ? `Keys 1 to ${Math.max(choices.length, 1)} pick an answer. 0: I don’t know.`
-            : 'Type the term and press Enter. A question mark in the empty field: I don’t know.'}
+            : `${question.asks === 'label' ? 'Type what happens, in a few words,' : 'Type the term'} and press Enter. A question mark in the empty field: I don’t know.`}
       </p>
     </section>
   );

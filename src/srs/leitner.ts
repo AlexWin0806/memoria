@@ -30,6 +30,18 @@ export function schedule(card: ReviewCard, result: RecallResult, now: number): R
   };
 }
 
+/**
+ * An answer the learner marked right themselves ("I was right" on a typed miss) is a claim,
+ * not a recall anyone has checked (research principle 10: a place's state and its schedule
+ * come from answers, never from self-rating). The card goes to the first box with its usual
+ * interval, whatever box it was in, and takes no lapse: the next real recall decides.
+ */
+export const UNVERIFIED_BOX = 1;
+
+export function scheduleUnverified(card: ReviewCard, now: number): ReviewCard {
+  return { ...card, box: UNVERIFIED_BOX, dueAt: now + BOX_INTERVALS_MS[UNVERIFIED_BOX], lastReviewedAt: now, reps: card.reps + 1 };
+}
+
 export function isDue(card: ReviewCard | undefined, now: number): boolean {
   return !card || card.box === 0 || card.dueAt <= now;
 }

@@ -13,10 +13,12 @@ import {
 import { numberWord, termLength } from '@/flows/format';
 import { useCountdown, useTimedStop, useWalkKeys } from '@/flows/hooks';
 import { studyLines } from '@/flows/process';
+import { FAMILIARIZE_SECONDS_PER_STOP, JUDGE_RUINS_LINE_STOPS, JUDGE_STARTS_IN_RUINS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { useReview } from '@/state/review';
 import { isLastStop, useSession } from '@/state/session';
+import { RuinsLine } from './Legend';
 import './process.css';
 
 /** The one wording for the advance key, used on every walk screen. */
@@ -52,7 +54,12 @@ function useFocusWhenReady<T extends HTMLElement>(ready: boolean, key: string | 
   return ref;
 }
 
-/** Familiarization: the empty route, place by place, then a two-question route check. */
+/**
+ * Familiarization: the empty route, place by place, then a two-question route check. The
+ * learner's walk moves on by itself at a readable pace (FAMILIARIZE_SECONDS_PER_STOP at each
+ * place, from arrival): there is nothing to do at an empty place but look, and one press per
+ * place was a press too many. Space moves on sooner, P pauses, Left arrow goes back.
+ */
 export function Familiarize() {
   const { stops, step, arrived, judge, layoutId } = useSession();
   const phase = useFlow((s) => s.phase);
@@ -69,10 +76,20 @@ export function Familiarize() {
   const paused = useFlow((s) => s.confirmLeave);
   const progress = useCountdown(judge && phase === 'walk' && !paused, judgeTiming().previewSecondsPerStop, step, advance);
   const nextRef = useFocusWhenReady<HTMLButtonElement>(!judge && phase === 'walk' && arrived, step);
+  // The learner's walk: a timed stop like the others, which can be paused. The pause belongs to the stop it was set at.
+  const canHold = !judge && phase === 'walk' && arrived;
+  const { progress: atPlace, held, toggle } = useTimedStop('familiarize', step, FAMILIARIZE_SECONDS_PER_STOP, canHold, advance);
+  const pauseRef = useRef<HTMLButtonElement>(null);
+  const toggleHold = () => {
+    // Paused, the focus is on the control, so that Space resumes; resumed, it is back on "Next place".
+    (toggle() ? pauseRef : nextRef).current?.focus({ preventScroll: true });
+  };
 
   useWalkKeys({
     next: phase === 'walk' && (arrived || judge) ? advance : undefined,
     back: phase === 'walk' && step > 0 ? () => useSession.getState().prev() : undefined,
+    pause: canHold ? toggleHold : undefined,
+    resume: held ? toggleHold : undefined,
   });
 
   if (phase === 'routeCheck') return <RouteCheck />;
@@ -83,6 +100,8 @@ export function Familiarize() {
     return (
       <section className="screen" data-testid="familiarize">
         <h1 className="label">Route preview</h1>
+        {/* The preview flies over rubble for nine seconds: this says why. */}
+        {JUDGE_STARTS_IN_RUINS && <RuinsLine />}
         <div aria-live="polite">
           <p className="label" data-testid="walk-label">
             Place {step + 1} of {stops.length}
@@ -123,20 +142,37 @@ export function Familiarize() {
         )}
       </div>
       <div className="pin">
+        <ProgressBar value={arrived ? atPlace : 0} label="Time at this place" />
         <div className="actions">
           <button type="button" className="btn btn--primary" ref={nextRef} disabled={!arrived} onClick={advance} data-testid="walk-next">
             {last ? 'Check the route' : 'Next place'}
+          </button>
+          <button type="button" className="btn" ref={pauseRef} disabled={!arrived} aria-pressed={held} onClick={toggleHold} data-testid="familiarize-pause">
+            {held ? 'Resume' : 'Pause'}
+            <span className="key" aria-hidden="true">
+              P
+            </span>
           </button>
           <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
             Back
           </button>
         </div>
       </div>
-      <p className="hint">{ADVANCE_KEYS}: next. Left arrow: back.</p>
+      <p className="hint" data-testid="familiarize-hint">
+        {held ? 'Paused. Space or P resumes.' : `It moves on by itself; ${ADVANCE_KEYS} moves on sooner. P pauses. Left arrow: back.`}
+      </p>
     </section>
   );
 }
 
+/** Wrong picks on one question of the route check before it counts as missed. */
+const ROUTE_CHECK_TRIES = 2;
+
+/**
+ * The route check: which place comes right after another, twice. A question can be missed
+ * (research principle 3 asks for a check that is passed, not a formality): after a second
+ * wrong pick the right place is named, and walking the route again is offered beside going on.
+ */
 function RouteCheck() {
   const { stops, layoutId } = useSession();
   const layout = getLayout(layoutId);
@@ -147,14 +183,16 @@ function RouteCheck() {
   const q = questions[index];
   const heading = useFocusWhenReady<HTMLHeadingElement>(true, index);
 
+  const missed = !solved && wrong.length >= ROUTE_CHECK_TRIES;
+  const over = solved || missed;
   const pick = (i: number) => {
     const option = q?.options[i];
-    if (!option || solved) return;
+    if (!option || over) return;
     if (option.id === q.answer.id) setSolved(true);
     else if (!wrong.includes(option.id)) setWrong([...wrong, option.id]);
   };
   const advance = () => {
-    if (!solved) return;
+    if (!over) return;
     if (index >= questions.length - 1) {
       beginEncodeAfterFamiliarize();
       return;
@@ -163,7 +201,7 @@ function RouteCheck() {
     setWrong([]);
     setSolved(false);
   };
-  useWalkKeys({ pick, next: solved ? advance : undefined });
+  useWalkKeys({ pick, next: over ? advance : undefined });
 
   if (!q) return null;
   const lastQuestion = index >= questions.length - 1;
@@ -177,7 +215,7 @@ function RouteCheck() {
       </h1>
       <ol className="choices">
         {q.options.map((o, i) => {
-          const state = solved && o.id === q.answer.id ? 'right' : wrong.includes(o.id) ? 'wrong' : undefined;
+          const state = over && o.id === q.answer.id ? 'right' : wrong.includes(o.id) ? 'wrong' : undefined;
           return (
             <li key={o.id}>
               <button
@@ -185,7 +223,7 @@ function RouteCheck() {
                 className="choice"
                 data-state={state}
                 data-testid="route-option"
-                disabled={solved || wrong.includes(o.id)}
+                disabled={over || wrong.includes(o.id)}
                 onClick={() => pick(i)}
               >
                 <span className="choice__key">{i + 1}</span>
@@ -198,19 +236,27 @@ function RouteCheck() {
       <p className="feedback" aria-live="polite" data-testid="route-feedback">
         {solved
           ? `Yes. ${q.answer.name} comes right after ${q.anchor.name}.`
-          : wrong.length > 0
-            ? 'Not that one. Picture the walk and try again.'
-            : ''}
+          : missed
+            ? `It was ${q.answer.name}: ${q.answer.name} comes right after ${q.anchor.name}. Walk the route again if the order is not clear yet.`
+            : wrong.length > 0
+              ? 'Not that one. Picture the walk and try again.'
+              : ''}
       </p>
+      {/* After a miss the walk is the first thing offered, and going on is the learner's choice. */}
       <div className="actions">
         {solved && (
           <button type="button" className="btn btn--primary" autoFocus onClick={advance} data-testid="route-next">
             {lastQuestion ? 'Place the images' : 'Next question'}
           </button>
         )}
-        <button type="button" className="btn btn--quiet" onClick={repeatFamiliarize}>
+        <button type="button" className={missed ? 'btn btn--primary' : 'btn btn--quiet'} autoFocus={missed} key={missed ? 'again-missed' : 'again'} onClick={repeatFamiliarize} data-testid="route-again">
           Walk the route again
         </button>
+        {missed && (
+          <button type="button" className="btn" onClick={advance} data-testid="route-next">
+            Go on
+          </button>
+        )}
       </div>
       <p className="hint">
         Keys 1 to {q.options.length} pick an answer. {ADVANCE_KEYS}: next.
@@ -293,6 +339,8 @@ export function Encode() {
       <h1 className="label" data-testid="walk-label">
         Place {step + 1} of {stops.length} · {locus.name}
       </h1>
+      {/* A Judge run: what the ruins mean, from the first screen until a place or two has been rebuilt. */}
+      {judge && JUDGE_STARTS_IN_RUINS && step < JUDGE_RUINS_LINE_STOPS && <RuinsLine />}
       {/* The live region stays mounted so that each new image is announced when it appears. */}
       <div aria-live="polite">
         {arrived ? (

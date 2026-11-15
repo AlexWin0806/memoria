@@ -164,7 +164,9 @@ export function Results() {
         <div className="trend" data-testid="results-trend">
           {sinceSurvey && (
             <p data-testid="results-vs-survey">
-              Before study: {sinceSurvey.before} of {sinceSurvey.of}. Now: {sinceSurvey.now} of {sinceSurvey.of}.
+              {/* A survey nobody answered is not a baseline: the line says so, as the Progress view does. */}
+              Before study: {sinceSurvey.before} of {sinceSurvey.of}
+              {sinceSurvey.skipped ? ' (survey skipped)' : ''}. Now: {sinceSurvey.now} of {sinceSurvey.of}.
             </p>
           )}
           {sinceEarlier && (
@@ -180,7 +182,7 @@ export function Results() {
           This demo run was not added to your reviews.
         </p>
       )}
-      {ruins && <RepairLegend />}
+      {ruins && <RepairLegend judge={judge} />}
       <div className="actions results__actions" data-testid="results-actions">
         {judge && (
           <button type="button" className="btn btn--primary" onClick={() => useSession.getState().toCompose()} data-testid="results-build">
@@ -216,6 +218,8 @@ export function Results() {
           const card = judge ? undefined : cards[item.id];
           const d = drafts[item.id];
           const ok = Boolean(result?.correct);
+          // Marked right by the learner: it counts in the score, and it neither restores the place nor earns an interval.
+          const claimed = ok && result?.selfMarked === true;
           return (
             <li key={item.id} className="place" data-state={ok ? 'right' : 'wrong'} data-testid="result-row">
               <div className="place__line">
@@ -226,8 +230,8 @@ export function Results() {
                   <span className="place__term">{item.term}</span>
                   <span className="place__meta" data-testid="result-meta">
                     {locus.name} · {ok ? (result?.selfMarked ? 'right (self-marked)' : 'right') : 'missed'}
-                    {ruins ? ` · ${ok ? 'restored' : 'needs another repair'}` : ''}
-                    {card ? ` · ${ok ? 'next review' : 'again'} ${formatWhen(card.dueAt, now)}` : ''}
+                    {ruins ? ` · ${claimed ? 'under repair' : ok ? 'restored' : 'needs another repair'}` : ''}
+                    {card ? ` · ${ok && !claimed ? 'next review' : 'again'} ${formatWhen(card.dueAt, now)}` : ''}
                   </span>
                 </span>
               </div>

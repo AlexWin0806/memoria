@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { answerOf, buildChoices, surveyQuestion, typedMatches } from '@/flows/answers';
 import { advanceSurvey, answerSurvey, beginStudyAfterSurvey, itemAt, leave, skipSurvey, stopsFor, useFlow } from '@/flows/flow';
 import { plural, termLength } from '@/flows/format';
-import { useWalkKeys } from '@/flows/hooks';
+import { useTimedStop, useWalkKeys } from '@/flows/hooks';
+import { SURVEY_HOLD_SECONDS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { useReview } from '@/state/review';
@@ -16,8 +17,12 @@ import { ADVANCE_KEYS } from './Walk';
  * studied. It finds out what the learner already knows, and it is also their first walk
  * of the route, so each stop names its place as the familiarization walk does.
  *
- * It reveals nothing: no right answer, no memory image, no verdict. What the learner sees
- * of their answer is the place itself, which stands or falls in the scene.
+ * It shows no right answer and no memory image. What the learner sees of their answer is the
+ * place itself, which stands or falls in the scene: that tells them whether they were right,
+ * never what the right answer is.
+ *
+ * One key press per place: after an answer the stop holds for a moment, so that the place is
+ * seen standing or falling, and the walk goes on by itself (SURVEY_HOLD_SECONDS).
  */
 export function Survey() {
   const phase = useFlow((s) => s.phase);
@@ -44,9 +49,25 @@ function SurveyWalk() {
   const [skipping, setSkipping] = useState(false);
   const arrivedAt = useRef(0);
   const nextRef = useRef<HTMLButtonElement>(null);
+  const pauseRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLHeadingElement>(null);
   const answersRef = useRef<HTMLDivElement>(null);
+
+  // The stop that was answered on this visit holds for a moment, then the walk moves on by
+  // itself. A stop the learner has come back to was answered earlier: it waits for its button,
+  // or Back would show the place for a second and leave again.
+  const [answeredAt, setAnsweredAt] = useState<number | null>(null);
+  const holding = answered && answeredAt === step;
+  const { held, toggle } = useTimedStop('survey', step, SURVEY_HOLD_SECONDS, holding, advanceSurvey);
+  const toggleHold = () => {
+    // Paused, the focus is on the control, so that Space resumes; resumed, it is back on the way on.
+    (toggle() ? pauseRef : nextRef).current?.focus({ preventScroll: true });
+  };
+  const goBack = () => {
+    setAnsweredAt(null);
+    useSession.getState().prev();
+  };
 
   // When the stop is ready, focus goes to the answer field, or (multiple choice) to the
   // question, so that the next Tab is the first option and no stray key press can answer.
@@ -77,6 +98,7 @@ function SurveyWalk() {
     if (!deck || !item || !arrived || result) return;
     const right = answerOf(item);
     const correct = !unknown && (input === 'choice' ? given === right : typedMatches(given, right));
+    setAnsweredAt(step);
     answerSurvey({ itemId: item.id, correct, given, ms: Date.now() - arrivedAt.current, ...(unknown ? { unknown: true } : {}) });
   };
   const dontKnow = () => commit('', true);
@@ -85,7 +107,9 @@ function SurveyWalk() {
     pick: input === 'choice' && arrived && !result ? (i) => choices[i] !== undefined && commit(choices[i]) : undefined,
     unknown: arrived && !result ? dontKnow : undefined,
     next: result ? advanceSurvey : undefined,
-    back: step > 0 ? () => useSession.getState().prev() : undefined,
+    back: step > 0 ? goBack : undefined,
+    pause: holding ? toggleHold : undefined,
+    resume: held ? toggleHold : undefined,
   });
 
   if (!deck || !locus || !item) return null;
@@ -104,11 +128,18 @@ function SurveyWalk() {
         {section ? 'Survey of the new places' : 'Survey'} · Place {step + 1} of {stops.length}
         {room ? ` · ${room.name}` : ''}
       </h1>
-      {/* Said once, on the survey's first screen and nowhere else (the claims rule: docs/research.md). */}
+      {/*
+        Said once, on the survey's first screen and nowhere else (the claims rule: docs/research.md 8.4,
+        sentence 2). On a deck of bare pairs (vocabulary) the support for the second sentence is weaker
+        (8.6, item 2), so only the invitation is left.
+      */}
       {step === 0 && !answered && (
         <div className="lede" data-testid="survey-lede">
           <p>What do you already know? Nothing here counts against you. It tells the palace which places need building.</p>
-          <p>Guess first. Trying to answer before you study tends to help the answer stick once you see it, even if your guess is wrong.</p>
+          <p>
+            Guess first.
+            {deck?.kind === 'pairs' ? '' : ' Trying to answer before you study tends to help the answer stick once you see it, even if your guess is wrong.'}
+          </p>
         </div>
       )}
       {/* The place is named at every stop: this is also the learner's first walk of the route. */}
@@ -227,7 +258,15 @@ function SurveyWalk() {
           <button type="button" className="btn btn--primary" ref={nextRef} onClick={advanceSurvey} data-testid="survey-next">
             {last ? 'Finish the survey' : 'Next place'}
           </button>
-          <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
+          {holding && (
+            <button type="button" className="btn" ref={pauseRef} aria-pressed={held} onClick={toggleHold} data-testid="survey-pause">
+              {held ? 'Resume' : 'Pause'}
+              <span className="key" aria-hidden="true">
+                P
+              </span>
+            </button>
+          )}
+          <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={goBack} data-testid="survey-back">
             Back
           </button>
         </div>
@@ -235,7 +274,11 @@ function SurveyWalk() {
 
       <p className="hint" data-testid="survey-hint">
         {result
-          ? `The answers come in the study walk. ${ADVANCE_KEYS}: next.`
+          ? held
+            ? 'Paused. Space or P resumes.'
+            : holding
+              ? 'The answers come in the study walk. It moves on by itself; P pauses. Left arrow: back.'
+              : `The answers come in the study walk. ${ADVANCE_KEYS}: next.`
           : !ready
             ? 'A question waits at each place.'
             : input === 'choice'
@@ -267,6 +310,9 @@ function SurveyWalk() {
   );
 }
 
+/** How long after the summary appears its advance keys start to work (see SurveySummary). */
+const SUMMARY_KEYS_AFTER_MS = 700;
+
 /** After the survey: what it found, place by place, and the way into study. */
 function SurveySummary() {
   const { stops, layoutId, deckId } = useSession();
@@ -283,7 +329,15 @@ function SurveySummary() {
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, []);
-  useWalkKeys({ next: beginStudyAfterSurvey });
+  // The survey arrives here by itself after its last answer. A Space meant for that last place
+  // (to move on sooner) can land a moment late: for the first instant the keys do nothing, so
+  // that it cannot carry the learner past the summary unread. The button works at once.
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setArmed(true), SUMMARY_KEYS_AFTER_MS);
+    return () => clearTimeout(id);
+  }, []);
+  useWalkKeys({ next: armed ? beginStudyAfterSurvey : undefined });
 
   if (!deck) return null;
   const rows = stops.flatMap((index) => {
@@ -302,11 +356,14 @@ function SurveySummary() {
         Survey · {deck.title}
         {section ? ` · ${plural(rows.length, 'new place')}` : ''}
       </p>
+      {/* A section is only the places that were added: its counts say so, or they read as the whole palace's. */}
       <h1 className="question" tabIndex={-1} ref={heading} data-testid="survey-score">
-        You knew {knew} of {rows.length}.
+        You knew {knew} of {section ? plural(rows.length, 'new place') : rows.length}.
       </h1>
       <p className="body" data-testid="survey-ruins">
-        {ruins === 0 ? 'Every place is standing.' : `${plural(ruins, 'place is', 'places are')} in ruins.`}
+        {ruins === 0
+          ? `Every ${section ? 'new ' : ''}place is standing.`
+          : `${plural(ruins, section ? 'new place is' : 'place is', section ? 'new places are' : 'places are')} in ruins.`}
       </p>
       {!walked && (
         <p className="body" data-testid="survey-skipped">
@@ -334,7 +391,7 @@ function SurveySummary() {
         {rows.map(({ locus, known }) => (
           <li key={locus.id} className="place" data-state={known ? 'standing' : 'ruins'} data-testid="survey-place">
             <span className="place__term">{locus.name}</span>
-            <span className="place__meta">{known ? 'standing: you knew its fact' : 'in ruins'}</span>
+            <span className="place__meta">{known ? 'standing: answered in the survey, not yet recalled' : 'in ruins'}</span>
           </li>
         ))}
       </ol>
