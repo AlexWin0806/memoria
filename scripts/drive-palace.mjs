@@ -7,6 +7,7 @@
  *
  *   npm run build && node scripts/drive-palace.mjs
  *   node scripts/drive-palace.mjs --layout 'gen:gothic;r1~2~hall~A;r2~1~hall~B'
+ *   node scripts/drive-palace.mjs --layout 'gen:zen@0b2zz;r1~4~hall~A;r2~3~hall~B'   # furnished by a seed
  *   node scripts/drive-palace.mjs --theme ink-vellum      # software GL draws it at a few fps: slow
  *   node scripts/drive-palace.mjs --url http://localhost:5173
  */
