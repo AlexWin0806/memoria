@@ -164,7 +164,9 @@ export function Results() {
         <div className="trend" data-testid="results-trend">
           {sinceSurvey && (
             <p data-testid="results-vs-survey">
-              Before study: {sinceSurvey.before} of {sinceSurvey.of}. Now: {sinceSurvey.now} of {sinceSurvey.of}.
+              {/* A survey nobody answered is not a baseline: the line says so, as the Progress view does. */}
+              Before study: {sinceSurvey.before} of {sinceSurvey.of}
+              {sinceSurvey.skipped ? ' (survey skipped)' : ''}. Now: {sinceSurvey.now} of {sinceSurvey.of}.
             </p>
           )}
           {sinceEarlier && (

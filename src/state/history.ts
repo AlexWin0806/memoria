@@ -109,6 +109,11 @@ export interface WalkComparison {
   /** Right answers on those places in the earlier walk, and in this one. */
   before: number;
   now: number;
+  /**
+   * Against the surveys only: every survey the score before study comes from was skipped, so
+   * nobody was asked and the "0" is not a measurement. Whoever shows the comparison says so.
+   */
+  skipped?: boolean;
 }
 
 /**
@@ -135,8 +140,12 @@ export function compareWalks(earlier: WalkRecord, current: WalkRecord): WalkComp
  */
 export function compareWithSurveys(records: WalkRecord[], current: WalkRecord): WalkComparison | null {
   const was = new Map<string, boolean>();
+  const asked = new Set(current.items.map((it) => it.itemId));
+  // True while every survey that covers one of this walk's places was skipped.
+  let skipped = true;
   for (const r of walksOf(records, current.deckId)) {
     if (r.kind !== 'survey' || r.id === current.id || r.at > current.at) continue;
+    if (!isSkippedSurvey(r) && r.items.some((it) => asked.has(it.itemId))) skipped = false;
     for (const it of r.items) if (!was.has(it.itemId)) was.set(it.itemId, it.correct);
   }
   const shared = current.items.filter((it) => was.has(it.itemId));
@@ -145,6 +154,7 @@ export function compareWithSurveys(records: WalkRecord[], current: WalkRecord): 
     of: shared.length,
     before: shared.filter((it) => was.get(it.itemId)).length,
     now: shared.filter((it) => it.correct).length,
+    ...(skipped ? { skipped: true } : {}),
   };
 }
 

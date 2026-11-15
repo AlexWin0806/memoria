@@ -128,11 +128,18 @@ function SurveyWalk() {
         {section ? 'Survey of the new places' : 'Survey'} · Place {step + 1} of {stops.length}
         {room ? ` · ${room.name}` : ''}
       </h1>
-      {/* Said once, on the survey's first screen and nowhere else (the claims rule: docs/research.md). */}
+      {/*
+        Said once, on the survey's first screen and nowhere else (the claims rule: docs/research.md 8.4,
+        sentence 2). On a deck of bare pairs (vocabulary) the support for the second sentence is weaker
+        (8.6, item 2), so only the invitation is left.
+      */}
       {step === 0 && !answered && (
         <div className="lede" data-testid="survey-lede">
           <p>What do you already know? Nothing here counts against you. It tells the palace which places need building.</p>
-          <p>Guess first. Trying to answer before you study tends to help the answer stick once you see it, even if your guess is wrong.</p>
+          <p>
+            Guess first.
+            {deck?.kind === 'pairs' ? '' : ' Trying to answer before you study tends to help the answer stick once you see it, even if your guess is wrong.'}
+          </p>
         </div>
       )}
       {/* The place is named at every stop: this is also the learner's first walk of the route. */}
@@ -338,11 +345,14 @@ function SurveySummary() {
         Survey · {deck.title}
         {section ? ` · ${plural(rows.length, 'new place')}` : ''}
       </p>
+      {/* A section is only the places that were added: its counts say so, or they read as the whole palace's. */}
       <h1 className="question" tabIndex={-1} ref={heading} data-testid="survey-score">
-        You knew {knew} of {rows.length}.
+        You knew {knew} of {section ? plural(rows.length, 'new place') : rows.length}.
       </h1>
       <p className="body" data-testid="survey-ruins">
-        {ruins === 0 ? 'Every place is standing.' : `${plural(ruins, 'place is', 'places are')} in ruins.`}
+        {ruins === 0
+          ? `Every ${section ? 'new ' : ''}place is standing.`
+          : `${plural(ruins, section ? 'new place is' : 'place is', section ? 'new places are' : 'places are')} in ruins.`}
       </p>
       {!walked && (
         <p className="body" data-testid="survey-skipped">

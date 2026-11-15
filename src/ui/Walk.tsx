@@ -165,6 +165,14 @@ export function Familiarize() {
   );
 }
 
+/** Wrong picks on one question of the route check before it counts as missed. */
+const ROUTE_CHECK_TRIES = 2;
+
+/**
+ * The route check: which place comes right after another, twice. A question can be missed
+ * (research principle 3 asks for a check that is passed, not a formality): after a second
+ * wrong pick the right place is named, and walking the route again is offered beside going on.
+ */
 function RouteCheck() {
   const { stops, layoutId } = useSession();
   const layout = getLayout(layoutId);
@@ -175,14 +183,16 @@ function RouteCheck() {
   const q = questions[index];
   const heading = useFocusWhenReady<HTMLHeadingElement>(true, index);
 
+  const missed = !solved && wrong.length >= ROUTE_CHECK_TRIES;
+  const over = solved || missed;
   const pick = (i: number) => {
     const option = q?.options[i];
-    if (!option || solved) return;
+    if (!option || over) return;
     if (option.id === q.answer.id) setSolved(true);
     else if (!wrong.includes(option.id)) setWrong([...wrong, option.id]);
   };
   const advance = () => {
-    if (!solved) return;
+    if (!over) return;
     if (index >= questions.length - 1) {
       beginEncodeAfterFamiliarize();
       return;
@@ -191,7 +201,7 @@ function RouteCheck() {
     setWrong([]);
     setSolved(false);
   };
-  useWalkKeys({ pick, next: solved ? advance : undefined });
+  useWalkKeys({ pick, next: over ? advance : undefined });
 
   if (!q) return null;
   const lastQuestion = index >= questions.length - 1;
@@ -205,7 +215,7 @@ function RouteCheck() {
       </h1>
       <ol className="choices">
         {q.options.map((o, i) => {
-          const state = solved && o.id === q.answer.id ? 'right' : wrong.includes(o.id) ? 'wrong' : undefined;
+          const state = over && o.id === q.answer.id ? 'right' : wrong.includes(o.id) ? 'wrong' : undefined;
           return (
             <li key={o.id}>
               <button
@@ -213,7 +223,7 @@ function RouteCheck() {
                 className="choice"
                 data-state={state}
                 data-testid="route-option"
-                disabled={solved || wrong.includes(o.id)}
+                disabled={over || wrong.includes(o.id)}
                 onClick={() => pick(i)}
               >
                 <span className="choice__key">{i + 1}</span>
@@ -226,19 +236,27 @@ function RouteCheck() {
       <p className="feedback" aria-live="polite" data-testid="route-feedback">
         {solved
           ? `Yes. ${q.answer.name} comes right after ${q.anchor.name}.`
-          : wrong.length > 0
-            ? 'Not that one. Picture the walk and try again.'
-            : ''}
+          : missed
+            ? `It was ${q.answer.name}: ${q.answer.name} comes right after ${q.anchor.name}. Walk the route again if the order is not clear yet.`
+            : wrong.length > 0
+              ? 'Not that one. Picture the walk and try again.'
+              : ''}
       </p>
+      {/* After a miss the walk is the first thing offered, and going on is the learner's choice. */}
       <div className="actions">
         {solved && (
           <button type="button" className="btn btn--primary" autoFocus onClick={advance} data-testid="route-next">
             {lastQuestion ? 'Place the images' : 'Next question'}
           </button>
         )}
-        <button type="button" className="btn btn--quiet" onClick={repeatFamiliarize}>
+        <button type="button" className={missed ? 'btn btn--primary' : 'btn btn--quiet'} autoFocus={missed} key={missed ? 'again-missed' : 'again'} onClick={repeatFamiliarize} data-testid="route-again">
           Walk the route again
         </button>
+        {missed && (
+          <button type="button" className="btn" onClick={advance} data-testid="route-next">
+            Go on
+          </button>
+        )}
       </div>
       <p className="hint">
         Keys 1 to {q.options.length} pick an answer. {ADVANCE_KEYS}: next.
