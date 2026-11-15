@@ -231,7 +231,9 @@ async function legible(page, root) {
 /** The palace of a generated layout id: its kit and its rooms as [id, places, name]. */
 function specOf(layoutId) {
   assert(typeof layoutId === 'string' && layoutId.startsWith('gen:'), `not a generated layout: ${layoutId}`);
-  const [kit, ...rooms] = layoutId.slice(4).split(';');
+  // The kit may carry the palace's seed: `gen:gothic@5z6l9;…`.
+  const [head, ...rooms] = layoutId.slice(4).split(';');
+  const kit = head.split('@')[0];
   return { kit, rooms: rooms.map((r) => r.split('~')).map(([id, places, , name]) => ({ id, places: Number(places), name: decodeURIComponent(name) })) };
 }
 
@@ -319,7 +321,7 @@ const cases = {
     for (const kit of KITS) {
       await page.keyboard.press('ArrowDown');
       assert((await picked(page, 'arch')) === kit.id, `the arrow key did not reach ${kit.id}`);
-      await page.waitForFunction((id) => window.__memoria.session.getState().layoutId.startsWith(`gen:${id};`), kit.id, { timeout: 15000 });
+      await page.waitForFunction((id) => /^gen:[a-z0-9-]+/.exec(window.__memoria.session.getState().layoutId)?.[0] === `gen:${id}`, kit.id, { timeout: 15000 });
     }
     await shot(page, 'picker-kit');
     await page.keyboard.press('ArrowDown');
