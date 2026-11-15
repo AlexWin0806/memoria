@@ -357,6 +357,8 @@ Education track. Team: Alex Wang, Richard Xu, Eric Wang, Eric Chen.
 
 The code was written with Claude Code agents under the team's direction during the hackathon window. The team chose the idea, the scope and the art direction, and reviewed the result. The agent roles and the rules they worked under are in [`CLAUDE.md`](CLAUDE.md) and [`.claude/agents/`](.claude/agents/).
 
+For future contributions, commit with an email linked to your GitHub account so your work is credited to you. Include `Co-authored-by` trailers when teammates share a change.
+
 ## License and credits
 
 MIT. See [LICENSE](LICENSE). Third-party libraries, fonts and assets are listed in [CREDITS.md](CREDITS.md). Geometry and shaders are procedural and original unless listed there.
