@@ -29,7 +29,9 @@
  *      stays one fact per line: as plain lines, as a <ul>, as a two-column <table>, and under
  *      two headings; with a paragraph of wrapped prose on the same page, the prose is still
  *      joined into one line and the list is left alone; a centred list and a list in a
- *      fixed-width face stay lists; wrapped prose in two columns is joined column by column
+ *      fixed-width face stay lists; wrapped prose in two columns is joined column by column;
+ *      a slide (bullets wrapping in a box half the page wide, a picture beside them), a bullet
+ *      with two bullets under it, and a numbered list with a wrapped item give three lines each
  *
  * Screenshots go to qa/shots/ui/pdf-*.png.
  */
@@ -183,6 +185,26 @@ const FIXED = [
   'pi - the sixteenth',
 ];
 const FIXED_HTML = `<html><body style="margin: 15mm"><pre style="font: 10pt monospace; margin: 0">${FIXED.join('\n')}</pre></body></html>`;
+/**
+ * A bullet typed as text with a hanging indent, as slides exported to PDF have them: the glyph
+ * at the left, the words and every wrapped line one em in. (Chromium draws the bullets of a
+ * <ul> as shapes, not text, so those would not do.) `level` moves the whole item in.
+ */
+const bullet = (words, glyph = '•', level = 0) =>
+  `<div style="margin-left: ${level}em; padding-left: 1em; text-indent: -1em"><span style="display: inline-block; width: 1em; text-indent: 0">${glyph}</span>${words}</div>`;
+/** A slide: a title, a text box half the page wide whose long bullets wrap well short of the right margin, a picture beside it. */
+const SLIDE = [
+  'Olfactory: smell',
+  'Trigeminal: sensation of the face and the muscles used for chewing',
+  'Vagus: slows the heart, narrows the airways and drives the movements of the gut after a meal',
+];
+const SLIDE_HTML = `<html><body style="font: 20pt Arial, sans-serif; margin: 15mm"><h1 style="font-size: 34pt; margin: 0 0 10mm">Cranial nerves</h1><div style="display: flex; gap: 10mm"><div style="width: 50%">${SLIDE.map((b) => bullet(b)).join('')}</div><img width="380" height="285" src="${PICTURE}"></div></body></html>`;
+/** A bullet with two bullets under it. Theirs sit exactly where its words begin, and the first of them wraps. */
+const NESTED = ['Brainstem', 'midbrain: turns the eyes and narrows the pupil in bright light', 'medulla: keeps breathing going'];
+const NESTED_HTML = `<html><body style="${SHEET}"><div style="width: 75mm">${bullet(NESTED[0])}${bullet(NESTED[1], '◦', 1)}${bullet(NESTED[2], '◦', 1)}</div></body></html>`;
+/** A numbered list in a narrow box: the second item wraps under its own words, not under its number. */
+const STEPS = ['Depolarisation', 'Repolarisation brings the membrane back down as potassium leaves the cell', 'Refractory period'];
+const STEPS_HTML = `<html><body style="${SHEET}"><ol style="width: 75mm">${items(STEPS)}</ol></body></html>`;
 const PARAGRAPHS = ['First', 'Second', 'Third', 'Fourth'].map((n) => `${n} of four. ${PROSE}`);
 const COLUMNS_HTML = `<html><body style="${SHEET}"><div style="column-count: 2; column-gap: 10mm">${PARAGRAPHS.map((p) => `<p>${p}</p>`).join('')}</div></body></html>`;
 
@@ -195,6 +217,9 @@ const files = {
   centred: { name: 'vocabulary-centred.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(CENTRED_HTML) },
   fixed: { name: 'greek-letters.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(FIXED_HTML) },
   columns: { name: 'two-columns.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(COLUMNS_HTML) },
+  slide: { name: 'lecture-slide.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(SLIDE_HTML, { landscape: true }) },
+  nested: { name: 'nested-bullets.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(NESTED_HTML) },
+  steps: { name: 'numbered-steps.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(STEPS_HTML) },
   list: { name: 'carpal-bones.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(LIST_HTML) },
   long: { name: 'lecture-4.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(LONG_HTML, RUNNING) },
   scan: { name: 'scanned-handout.pdf', mimeType: 'application/pdf', buffer: await pdfFrom(SCAN_HTML) },
@@ -593,9 +618,15 @@ const cases = {
     same(await read(files.fixed), FIXED, 'a list in a fixed-width face with lines of equal length');
     // And the edge a line runs to is that of its own column.
     same(await read(files.columns), PARAGRAPHS, 'four paragraphs of wrapped prose in two columns');
+    // Under a bullet or a number, a line that starts where the item's words start is the item
+    // running on, however far short of the margin its box ends: a slide's three bullets are three lines.
+    same(await read(files.slide), ['# Cranial nerves', ...SLIDE.map((b) => `- ${b}`)], 'a slide: three bullets, two of them wrapped, beside a picture');
+    await shot(page, 'slide');
+    same(await read(files.nested), NESTED.map((b) => `- ${b}`), 'a bullet with two bullets under it');
+    same(await read(files.steps), STEPS.map((s, i) => `${i + 1}. ${s}`), 'a numbered list whose second item wraps');
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return `${FACTS.length} short lines stay ${FACTS.length} lines as plain text, as <ul>, as a table, under two headings, centred, and in a fixed-width face; a wrapped paragraph beside the list is still one line, and so is each of four paragraphs in two columns`;
+    return `${FACTS.length} short lines stay ${FACTS.length} lines as plain text, as <ul>, as a table, under two headings, centred, and in a fixed-width face; a wrapped paragraph beside the list is still one line, and so is each of four paragraphs in two columns; a slide's three bullets (two wrapped), a bullet with two under it, and three numbered steps (one wrapped) are three lines each`;
   },
 };
 

@@ -142,6 +142,8 @@ interface RawPage {
 interface Line {
   text: string;
   x: number;
+  /** Where the words begin: after the bullet or number if the line starts with one, otherwise `x`. */
+  textX: number;
   right: number;
   y: number;
   size: number;
@@ -184,10 +186,19 @@ function heaviest<T>(entries: Iterable<[T, number]>): T | undefined {
 
 const half = (n: number): number => Math.round(n * 2) / 2;
 
+/** Bullets as text. The code points are the private-use glyphs that Symbol and Wingdings bullets come out as. */
+const BULLET_GLYPHS = `•◦▪▫■□●○◆◇‣⁃∙·*–—›»➢➤►▶✓✔❖→⇒${String.fromCodePoint(0xf0b7, 0xf0a7, 0xf0d8, 0xf076, 0xf0fc)}-`;
+const BULLET = new RegExp(`^[${BULLET_GLYPHS}]\\s+`, 'u');
+const NUMBERED = /^(?:\(?\d{1,3}[.)]|\(?[a-z]\)|[ivx]{1,4}[.)])\s+/i;
+/** A bullet or a number with nothing after it yet. */
+const MARKER_ALONE = new RegExp(`^(?:[${BULLET_GLYPHS}]|\\(?\\d{1,3}[.)]|\\(?[a-z]\\)|[ivx]{1,4}[.)])$`, 'iu');
+
 function toLine(runs: Run[]): Line | null {
   let text = '';
   let end = 0;
   let spaced = false;
+  /** Where in `text` each run begins, to find the run that holds the first word after a bullet. */
+  const begins: { at: number; run: Run; length: number }[] = [];
   for (const r of runs) {
     const str = tidy(r.str);
     if (!str.trim()) {
@@ -198,22 +209,33 @@ function toLine(runs: Run[]): Line | null {
     if (text) {
       const gap = r.x - end;
       // A gap of several letters is a column of a table or a tab stop: "term <tab> meaning".
-      if (gap > 3 * r.size) text = `${text.trimEnd()}\t`;
+      // After a bullet or a number alone it is the indent of the list, not a column.
+      if (gap > 3 * r.size && !MARKER_ALONE.test(text.trim())) text = `${text.trimEnd()}\t`;
       else if ((spaced || gap > 0.18 * r.size) && !/\s$/.test(text) && !/^\s/.test(str)) text += ' ';
     }
+    begins.push({ at: text.length, run: r, length: str.length });
     text += str;
     end = Math.max(end, r.x + r.width);
     spaced = false;
   }
-  text = text.replace(/[ ]{2,}/g, ' ').trim();
-  if (!text) return null;
+  if (!text.trim()) return null;
   const inked = runs.filter((r) => r.str.trim());
+  const x = Math.min(...inked.map((r) => r.x));
+  // Where the words begin, if the line starts with a bullet or a number: at the run that holds
+  // the first letter after it. When bullet and words are one run, that is a little way into
+  // the run, by about the width a bullet, a number and a space are set at.
+  const indent = text.length - text.trimStart().length;
+  const marker = (BULLET.exec(text.slice(indent)) ?? NUMBERED.exec(text.slice(indent)))?.[0].length ?? 0;
+  const holder = marker ? begins.find((b) => b.at <= indent + marker && indent + marker < b.at + b.length) : undefined;
+  const ems = holder ? [...text.slice(holder.at, indent + marker)].reduce((sum, ch) => sum + (/\d/.test(ch) ? 0.55 : /\p{L}/u.test(ch) ? 0.5 : /\s/.test(ch) ? 0.28 : 0.35), 0) : 0;
+  const textX = holder ? holder.run.x + holder.run.size * ems : x;
   const font = heaviest(inked.map((r) => [r.font, r.str.length] as [string, number])) ?? '';
   const size = heaviest(inked.map((r) => [half(r.size), r.str.length] as [number, number])) ?? 0;
   const lead = inked.find((r) => half(r.size) === size) ?? inked[0];
   return {
-    text,
-    x: Math.min(...inked.map((r) => r.x)),
+    text: text.replace(/[ ]{2,}/g, ' ').trim(),
+    x,
+    textX,
     right: Math.max(...inked.map((r) => r.x + r.width)),
     y: lead.y,
     size,
@@ -249,9 +271,6 @@ function toLines(runs: Run[]): Line[] {
 /* ───────── Layout: running heads, headings, paragraphs ───────── */
 
 const PAGE_NUMBER = /^(?:(?:page|p\.)\s*)?\d{1,4}(?:\s*(?:\/|of)\s*\d{1,4})?$|^[-–—]\s*\d{1,4}\s*[-–—]$/i;
-/** Bullets as text. The code points are the private-use glyphs that Symbol and Wingdings bullets come out as. */
-const BULLET = new RegExp(`^[•◦▪▫■□●○◆◇‣⁃∙·*–—${String.fromCodePoint(0xf0b7, 0xf0a7, 0xf0d8, 0xf076, 0xf0fc)}-]\\s+`, 'u');
-const NUMBERED = /^(?:\(?\d{1,3}[.)]|\(?[a-z]\)|[ivx]{1,4}[.)])\s+/i;
 const ENDS_SENTENCE = /[.!?:;…]["'”’)\]]*$/;
 /** "Chapter 3 . . . . . 41": dots leading to a page number. */
 const LEADERS = /(?:\.\s?){4,}\s*\d+$/;
@@ -443,7 +462,12 @@ function toBlocks(page: Doc['pages'][number], doc: Doc): Block[] {
         // no edge. Whether the line ends with a full stop does not come into it.
         const edge = edgeOf(prev);
         const ran = edge > 0 && prev.right >= edge - Math.min(firstWordWidth(line) + 0.8 * prev.size, 10 * prev.size);
-        if (NUMBERED.test(line.text)) starts = !ran || ended || listItem;
+        // The other sign, under a bullet or a number: a line with none of its own that starts
+        // where the words of the item start, to the right of its bullet. That is a hanging
+        // indent, and the item running on, however narrow the box it was set in (a slide).
+        const hangs = listItem && !NUMBERED.test(line.text) && line.x > first.x + 0.3 * line.size && Math.abs(line.x - first.textX) <= 0.75 * line.size;
+        if (hangs) starts = false;
+        else if (NUMBERED.test(line.text)) starts = !ran || ended || listItem;
         // A first-line indent starts a paragraph; under a list marker it is the item running on.
         else if (!listItem && line.x - prev.x > 0.9 * line.size) starts = true;
         // Ran to the edge: one paragraph. Only where a sentence ends there and another begins is
