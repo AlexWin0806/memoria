@@ -4,13 +4,21 @@
  * renders a few frames a second (headless Chromium, WebGL in software).
  *
  * The files in docs/media/ were made with (run from the repository root, after `npm run build`):
- *   node scripts/capture.mjs --scenario pitch  --width 960 --height 600 --zoom 0.75 --fps 15 --mp4 docs/media/demo-pitch.mp4
+ *   node scripts/capture.mjs --scenario pitch  --width 1080 --height 675 --zoom 0.75 --fps 15 --crf 26 --mp4 docs/media/demo-pitch.mp4
+ *   node scripts/capture.mjs --scenario survey --width 640 --height 540 --zoom 0.65 --fps 12 --gif docs/media/survey-collapse.gif --gif-colors 128 --mp4 docs/media/survey-collapse.mp4
+ *   node scripts/capture.mjs --scenario repair --width 640 --height 540 --zoom 0.65 --fps 12 --gif docs/media/repair.gif --gif-colors 128 --mp4 docs/media/repair.mp4
  *   node scripts/capture.mjs --scenario recall --width 720 --height 450 --zoom 0.75 --fps 12 --gif docs/media/recall.gif --gif-colors 160 --mp4 docs/media/recall.mp4
  *   node scripts/capture.mjs --scenario encode --width 720 --height 450 --zoom 0.75 --fps 12 --gif docs/media/encode.gif
- *   node scripts/capture.mjs --scenario stills-walk    --width 1440 --height 900 --fps 6     # ui-encode, ui-recall, ui-results
- *   node scripts/capture.mjs --scenario stills-compose --width 1440 --height 900 --fps 6     # ui-compose
- *   node scripts/capture.mjs --scenario stills-compare --width 1440 --height 900 --fps 6     # ui-compare
- * each with its own `--out <a scratch directory outside the repo>`.
+ * and the stills, each a 1440 x 900 window at two pixels per CSS pixel (2880 x 1800):
+ *   node scripts/capture.mjs --scenario stills-title   --width 2880 --height 1800 --zoom 2 --fps 50    # ui-title
+ *   node scripts/capture.mjs --scenario stills-walk    --width 2880 --height 1800 --zoom 2 --fps 50    # ui-survey, ui-encode, ui-recall, ui-results
+ *   node scripts/capture.mjs --scenario stills-process --width 2880 --height 1800 --zoom 2 --fps 50    # ui-process
+ *   node scripts/capture.mjs --scenario stills-compose --width 2880 --height 1800 --zoom 2 --fps 50    # ui-compose
+ *   node scripts/capture.mjs --scenario stills-seeded  --width 2880 --height 1800 --zoom 2 --fps 50    # ui-progress, ui-exam
+ *   node scripts/capture.mjs --scenario stills-compare --width 1440 --height 900 --fps 6               # ui-compare (from before Part 2)
+ * each with its own `--out <a scratch directory outside the repo>`. Every one of them is in the
+ * app's own theme, ink-vellum. The pitch video is a 1440 x 900 window drawn at three quarters
+ * of its size; its frames are 675 pixels high and the video 674 (H.264 wants an even number).
  *
  * How it works. The page never sees real time. Playwright's fake clock (`page.clock`, 1.45 or
  * later) is installed and paused before navigation, so `requestAnimationFrame`,
@@ -34,6 +42,14 @@
  *                  the question, the right answer, the reveal and flourish, the glide out (after
  *                  the last place: the first seconds of the results instead)
  *   encode         the same run, recording only one encode place: glide in, image, panel
+ *   survey         a learner's own walk of the built-in deck "Comer: one verb, three tenses" in
+ *                  the Gothic library, recording one place of its survey: the end of the glide
+ *                  in, the place whole, the question, "I don't know", the place falling, the
+ *                  start of the glide out. The places before it are answered right.
+ *   repair         the same walk carried on, recording one place twice: on the study walk (in
+ *                  ruins, then rebuilt inside its scaffold as the image is placed) and on the
+ *                  recall walk (a right answer restores it). The two takes are cut together,
+ *                  one after the other; nothing else is done to the frames.
  *   motion         the same run, recording only the moments where the camera or the scene can
  *                  misbehave: the button and the first place, two legs with a wide turn of the
  *                  head (to places 2 and 7), the start of the spot check, the results with the
@@ -41,9 +57,17 @@
  *                  first. Prints how long each leg took and how fast the view turned at most.
  *                  `--part a` stops after the encode legs, `--part b` records only what follows,
  *                  `--part timing` records nothing and stops at the spot-check screen.
- *   stills-walk    PNGs of a learner-paced walk: ui-encode, ui-recall, ui-results
- *   stills-compose PNG of the Architect's proposals for a pasted list: ui-compose (with no
- *                  Architect to reach, as under `vite preview`, these are the offline planner's)
+ *   stills-title   PNG of the title screen with the built-in palaces listed: ui-title
+ *   stills-walk    PNGs of a learner's first walk of the Comer deck, survey to results:
+ *                  ui-survey, ui-encode, ui-recall, ui-results
+ *   stills-process PNG of a question about a link on the recall walk of "The citric acid cycle,
+ *                  as a cycle" in the Workshop: ui-process
+ *   stills-compose PNG of the Architect's proposal, room by room, for notes under three
+ *                  headings: ui-compose (requests to the Architect are refused, so the plan is
+ *                  the offline planner's)
+ *   stills-seeded  PNGs of the Progress view and of an Exam question: ui-progress, ui-exam. The
+ *                  palace and its three walks are written into storage by the script, as
+ *                  scripts/smoke.mjs does: nobody walked them, and the chart's numbers are made up.
  *   stills-compare PNG of the comparison test's results with two participants: ui-compare.
  *                  The script answers for both, so the scores in it are not data from people.
  *
@@ -57,7 +81,12 @@
  *   --out <dir>           where the JPEG frames go (default: <tmp>/memoria-capture/<scenario>).
  *                         Keep it outside the repo. Frames are f000000.jpg … by frame number.
  *   --from, --to <s>      record this window of scenario time instead of the scenario's own
- *   --place <n>           recall: which spot-check place (1 to 3, default 2); encode: which place (2 to 7, default 3)
+ *   --place <n>           recall: which spot-check place (1 to 3, default 2); encode: which place (2 to 7, default 3);
+ *                         survey, repair and stills-walk: which place of the Comer deck (default 2, the Rose
+ *                         Window); stills-process: after which place the question is taken (default 1)
+ *   --know <a,b>          survey, repair, stills-walk: the places answered right in the survey. Every other
+ *                         place gets "I don't know". Defaults: the places before --place; none; place 1
+ *   --miss <a,b>          stills-walk: the places answered wrongly on the recall walk (default 5,12)
  *   --wrong <n>           which spot-check answer (1 to 3) is given wrongly; 0 = none. Default 2,
  *                         except in `recall`, whose clip shows a right answer: default 0
  *   --seed <n>            seed for Math.random (default 7): picks the three spot-check places
@@ -83,10 +112,14 @@
  *      --zoom 0.75 or less the ratio has nowhere to go (the app's floor is 0.75), so one
  *      canvas pixel is one frame pixel. With a larger zoom the script first lets the ratio
  *      run down on the title screen (a few seconds of virtual time); it then stays at the
- *      floor for as long as frames come at the capture rate, through resizes too.
+ *      floor for as long as frames come at the capture rate, through resizes too. The other
+ *      way round, a clock of 48 frames a second or more never looks slow, so the ratio stays at
+ *      the device's own: the stills are taken that way (--fps 50 at --zoom 2), and show the
+ *      palace at two canvas pixels per CSS pixel, as a laptop that keeps up draws it.
  *   2. Fast-forward. While nothing is being recorded the canvas host is shrunk to a thumbnail,
  *      because software rendering is priced per pixel. It is restored two virtual seconds
- *      before the next recorded frame, long enough for the view inset to ease back.
+ *      before the next recorded frame, long enough for the view inset to ease back. (Before a
+ *      still on the fast clock: four frames of 1.1 s each instead of a hundred short ones.)
  *
  * CSS transitions and animations are paused and stepped with the virtual clock too (the
  * progress bars, the loading rule). Headless Chromium draws no mouse pointer, so in footage
@@ -95,7 +128,7 @@
  * hover or a press is then seen to come from somewhere. Stills have no pointer.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import os from 'node:os';
@@ -135,14 +168,14 @@ const SPOT = 3;
 const wrongAt = num('wrong', scenarioName === 'recall' ? 0 : 2);
 const fastForward = !args.includes('--no-ff');
 /** Footage shows a pointer; stills do not. */
-const drawPointer = ['pitch', 'recall', 'encode', 'motion'].includes(scenarioName) && !args.includes('--no-pointer');
+const drawPointer = ['pitch', 'recall', 'encode', 'motion', 'survey', 'repair'].includes(scenarioName) && !args.includes('--no-pointer');
 /** How long the drawn pointer takes to reach what it clicks. */
 const POINTER_SECONDS = 0.5;
 
 /** Virtual seconds at full size before a recorded frame: the view inset eases back in under one. */
 const LEAD_SECONDS = 2;
-/** The canvas host while nothing is recorded. */
-const THUMB = { width: 192, height: 120 };
+/** The canvas host while nothing is recorded, in CSS pixels: no more canvas pixels at two per CSS pixel than at one. */
+const THUMB = { width: Math.round(192 / Math.max(1, zoom)), height: Math.round(120 / Math.max(1, zoom)) };
 /** At this frame rate or above the app's adaptive resolution (src/scene/PalaceCanvas.tsx) does not lower the pixel ratio. */
 const MONITOR_SLOW_FPS = 48;
 
@@ -159,7 +192,23 @@ if (Object.keys(termAt).length !== 8) {
   console.error('Could not read the eight fixture items. Run from the repository root.');
   process.exit(1);
 }
-const JUDGE_DECK_TITLE = 'The eight carpal bones';
+/** A list given as `--name 1,4`: place numbers, counted from 1. */
+const places = (name, fallback) => (flag(name) === undefined ? fallback : flag(name).split(',').filter(Boolean).map(Number));
+
+/**
+ * The two built-in decks that sit in generated palaces. `answers` is the survey's key: what it shows (the meaning)
+ * against what it asks for (the term). The cycle is only ever answered "I don't know" there, so it needs none.
+ */
+const COMER = {
+  title: 'Comer: one verb, three tenses',
+  total: 15,
+  answers: Object.fromEntries([...read('src/ai/fixtures/spanish-tenses.ts').matchAll(/^\s*'([^']+)', '([^']+)',\s*$/gm)].map((m) => [m[2], m[1]])),
+};
+const CYCLE = { title: 'The citric acid cycle, as a cycle', total: 8, answers: {} };
+if (Object.keys(COMER.answers).length !== COMER.total) {
+  console.error('Could not read the fifteen forms of the Comer deck.');
+  process.exit(1);
+}
 
 /** Runs in the page before anything else: seeded randomness, and the per-frame hook. */
 function pageSide({ seed, thumb, pointer }) {
@@ -279,7 +328,8 @@ class Recorder {
     this.recording = false;
     this.armed = false;
     this.small = false;
-    this.clipRange = null;
+    /** The frames to encode, as [first, last] ranges, when that is less than everything recorded. */
+    this.clips = [];
     this.wanted = [];
     this.marks = [];
     this.ratios = new Set();
@@ -417,9 +467,9 @@ class Recorder {
     this.armed = false;
   }
 
-  /** The frames to encode, when that is less than everything recorded. */
+  /** A stretch of frames to encode. Called twice, the two stretches are cut together: one take, then the other. */
   clip(first, last) {
-    this.clipRange = [first, last];
+    this.clips.push([first, last]);
   }
 
   /** Where the pointer rests before its first move: over the picture, clear of the panel. */
@@ -442,9 +492,13 @@ class Recorder {
     this.pointer = { x, y };
   }
 
-  /** Click the element with this test id. With the pointer drawn, it travels there first and rests a frame before pressing. */
-  async click(id, nth = 0) {
-    const target = this.page.getByTestId(id).nth(nth);
+  /** Click the element with this test id. */
+  click(id, nth = 0) {
+    return this.press(this.page.getByTestId(id).nth(nth));
+  }
+
+  /** Click what a locator finds. With the pointer drawn, it travels there first and rests a frame before pressing. */
+  async press(target) {
     if (drawPointer) {
       await target.scrollIntoViewIfNeeded();
       const box = await target.boundingBox();
@@ -457,12 +511,38 @@ class Recorder {
     this.s = await this.page.evaluate(() => window.__capture.tick(0));
   }
 
+  /** One frame that lasts `ms`: to the page, a hiccup. The frames after it keep the clock's own pace. */
+  async jump(ms) {
+    this.baseMs += ms;
+    await this.clock(ms);
+  }
+
+  /** Load the page again, as after writing to its storage. The canvas host is a new one, at full size. */
+  async reload(url) {
+    if (url) await this.page.goto(url, { waitUntil: 'load' });
+    else await this.page.reload({ waitUntil: 'load' });
+    this.small = false;
+    await this.step();
+    await this.until((s) => s.ready && s.veil === 0, { timeout: 120, what: 'the scene after the reload' });
+  }
+
   async still(name) {
+    // A still shows no pointer, so nothing may look hovered: the real pointer leaves whatever it clicked last.
+    if (!drawPointer) await this.page.mouse.move(1, 1);
     if (this.small) {
       this.arm();
       await this.setSmall(false);
-      await this.wait(LEAD_SECONDS);
+      if (fps < MONITOR_SLOW_FPS) {
+        await this.wait(LEAD_SECONDS);
+      } else {
+        // On the fast clock two seconds are a hundred frames, and a full-size frame at two pixels per CSS
+        // pixel is five million pixels drawn in software. A few long frames do the same work: the camera
+        // eases the view inset by at most half a second per frame (src/scene/CameraRail.tsx), and the
+        // resolution monitor leaves out a frame longer than a second, as it does a tab that was hidden.
+        for (let i = 0; i < 4; i++) await this.jump(1100);
+      }
     }
+    await this.wait(4 / fps);
     mkdirSync(stillsDir, { recursive: true });
     const file = path.join(stillsDir, `${name}.png`);
     await this.page.screenshot({ path: file });
@@ -522,6 +602,124 @@ async function pitchRun(rec, hooks = {}) {
     const next = (s) => (i < SPOT ? (s.ids['walk-label'] ?? '').startsWith(`Spot check ${i + 1} of ${SPOT}`) : 'results' in s.ids);
     if (!(await rec.until(next, { timeout: 5, soft: true }))) await rec.click('recall-next');
   }
+  await rec.until((s) => 'results' in s.ids, { what: 'the results' });
+  rec.mark(`results: ${rec.text('results-score')}`);
+  await call('results');
+}
+
+/** The survey question on screen: what it shows and its options. */
+const surveyQuestion = (page) =>
+  page.evaluate(() => ({
+    cue: document.querySelector('[data-testid=survey-cue]')?.textContent.trim() ?? '',
+    options: [...document.querySelectorAll('[data-testid=survey-choice] span:last-child')].map((el) => el.textContent),
+  }));
+
+/**
+ * A learner's first walk of a built-in deck, pressing what a learner presses: the survey (one
+ * answer per place, after which it moves on by itself), its summary, the route check, the study
+ * walk, the recall walk, the results. `know` lists the places answered right in the survey (every
+ * other place gets "I don't know") and `miss` the places answered wrongly on the recall walk.
+ * `hooks` are as in pitchRun; `hooks.pause` is the time spent at a stop no hook lingers on.
+ */
+async function learnerRun(rec, deck, { know = [], miss = [] } = {}, hooks = {}) {
+  const { title, total, answers } = deck;
+  const page = rec.page;
+  const call = async (name, ...rest) => (hooks[name] ? await hooks[name](...rest) : undefined);
+  const pause = hooks.pause ?? 0.5;
+  const at = (s, i) => (s.ids['walk-label'] ?? '').includes(`Place ${i} of ${total}`);
+  await rec.wait(1.5); // the title and its list of palaces
+  rec.mark('walk pressed');
+  await rec.press(page.getByRole('button', { name: `Walk ${title}` }));
+  // The hand waits in the panel's margin, where the answers will be.
+  await rec.wait(0.4);
+  await rec.pointerTo(width / zoom - 150, (height / zoom) * 0.76);
+
+  const route = [];
+  for (let i = 1; i <= total; i++) {
+    await rec.until((s) => 'survey' in s.ids && at(s, i), { what: `survey place ${i}` });
+    if ((await call('surveyGlide', i)) === 'stop') return;
+    await rec.until((s) => 'survey-question' in s.ids && !('survey-ack' in s.ids), { what: `the survey question at place ${i}` });
+    route.push(rec.text('place-name'));
+    rec.mark(`survey ${i}: ${route[i - 1]}`);
+    if ((await call('surveyQuestion', i)) === 'stop') return;
+    await rec.wait(pause);
+    if (know.includes(i)) {
+      const { cue, options } = await surveyQuestion(page);
+      if (!options.includes(answers[cue])) throw new Error(`survey place ${i}: "${cue}" is offered ${options}, not ${answers[cue]}`);
+      await rec.click('survey-choice', options.indexOf(answers[cue]));
+    } else {
+      await rec.click('survey-unknown');
+    }
+    rec.mark(`survey answer ${i}: ${know.includes(i) ? 'right' : "I don't know"}`);
+    if ((await call('surveyAnswered', i)) === 'stop') return;
+    // The place stands or falls, and the walk moves on by itself.
+    await rec.until((s) => 'survey-summary' in s.ids || ('survey' in s.ids && !at(s, i)), { timeout: 12, what: `the survey moving on from place ${i}` });
+  }
+  await rec.until((s) => 'survey-summary' in s.ids, { what: 'the survey summary' });
+  rec.mark(`survey summary: ${rec.text('survey-score')}`);
+  if ((await call('surveySummary')) === 'stop') return;
+  await rec.wait(pause + 1);
+  await rec.click('survey-study');
+
+  // The route check: which place comes right after another, twice.
+  await rec.until((s) => 'route-check' in s.ids || 'encode' in s.ids, { what: 'the route check' });
+  while (rec.has('route-check')) {
+    await rec.until((s) => 'route-option' in s.ids && !('route-next' in s.ids), { what: 'a route question' });
+    const anchor = rec.text('route-question').match(/right after (.+)\?$/)?.[1];
+    const options = await page.locator('[data-testid=route-option] span:last-child').allTextContents();
+    await rec.wait(pause);
+    await rec.click('route-option', Math.max(0, options.indexOf(route[route.indexOf(anchor) + 1])));
+    await rec.until((s) => 'route-next' in s.ids, { what: 'the route feedback' });
+    await rec.wait(pause);
+    await rec.click('route-next');
+    await rec.wait(0.4);
+  }
+
+  /** What the study walk put at each stop: the answer key of the recall walk. */
+  const placed = [];
+  for (let i = 1; i <= total; i++) {
+    await rec.until((s) => 'encode' in s.ids && at(s, i), { what: `study place ${i}` });
+    if ((await call('studyGlide', i)) === 'stop') return;
+    await rec.until((s) => 'encode-term' in s.ids, { what: `the image at place ${i}` });
+    placed[i] = rec.text('encode-term');
+    rec.mark(`study ${i}: ${placed[i]}`);
+    if ((await call('studyShown', i)) === 'stop') return;
+    await rec.wait(pause);
+    await rec.click('walk-next');
+  }
+  await rec.until((s) => 'interstitial' in s.ids, { what: 'the screen before the recall walk' });
+  if ((await call('interstitial')) === 'stop') return;
+  await rec.wait(pause + 1);
+  await rec.click('recall-start');
+
+  for (let i = 1; i <= total; i++) {
+    await rec.until((s) => 'recall' in s.ids && at(s, i), { what: `recall place ${i}` });
+    if ((await call('recallGlide', i)) === 'stop') return;
+    await rec.until((s) => 'choice' in s.ids && !('recall-verdict' in s.ids), { what: `the question at place ${i}` });
+    const { options } = await question(page);
+    if (!options.includes(placed[i])) throw new Error(`recall place ${i}: ${options} lack ${placed[i]}`);
+    rec.mark(`question ${i}: ${placed[i]}`);
+    if ((await call('recallQuestion', i)) === 'stop') return;
+    await rec.wait(pause);
+    const right = !miss.includes(i);
+    await rec.click('choice', right ? options.indexOf(placed[i]) : options.findIndex((o) => o !== placed[i]));
+    await rec.until((s) => 'recall-verdict' in s.ids, { what: `the verdict at place ${i}` });
+    if ((await call('recallAnswered', i, right)) === 'stop') return;
+    await rec.wait(pause);
+    await rec.click('recall-next');
+    // A process deck asks how the step connects before it walks on. Here those questions are left unanswered.
+    for (;;) {
+      await rec.until((s) => ('link-question' in s.ids && !('link-verdict' in s.ids)) || 'order' in s.ids || 'results' in s.ids || ('recall' in s.ids && at(s, i + 1)), { what: `what follows place ${i}` });
+      if (!rec.has('link-question')) break;
+      if ((await call('linkQuestion', i)) === 'stop') return;
+      await rec.wait(pause);
+      await rec.click('link-unknown');
+      await rec.until((s) => 'link-verdict' in s.ids, { what: 'the verdict on a link' });
+      await rec.wait(pause);
+      await rec.click('link-next');
+    }
+  }
+  if (rec.has('order') && (await call('order')) === 'stop') return;
   await rec.until((s) => 'results' in s.ids, { what: 'the results' });
   rec.mark(`results: ${rec.text('results-score')}`);
   await call('results');
@@ -613,6 +811,93 @@ const SCENARIOS = {
     },
   },
 
+  /** The survey at one place of the Comer deck: whole, asked, "I don't know", fallen, on to the next. */
+  survey: {
+    query: '',
+    async run(rec) {
+      const k = num('place', 2);
+      if (!(k >= 1 && k < COMER.total)) throw new Error(`--place must be 1 to ${COMER.total - 1} for the survey scenario`);
+      // The places before it are answered right, so that everything in view stands until this one falls.
+      const know = places('know', Array.from({ length: k - 1 }, (_, n) => n + 1));
+      let glide = 0;
+      let asked = 0;
+      if (k === 1) rec.arm();
+      await learnerRun(rec, COMER, { know }, {
+        async surveyGlide(i) {
+          if (i === k - 1) rec.arm();
+          if (i === k) {
+            rec.on();
+            glide = rec.frame;
+          }
+          if (i === k + 1) {
+            await rec.wait(1.6); // the start of the glide to the next place
+            rec.off();
+            rec.clip(Math.max(glide + 1, asked - Math.round(1.3 * fps)), rec.frame);
+            return 'stop';
+          }
+        },
+        async surveyQuestion(i) {
+          if (i !== k) return;
+          asked = rec.frame;
+          await rec.wait(1.2); // the place's name, the fact, the question
+        },
+      });
+    },
+  },
+
+  /**
+   * One place of the Comer deck twice, in one run: on the study walk, in ruins and then rebuilt inside
+   * its scaffold as the image is placed; on the recall walk, restored by a right answer. Two takes,
+   * cut together. Every place is answered "I don't know" in the survey unless --know says otherwise.
+   */
+  repair: {
+    query: '',
+    async run(rec) {
+      const k = num('place', 2);
+      if (!(k >= 2 && k <= COMER.total)) throw new Error(`--place must be 2 to ${COMER.total} for the repair scenario`);
+      let glide = 0;
+      // The hand lets go of the button it has just pressed, so that the button can be read when the next place is there.
+      const rest = () => rec.pointerTo(width / zoom - 150, (height / zoom) * 0.76);
+      await learnerRun(rec, COMER, { know: places('know', []) }, {
+        async studyGlide(i) {
+          if (i === k - 1) rec.arm();
+          if (i === k) {
+            rec.on();
+            glide = rec.frame;
+            await rest();
+          }
+        },
+        async studyShown(i) {
+          if (i !== k) return;
+          const shown = rec.frame;
+          await rec.wait(2.8); // the pieces rise, the scaffold stands, the image is read
+          rec.off();
+          rec.clip(Math.max(glide + 1, shown - Math.round(1.1 * fps)), rec.frame);
+        },
+        async recallGlide(i) {
+          if (i === k - 1) rec.arm();
+          if (i === k) {
+            rec.on();
+            glide = rec.frame;
+            await rest();
+          }
+        },
+        async recallQuestion(i) {
+          if (i !== k) return;
+          glide = Math.max(glide + 1, rec.frame - Math.round(0.7 * fps));
+          await rec.wait(0.7);
+        },
+        async recallAnswered(i) {
+          if (i !== k) return;
+          await rec.wait(2.4); // the scaffold comes down, the place takes its colour, the ring spreads on the floor
+          rec.off();
+          rec.clip(glide, rec.frame);
+          return 'stop';
+        },
+      });
+    },
+  },
+
   motion: {
     query: 'judge=pitch&debug=stores',
     async run(rec) {
@@ -688,104 +973,150 @@ const SCENARIOS = {
     },
   },
 
-  /** A learner-paced walk of the carpal deck: route, encode, recall with two misses, results. */
-  'stills-walk': {
+  /** The title screen with the built-in palaces listed. */
+  'stills-title': {
     query: '',
     async run(rec) {
-      const page = rec.page;
-      await rec.wait(1);
-      await page.getByRole('button', { name: `Walk ${JUDGE_DECK_TITLE}` }).click();
-      // First use of the layout: the empty route, then the route check.
-      await rec.until((s) => 'familiarize' in s.ids || 'encode' in s.ids, { what: 'the walk' });
-      const route = [];
-      while (rec.has('familiarize') || rec.has('route-check')) {
-        if (rec.has('route-check')) {
-          await rec.until((s) => 'route-option' in s.ids, { what: 'a route question' });
-          const anchor = rec.text('route-question').match(/right after (.+)\?$/)?.[1];
-          const options = await page.locator('[data-testid=route-option] span:last-child').allTextContents();
-          const answer = route[route.indexOf(anchor) + 1];
-          await rec.wait(0.6);
-          await rec.click('route-option', Math.max(0, options.indexOf(answer)));
-          await rec.until((s) => 'route-next' in s.ids, { what: 'the route feedback' });
-          await rec.wait(0.4);
-          await rec.click('route-next');
-          await rec.wait(0.4);
-          continue;
-        }
-        const label = rec.text('walk-label');
-        await rec.until((s) => 'place-hint' in s.ids, { what: `arrival (${label})` });
-        route.push(rec.text('place-name'));
-        await rec.wait(0.4);
-        await rec.click('walk-next');
-        await rec.until((s) => s.ids['walk-label'] !== label || !('familiarize' in s.ids), { what: 'the next place' });
-      }
-      for (let i = 1; i <= 8; i++) {
-        await rec.until((s) => 'encode' in s.ids && (s.ids['walk-label'] ?? '').startsWith(`Place ${i} of 8`), { what: `encode place ${i}` });
-        await rec.until((s) => 'encode-term' in s.ids, { what: `the image at place ${i}` });
-        if (i === 2) {
-          rec.arm();
-          await rec.wait(2.5);
-          await rec.still('ui-encode');
-          rec.off();
-        } else {
-          await rec.wait(0.4);
-        }
-        await rec.click('walk-next');
-      }
-      await rec.until((s) => 'interstitial' in s.ids, { what: 'the recall screen' });
-      await rec.wait(0.5);
-      await rec.click('recall-start');
-      for (let i = 1; i <= 8; i++) {
-        await rec.until((s) => 'recall' in s.ids && (s.ids['walk-label'] ?? '').startsWith(`Place ${i} of 8`), { what: `recall place ${i}` });
-        await rec.until((s) => 'choice' in s.ids, { what: `the question at place ${i}` });
-        const { place, options } = await question(page);
-        const answer = termAt[place];
-        if (i === 3) {
-          rec.arm();
-          await rec.wait(2.5);
-          await rec.still('ui-recall');
-          rec.off();
-        } else {
-          await rec.wait(0.5);
-        }
-        const right = i !== 2 && i !== 6;
-        await rec.click('choice', right ? options.indexOf(answer) : options.findIndex((o) => o !== answer));
-        if (i === 8) rec.arm();
-        await rec.wait(0.6);
-        await rec.click('recall-next');
-      }
-      await rec.until((s) => 'results' in s.ids, { what: 'the results' });
-      rec.mark(`results: ${rec.text('results-score')}`);
-      await rec.wait(3);
-      await rec.still('ui-results');
+      await rec.wait(1.5);
+      await rec.still('ui-title');
     },
   },
 
-  /** Paste six Spanish words; the Architect (its offline fallback here) proposes six images. */
+  /**
+   * A learner's first walk of the Comer deck in the Gothic library: ui-survey (a question of the survey),
+   * ui-encode (a study stop at a place the survey left in ruins), ui-recall (a question of the recall
+   * walk) and ui-results (two places missed, so that the legend has every state to name).
+   */
+  'stills-walk': {
+    query: '',
+    async run(rec) {
+      const k = num('place', 2);
+      const still = async (name, seconds) => {
+        await rec.wait(seconds);
+        await rec.still(name);
+        rec.off();
+      };
+      await learnerRun(rec, COMER, { know: places('know', [1]), miss: places('miss', [5, 12]) }, {
+        surveyQuestion: (i) => (i === k ? still('ui-survey', 1) : undefined),
+        studyShown: (i) => (i === k ? still('ui-encode', 2.5) : undefined),
+        recallQuestion: (i) => (i === k ? still('ui-recall', 1) : undefined),
+        results: () => still('ui-results', 3),
+      });
+    },
+  },
+
+  /** The citric acid cycle in the Workshop, walked as a process: ui-process, a question about a link, with the links on the floor. */
+  'stills-process': {
+    query: '',
+    async run(rec) {
+      const k = num('place', 1);
+      await learnerRun(rec, CYCLE, {}, {
+        async linkQuestion(i) {
+          if (i !== k) return;
+          await rec.wait(1);
+          await rec.still('ui-process');
+          return 'stop';
+        },
+      });
+    },
+  },
+
+  /**
+   * Notes under three headings; the Architect proposes a palace with a room for each: ui-compose.
+   * Every request to the Architect is refused here, so the plan and its images are the offline planner's.
+   */
   'stills-compose': {
     query: '',
     async run(rec) {
       const page = rec.page;
-      const list = ['la manzana - the apple', 'el pan - the bread', 'la leche - the milk', 'el queso - the cheese', 'la sal - the salt', 'el cuchillo - the knife'];
+      await page.route('**/api/architect', (route) => route.abort());
+      const notes = [
+        '# Organelles',
+        'Nucleus - holds the DNA',
+        'Ribosome - builds proteins',
+        'Lysosome - breaks down waste',
+        '# Membranes',
+        'Phospholipid - forms the bilayer',
+        'Cholesterol - keeps it fluid',
+        'Aquaporin - lets water through',
+        '# Energy',
+        'Mitochondrion - makes ATP',
+        'Chloroplast - captures light',
+        'Glycolysis - splits glucose',
+      ];
       await rec.wait(1);
       await rec.click('title-build');
       await rec.until((s) => 'compose-text' in s.ids, { what: 'the compose screen' });
-      await page.getByTestId('compose-text').fill(list.join('\n'));
+      await page.getByTestId('compose-text').fill(notes.join('\n'));
       await rec.wait(1);
       await rec.click('compose-design');
-      rec.arm();
       await rec.until((s) => 'proposal' in s.ids, { timeout: 90, what: "the Architect's proposals" });
       await rec.wait(1.5);
-      // Scroll the panel, as a reader would, until the first proposals fill it.
+      // Scroll the panel, as a reader would, until the first room and its first proposals fill it.
       const { x, y, down } = await page.evaluate(() => {
-        const row = document.querySelector('[data-testid=proposal-row]').getBoundingClientRect();
-        const head = document.querySelector('[data-testid=compose-title]')?.getBoundingClientRect() ?? row;
-        return { x: row.left + row.width / 2, y: row.top, down: Math.min(row.top, head.top) - 96 };
+        const room = (document.querySelector('[data-testid=room]') ?? document.querySelector('[data-testid=proposal-row]')).getBoundingClientRect();
+        return { x: room.left + room.width / 2, y: room.top, down: room.top - 96 };
       });
       await page.mouse.move(x, Math.min(y, height / zoom - 200));
       await page.mouse.wheel(0, Math.max(0, down));
       await rec.wait(1.5);
       await rec.still('ui-compose');
+    },
+  },
+
+  /**
+   * The Progress view and an Exam question: ui-progress and ui-exam. The palace and its history are
+   * written into the browser's storage by this script, in the shapes the app saves (as scripts/smoke.mjs
+   * does for its cases u and h): five minerals in the Roman house, surveyed three days ago (one of five
+   * known), studied, and recalled twice. Nobody walked those walks: the numbers in the chart are made up.
+   */
+  'stills-seeded': {
+    query: '',
+    async run(rec) {
+      const page = rec.page;
+      await page.evaluate(() => {
+        const day = 24 * 3600 * 1000;
+        const now = Date.now();
+        const terms = ['Quartz', 'Feldspar', 'Mica', 'Olivine', 'Pyrite'];
+        const meanings = ['Hard and glassy', 'Pink and blocky', 'Peels in sheets', 'Green and grainy', 'Brassy cubes'];
+        const scenes = [
+          'A glass hammer rings on the lampstand and does not crack.',
+          'Pink building blocks are stacked on the bench like luggage.',
+          'The amphora sheds thin shining pages, one after another.',
+          'Green sand pours from the keystone of the arch.',
+          'Brass dice roll round the rim of the fountain.',
+        ];
+        const glyphs = [['🔨'], ['🧱'], ['📄'], ['⏳'], ['🎲']];
+        const five = [1, 2, 3, 4, 5];
+        const item = (n) => ({ id: `mineral-${n}`, term: terms[n - 1], meaning: meanings[n - 1], locusId: `domus-0${n}`, imago: { scene: scenes[n - 1], glyphs: glyphs[n - 1], action: 'bob', source: 'learner' } });
+        const deck = { id: 'deck-minerals', title: 'Five minerals', kind: 'pairs', layoutId: 'domus', createdAt: now - 4 * day, surveyedAt: now - 3 * day, items: five.map(item) };
+        const card = (n) => [`mineral-${n}`, { itemId: `mineral-${n}`, deckId: deck.id, box: 2, dueAt: now + day, lastReviewedAt: now - day, reps: 2, lapses: 0, survey: n === 1 ? 'known' : 'unknown', surveyGiven: n === 1 ? terms[0] : '', studiedAt: now - 3 * day }];
+        const walk = (id, kind, at, right) => ({ id, deckId: deck.id, kind, at, total: 5, correct: right.length, unknown: 0, ms: 60000, items: five.map((n) => ({ itemId: `mineral-${n}`, correct: right.includes(n) })) });
+        const records = [walk('walk-1', 'survey', now - 3 * day, [1]), walk('walk-2', 'recall', now - 3 * day + 600000, [1, 2, 4]), walk('walk-3', 'recall', now - day, five)];
+        localStorage.setItem('memoria.decks.v1', JSON.stringify({ state: { decks: { [deck.id]: deck } }, version: 0 }));
+        localStorage.setItem('memoria.review.v1', JSON.stringify({ state: { cards: Object.fromEntries(five.map(card)), walk: null }, version: 0 }));
+        localStorage.setItem('memoria.history.v1', JSON.stringify({ state: { records }, version: 0 }));
+        localStorage.setItem('memoria.settings.v1', JSON.stringify({ state: { familiarized: { domus: true } }, version: 0 }));
+      });
+      await rec.reload();
+      if (rec.has('storage-notice')) throw new Error(`the app set the seeded data aside: ${rec.text('storage-notice')}`);
+
+      await rec.click('title-progress');
+      await rec.until((s) => 'progress-chart' in s.ids, { what: 'the Progress view' });
+      rec.mark(`progress: ${rec.text('progress-summary')}`);
+      await rec.wait(1);
+      await rec.still('ui-progress');
+      rec.off();
+      await rec.click('progress-back');
+      await rec.until((s) => 'title' in s.ids, { what: 'the title' });
+
+      await rec.click('deck-exam');
+      await rec.until((s) => 'exam-setup' in s.ids, { what: 'the exam setup' });
+      await rec.wait(0.5);
+      await rec.click('exam-start');
+      await rec.until((s) => 'exam-choice' in s.ids, { what: 'the first exam question' });
+      await rec.wait(1);
+      await rec.still('ui-exam');
     },
   },
 
@@ -828,10 +1159,7 @@ const SCENARIOS = {
       await participant('list-first', 0);
       rec.mark('participant one done');
       // The second participant starts from a fresh page, as at the venue; the stored row survives.
-      await page.goto(`${rec.base}/?compare=palace-first${theme ? `&theme=${theme}` : ''}`, { waitUntil: 'load' });
-      rec.small = false;
-      await rec.step();
-      await rec.until((s) => s.ready && s.veil === 0, { timeout: 120, what: 'the scene after the reload' });
+      await rec.reload(`${rec.base}/?compare=palace-first${theme ? `&theme=${theme}` : ''}`);
       await participant('palace-first', 3);
       rec.arm();
       await rec.wait(3);
@@ -845,23 +1173,36 @@ function ffmpeg(argv, what) {
   if (r.status !== 0) throw new Error(`ffmpeg failed (${what})`);
 }
 
-function encode(first, last) {
+/** Encodes the frames of `clips` ([first, last] ranges, in order). `frame` is the size they were captured at. */
+function encode(clips, frame) {
   // Nothing to encode (a scenario that records several separate stretches is looked at frame by frame).
   if (!flag('mp4') && !flag('gif')) return;
-  const count = last - first + 1;
-  for (let f = first; f <= last; f++) if (!existsSync(path.join(outDir, `f${String(f).padStart(6, '0')}.jpg`))) throw new Error(`frame ${f} is missing: run again to resume`);
-  const input = ['-framerate', String(fps), '-start_number', String(first), '-i', path.join(outDir, 'f%06d.jpg'), '-frames:v', String(count)];
+  const name = (f) => path.join(outDir, `f${String(f).padStart(6, '0')}.jpg`);
+  const frames = clips.flatMap(([first, last]) => Array.from({ length: last - first + 1 }, (_, k) => first + k));
+  const count = frames.length;
+  for (const f of frames) if (!existsSync(name(f))) throw new Error(`frame ${f} is missing: run again to resume`);
+  let input = ['-framerate', String(fps), '-start_number', String(frames[0]), '-i', path.join(outDir, 'f%06d.jpg'), '-frames:v', String(count)];
+  if (clips.length > 1) {
+    // Two takes cut together: ffmpeg reads one numbered run, so the frames are lined up as links in a folder of their own.
+    const cut = path.join(outDir, 'cut');
+    rmSync(cut, { recursive: true, force: true });
+    mkdirSync(cut);
+    frames.forEach((f, k) => symlinkSync(name(f), path.join(cut, `c${String(k + 1).padStart(6, '0')}.jpg`)));
+    input = ['-framerate', String(fps), '-start_number', '1', '-i', path.join(cut, 'c%06d.jpg'), '-frames:v', String(count)];
+  }
   const mp4 = flag('mp4');
   const gif = flag('gif');
   if (mp4) {
     mkdirSync(path.dirname(path.resolve(mp4)), { recursive: true });
-    ffmpeg([...input, '-an', '-c:v', 'libx264', '-preset', 'slow', '-crf', String(num('crf', 20)), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4], 'mp4');
+    // H.264 in yuv420p takes even sizes only: a frame 675 pixels high (900 at zoom 0.75) loses its bottom row.
+    const even = frame.height % 2 ? ['-vf', 'crop=iw:ih-1:0:0'] : [];
+    ffmpeg([...input, ...even, '-an', '-c:v', 'libx264', '-preset', 'slow', '-crf', String(num('crf', 20)), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4], 'mp4');
     console.log(`encoded ${mp4}: ${count} frames, ${(count / fps).toFixed(2)} s at ${fps} fps`);
   }
   if (gif) {
     mkdirSync(path.dirname(path.resolve(gif)), { recursive: true });
     const gifFps = num('gif-fps', fps);
-    const gifWidth = num('gif-width', width);
+    const gifWidth = num('gif-width', frame.width);
     const colors = num('gif-colors', 256);
     const pre = `fps=${gifFps},scale=${gifWidth}:-2:flags=lanczos`;
     ffmpeg(
@@ -879,12 +1220,12 @@ if (args.includes('--encode-only')) {
     console.error(`${meta} not found: capture the frames first.`);
     process.exit(1);
   }
-  const { first, last, fps: capturedFps } = JSON.parse(read(meta));
+  const { clips, fps: capturedFps, width: capturedWidth, height: capturedHeight } = JSON.parse(read(meta));
   if (capturedFps !== fps) {
     console.error(`These frames were captured at ${capturedFps} fps: pass --fps ${capturedFps}.`);
     process.exit(1);
   }
-  encode(first, last);
+  encode(clips, { width: capturedWidth, height: capturedHeight });
   process.exit(0);
 }
 
@@ -993,11 +1334,12 @@ try {
 
   const frames = rec.wanted;
   if (frames.length) {
-    const [first, last] = from !== null || to !== null || !rec.clipRange ? [frames[0], frames[frames.length - 1]] : rec.clipRange;
-    writeFileSync(path.join(outDir, 'capture.json'), JSON.stringify({ scenario: scenarioName, fps, width, height, zoom, seed, first, last, marks: rec.marks }, null, 2));
-    console.log(`frames ${first} to ${last} (${((last - first + 1) / fps).toFixed(2)} s); canvas pixels per CSS pixel while recording: ${[...rec.ratios].join(', ') || 'n/a'}`);
+    const clips = from !== null || to !== null || !rec.clips.length ? [[frames[0], frames[frames.length - 1]]] : rec.clips;
+    writeFileSync(path.join(outDir, 'capture.json'), JSON.stringify({ scenario: scenarioName, fps, width, height, zoom, seed, clips, marks: rec.marks }, null, 2));
+    const length = clips.reduce((n, [first, last]) => n + last - first + 1, 0) / fps;
+    console.log(`frames ${clips.map((c) => c.join(' to ')).join(', then ')} (${length.toFixed(2)} s); canvas pixels per CSS pixel while recording: ${[...rec.ratios].join(', ') || 'n/a'}`);
     if (rec.ratios.size > 1) console.warn('  warning: the canvas resolution changed while recording');
-    encode(first, last);
+    encode(clips, { width, height });
   }
 } catch (e) {
   failed = true;
