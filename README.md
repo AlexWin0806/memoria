@@ -69,7 +69,7 @@ For a live pitch, open `/?judge=pitch`. The button then reads "Try it in 90 seco
 
 To see the survey, press "Walk" on any palace you have not opened before, or build one with "Build a palace".
 
-Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent footage of the whole pitch run, 82 seconds. It was rendered offline, frame by frame on a virtual clock, by `scripts/capture.mjs`. It is not a screen recording from a laptop. **It shows the build from before Part 2** (no ruins, no scaffolds) and is to be re-rendered after the code freeze. Re-rendered: (to fill in).
+Demo video: [`docs/media/demo-pitch.mp4`](docs/media/demo-pitch.mp4), silent footage of the whole pitch run, 80.6 seconds: the palace in ruins at the start, each place rebuilt as it is studied, the spot check, and the results with the legend. Re-rendered from the Part 2 build on Saturday night. It was rendered offline, frame by frame on a virtual clock, by `scripts/capture.mjs`, with WebGL drawn in software; it is not a screen recording from a laptop, so it shows the right speed but not a real GPU's frame rate.
 
 ## What it does
 
@@ -89,7 +89,12 @@ There are two kinds of palace. The handcrafted one, "Domus", has twelve places i
 
 Everything is stored in your browser's localStorage. There are no accounts. Saved data that is malformed is repaired or set aside, never shown as a blank page, and if something does go wrong an error page offers Reload and a guarded Reset.
 
-The pictures below show the recall walk, the study walk and the results **in the build from before Part 2**. Until they are re-rendered, after the code freeze, they do not show ruins, scaffolds or generated palaces. Re-rendered: (to fill in). The stills at the top of this page show Part 2.
+The clips and screenshots below were re-rendered from the Part 2 build on Saturday night, in the same way as the demo video.
+
+| | |
+|---|---|
+| ![The survey: "I don't know" is pressed and the Rose Window falls into ruin](docs/media/survey-collapse.gif) | ![The same place rebuilt inside its scaffold on the study walk, then restored by a right answer on the recall walk](docs/media/repair.gif) |
+| The survey: "I don't know", and the place falls. A dashed outline of it stays. | Study puts it back inside a scaffold; a right answer on the recall walk restores it. (Two takes with a cut between them.) |
 
 ![One place on the recall walk: the question, a right answer, and the place taking its colour](docs/media/recall.gif)
 
@@ -99,8 +104,14 @@ The pictures below show the recall walk, the study walk and the results **in the
 |---|---|
 | ![Encode walk: an image appears at its place](docs/media/encode.gif) | ![Recall walk: the question at a place, with the image hidden](docs/media/ui-recall.png) |
 | Study walk: the image appears at its place with its term, meaning and scene. | Recall: "What did you leave at this place?", with the image hidden until you answer. |
-| ![Results screen](docs/media/ui-results.png) | ![The atrium of the Domus, fully learned](docs/media/palace-overview.png) |
-| Results: the score, place by place, while the camera revisits the places just walked. | The atrium of the Domus with every place recalled. |
+| ![A survey question at the Rose Window, with "I don't know"](docs/media/ui-survey.png) | ![A study stop showing the learner's survey answer beside the right one](docs/media/ui-encode.png) |
+| The survey: one question per place, "I don't know" always there. | Study: "In the survey you said: I don't know.", then the term, meaning and image. |
+| ![Results screen with the legend of the states of a place](docs/media/ui-results.png) | ![The proposal grouped by room, with the generated palace behind it](docs/media/ui-compose.png) |
+| Results: before study against now, place by place, with the legend. | Build a palace: the proposal by room, the palace already standing behind it. |
+| ![The citric acid cycle in the Workshop: "What happens to Oxaloacetate next?"](docs/media/ui-process.png) | ![The Progress view: a chart of walks with the survey marked before study](docs/media/ui-progress.png) |
+| A process deck: after the place, what happens to the step next. Links on the floor. | Progress: every walk, the survey as "before study". (Seeded history: the numbers are made up.) |
+| ![An exam question on a plain sheet, the palace hidden](docs/media/ui-exam.png) | ![The atrium of the Domus, fully learned](docs/media/palace-overview.png) |
+| Exam Mode: no palace, shuffled order. | The atrium of the Domus with every place recalled. |
 | ![The palace paints itself in around the places you remember; unlearned places stay as line drawing](docs/media/palace-development.png) | ![A half-learned place with a light first glaze](docs/media/palace-first-glaze.png) |
 | Colour follows what you have recalled: unlearned places stay as line drawing. | First glaze: a place that holds an image but has not been recalled yet. |
 

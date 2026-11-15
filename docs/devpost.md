@@ -127,7 +127,7 @@ TypeScript, React, three.js, React Three Fiber, drei, postprocessing, GLSL, WebG
 - Demo footage (silent, rendered offline): https://github.com/AlexWin0806/memoria/blob/main/docs/media/demo-pitch.mp4
 - Video: <!-- add the YouTube link -->
 
-<!-- to fill in: media. `demo-pitch.mp4`, `encode.gif`, `recall.gif` and the `ui-*.png` stills in docs/media/ still show the build from before Part 2 (no ruins, no scaffolds, no generated palaces). They are to be re-rendered after the code freeze. Do not submit the footage link above until `demo-pitch.mp4` has been re-rendered; delete the line if it has not. For the gallery, the stills that already show Part 2 are docs/media/place-in-ruins.png, place-under-repair.png, palace-repair-mix.png, palace-gothic-library.png, palace-zen-garden.png, palace-workshop.png and palace-links-process.png. -->
+<!-- media: re-rendered from the Part 2 build on Saturday night: `demo-pitch.mp4` (80.6 s, the true pitch run), `survey-collapse.gif`/`.mp4`, `repair.gif`/`.mp4`, `encode.gif`, `recall.gif`/`.mp4`, and the stills `ui-title`, `ui-survey`, `ui-encode`, `ui-recall`, `ui-results`, `ui-compose`, `ui-process`, `ui-progress` (seeded history), `ui-exam`. Best gallery picks: survey-collapse.gif, repair.gif, palace-gothic-library.png, palace-links-process.png, ui-compose.png, ui-process.png. For the gallery, the stills that already show Part 2 are docs/media/place-in-ruins.png, place-under-repair.png, palace-repair-mix.png, palace-gothic-library.png, palace-zen-garden.png, palace-workshop.png and palace-links-process.png. -->
 
 ## Before submitting (delete this section)
 
@@ -143,7 +143,7 @@ TypeScript, React, three.js, React Three Fiber, drei, postprocessing, GLSL, WebG
    8. The offline planner: a `term - meaning` line is one fact, `label: a -> b -> c` is a chain, and room names are not cut in the middle of a phrase. (Nothing in this text depends on it.)
 3. Confirm that what was live at 9:30 PM is still on the live site: the choice of style on the Compose screen, "Add to this palace", "Edit", process decks, links drawn on the floor, Exam Mode. Text that describes a feature that is not on the live site does not go in.
 4. Fill in the timing of the pitch run on a quiet machine with a person answering (Challenges). Search for "to fill in".
-5. Re-render the media after the code freeze: `demo-pitch.mp4`, `encode.gif`, `recall.gif` and the `ui-*.png` stills show the build from before Part 2. Then check the footage link and choose the gallery images; the seven stills that already show Part 2 are listed in the comment under Links.
+5. Media: re-rendered on Saturday night (see the comment under Links). Choose the gallery images, and upload `demo-pitch.mp4` to YouTube for the video link if there is no narrated video.
 6. Fill in the result of trying real course PDFs and the ChatOverflow note count, or leave the present wording.
 7. What we learned: add the venue test sentence, or leave it out.
 8. Links: video link.

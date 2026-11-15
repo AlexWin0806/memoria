@@ -9,8 +9,8 @@ demo figures are the reviewer's measured run. "Nothing is revealed" is gone ever
 place stands or falls as you answer, so the verdict is shown; what is not shown is the right
 answer. Everything draft 5 called "being built" is live.
 
-If the team falls back to the build from before Part 2 (go or no-go is Sat 11:00 PM), use
-draft 4 instead: `git show 34d496c:docs/pitch.md`.
+Part 2 went live and passed its QA verification on Saturday night, so this draft is the one to
+use. (The build from before Part 2 and its pitch, draft 4, remain at `34d496c` if ever needed.)
 
 ## Before the judge arrives
 
@@ -101,9 +101,9 @@ why the line is "in your own palace".
   `node scripts/smoke.mjs --only p --serial`. Below about 3.5 s per place the pictures cannot
   be read.
 - The judge can press Space to move on sooner and P to pause. Do not tell them unless they ask.
-- If something goes wrong, `docs/media/demo-pitch.mp4` is silent footage of the pitch run. It
-  still shows the build from before Part 2 (no ruins, no scaffolds) and is to be re-rendered
-  after the code freeze. Re-rendered: (to fill in).
+- If something goes wrong, `docs/media/demo-pitch.mp4` is silent footage of this exact run
+  (80.6 s, re-rendered from the Part 2 build on Saturday night: ruins, rebuild, spot check,
+  legend). Have it open in a second tab, or downloaded.
 - The collapse and the rebuild have been seen in stills and in tests, not in motion on a real
   GPU. By the code's constants each four-second stop begins with about 1.2 s of pieces rising
   where the picture fades in. Watch one full run on the demo laptop before the first judge and
