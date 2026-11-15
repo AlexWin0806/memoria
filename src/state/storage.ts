@@ -358,7 +358,8 @@ function cleanSpec(v: unknown): PalaceSpec | null {
     if (!isObj(r) || !str(r.id) || !str(r.name) || !num(r.places)) return null;
     rooms.push({ id: r.id, name: r.name, places: r.places, ...(r.shape === 'ring' ? { shape: 'ring' as const } : {}) });
   }
-  return { kit: v.kit, rooms };
+  // The seed says which objects stand where: without it a draft would be refurnished on every reload.
+  return { kit: v.kit, rooms, ...(typeof v.seed === 'string' && /^[a-z0-9]{1,8}$/.test(v.seed) ? { seed: v.seed } : {}) };
 }
 
 const KIT_CHOSEN_BY = ['learner', 'architect', 'default'] as const;
