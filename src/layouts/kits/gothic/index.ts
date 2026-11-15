@@ -15,4 +15,13 @@ export const GOTHIC: KitDef = {
   rings: true,
   ringMood: GOTHIC_RING_MOOD,
   Room: GothicRoom,
+  // Dark, cool limestone with oak: unlike the warm plaster of the Roman house.
+  tone: {
+    wall: { toward: '#5f636b', amount: 0.7 },
+    floor: { toward: '#55585e', amount: 0.7 },
+    ceiling: { toward: '#5c6068', amount: 0.7 },
+    stone: { toward: '#666a72', amount: 0.65 },
+    trim: { toward: '#575a62', amount: 0.65 },
+    wood: { toward: '#4f3a28', amount: 0.55 },
+  },
 };

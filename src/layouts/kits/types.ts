@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import type { AccentKey } from '@/core/types';
+import type { SurfaceTone } from '@/styles/tone';
 
 /**
  * One thing a place can be: a lectern, a stone lantern, a suit of armour. Features are the
@@ -175,4 +176,9 @@ export interface KitDef {
    * walls leaves this out.
    */
   Backdrop?: FC;
+  /**
+   * The kit's own material tone: neutral slots mixed toward a target colour in every theme, so
+   * the halls of one kit read as stone or as timber. Neutral slots only; accents stay the theme's.
+   */
+  tone?: SurfaceTone;
 }

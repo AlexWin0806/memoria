@@ -104,7 +104,7 @@ function Places({ plan }: { plan: PalacePlan }) {
 export function buildLayout(spec: PalaceSpec): PalaceLayout {
   const plan = planLayout(spec);
   const GeneratedStructure = () => <Structure plan={plan} />;
-  return { ...plan.meta, Structure: GeneratedStructure, footprint: plan.footprint };
+  return { ...plan.meta, Structure: GeneratedStructure, footprint: plan.footprint, tone: plan.kit.tone };
 }
 
 export { planLayout } from './plan';

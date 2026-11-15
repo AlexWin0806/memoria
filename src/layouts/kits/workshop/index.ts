@@ -16,4 +16,13 @@ export const WORKSHOP: KitDef = {
   ringMood: WORKSHOP_RING_MOOD,
   signHeight: WORKSHOP_SIGN_HEIGHT,
   Room: WorkshopRoom,
+  // Warm brown timber over a brick floor: unlike the plaster house and the grey library.
+  tone: {
+    wall: { toward: '#8a5e36', amount: 0.7 },
+    ceiling: { toward: '#7a5432', amount: 0.7 },
+    wood: { toward: '#6e4a2c', amount: 0.65 },
+    trim: { toward: '#6e4a2c', amount: 0.65 },
+    floor: { toward: '#7a4e36', amount: 0.65 },
+    stone: { toward: '#b08a62', amount: 0.4 },
+  },
 };

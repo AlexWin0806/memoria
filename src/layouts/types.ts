@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import type { PalaceLayoutMeta, Vec3 } from '@/core/types';
+import type { SurfaceTone } from '@/styles/tone';
 
 /**
  * A palace layout: data (rooms, loci, camera poses) plus a Structure component that
@@ -8,6 +9,8 @@ import type { PalaceLayoutMeta, Vec3 } from '@/core/types';
  */
 export interface PalaceLayout extends PalaceLayoutMeta {
   Structure: FC;
+  /** The kit's material tone (`KitDef.tone`), applied to the theme while this palace is shown. */
+  tone?: SurfaceTone;
   /**
    * By locus index: radius in metres of the floor that locus's feature stands on, measured
    * from the point under its anchor (or its `focus`). The engine draws its floor marks (the
