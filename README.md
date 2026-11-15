@@ -173,7 +173,7 @@ The default look, Ink & Vellum, is a custom non-photorealistic pipeline: flat wa
 
 **The development field.** Every material can ask `developmentAt(worldPosition)`, a value from 0 to 1 that says how well the nearest place has been learned. Styles draw low values as unfinished and high values as complete. In the ink style an unlearned place is line on bare vellum, a place that holds an image carries a light first glaze, and a correct recall brings the full washes and pigment in around it, with an ink ring spreading on the floor.
 
-**Camera.** The camera glides on a spline rail. Its turn rate is capped so that wide turns of the head stay calm, and the adaptive render resolution survives window resizes. Since Sunday 2:52 AM ET the view follows the rail with a short damping (about a tenth of a second of lag), so the corners of the route reach the screen as rounded turns; a cut and reduced motion still snap, and the glides take as long as before. Measured on a virtual clock, the sharpest change of turning speed in each glide of the pitch run fell by between a fifth and a half; it has not been seen on a real GPU.
+**Camera.** The camera glides on a spline rail. Its turn rate is capped so that wide turns of the head stay calm, and the adaptive render resolution survives window resizes.
 
 **The Palace Architect.** The server function works in steps, and the app shows each step to the learner in plain words:
 
