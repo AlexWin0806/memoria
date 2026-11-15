@@ -5,8 +5,8 @@ import { answerOf, dealSlot, normalize, shuffle, typedMatches } from './answers'
  * What a process deck adds to its walks. A deck is a process when its items are the steps of
  * something that runs in order or in a cycle (`focus: 'process'`) and it says how they are
  * connected (`links`). Its study walk says how each step connects; its recall walk asks, after
- * the place itself, what happens to the step next, what it holds back and what it needs; and
- * the steps are put in order once at the end. A facts deck with links (matched pairs) is
+ * the place itself, what happens to the step next, which step acts on it and what it needs;
+ * and the steps are put in order once at the end. A facts deck with links (matched pairs) is
  * walked as any other deck.
  *
  * One rule binds every question about a link (research principle 6): neither the question nor
@@ -63,23 +63,37 @@ const MIN_STEP_LABELS = 3;
  */
 const asksWhatHappens = (deck: Deck, l: ItemLink): boolean => l.kind === 'becomes' && labelOf(l) !== '' && stepLabels(deck).length >= MIN_STEP_LABELS;
 
+const noteOf = (l: ItemLink): string => l.note?.trim() ?? '';
+/** A sentence ends with one full stop, whether or not it was written with it. */
+const ended = (sentence: string): string => (/[.!?]$/.test(sentence) ? sentence : `${sentence}.`);
+
 /*
  * How a `blocks` link is worded for the learner. Such a link usually stands for regulation:
  * `from` acts on whatever makes `to` (succinyl-CoA inhibits citrate synthase, the enzyme that
- * makes citrate), not on `to` itself. So no sentence is built from the kind alone: "X blocks
- * Y" would often be false. The label is the statement ("inhibits citrate synthase"), and the
- * general form that stays true around it is "X holds back Y". Never "blocks", "stops" or
- * "destroys" in anything the learner reads.
+ * makes citrate), not on `to` itself, so a sentence built from the kind ("X blocks Y", "X
+ * holds back Y") is often false (docs/research.md 9.4 item 3, 9.5 principle 9c). Where the
+ * link says what it does, that is what the learner reads and nothing else: its `note`, word
+ * for word; failing that its label as the predicate ("Succinyl-CoA inhibits citrate
+ * synthase."). Only a link with neither is said in the one general form that stays true,
+ * "X holds back Y". Never "blocks", "stops" or "destroys" in anything the learner reads.
  */
 const HOLDS_BACK = 'holds back';
 const HELD_BACK_BY = 'Held back by';
+
+/** What a `blocks` link says of itself, as one sentence; null when it has neither a note nor a label. */
+function regulation(deck: Deck, l: ItemLink): string | null {
+  if (noteOf(l)) return ended(noteOf(l));
+  return labelOf(l) ? ended(`${termOf(deck, l.from)} ${labelOf(l)}`) : null;
+}
 
 /**
  * How a step connects, in plain words, for the study walk. `walk` is the items of this walk
  * in the order they are walked. A step that turns into another is not named before the learner
  * reaches it (each term is first met at its own place); a step already passed, or one that is
  * not on this walk at all (an older place), is. What a step holds back or needs is said in
- * full at both ends, because the other end may be anywhere in the palace.
+ * full at both ends, because the other end may be anywhere in the palace. A link's `note` is
+ * its own exact sentence: where it has one, the note is shown and nothing built from the kind
+ * (for a `becomes` link, once the step it names is not still ahead).
  */
 export function studyLines(deck: Deck, item: MemoryItem, walk: string[]): string[] {
   if (!isProcessDeck(deck)) return [];
@@ -92,22 +106,26 @@ export function studyLines(deck: Deck, item: MemoryItem, walk: string[]): string
   const into = links.filter((l) => l.to === item.id);
   const out = links.filter((l) => l.from === item.id);
   const lines: string[] = [];
+  // The link's own sentence where it has one; otherwise the sentence built for it.
+  const noted = (l: ItemLink, built: string): string => (noteOf(l) ? ended(noteOf(l)) : built);
   for (const l of into.filter((x) => x.kind === 'becomes')) {
-    lines.push(said(ahead(l.from) === 'no' ? `Comes from ${termOf(deck, l.from)}` : 'Comes from a step further along the route', l.label));
+    if (ahead(l.from) === 'no') lines.push(noted(l, said(`Comes from ${termOf(deck, l.from)}`, l.label)));
+    else lines.push(said('Comes from a step further along the route', l.label));
   }
   for (const l of out.filter((x) => x.kind === 'becomes')) {
     const where = ahead(l.to);
-    if (where === 'no') lines.push(said(`It becomes ${termOf(deck, l.to)}`, l.label));
+    if (where === 'no') lines.push(noted(l, said(`It becomes ${termOf(deck, l.to)}`, l.label)));
     else lines.push(where === 'next' ? 'It becomes the step at the next place.' : 'It becomes a step further along the route.');
   }
-  for (const l of out.filter((x) => x.kind === 'needs')) lines.push(said(`It needs ${termOf(deck, l.to)}`, l.label));
-  for (const l of out.filter((x) => x.kind === 'blocks')) lines.push(said(`It ${HOLDS_BACK} ${termOf(deck, l.to)}`, l.label));
-  for (const l of into.filter((x) => x.kind === 'needs')) lines.push(said(`${termOf(deck, l.from)} needs it`, l.label));
-  for (const l of into.filter((x) => x.kind === 'blocks')) lines.push(said(`${HELD_BACK_BY} ${termOf(deck, l.from)}`, l.label));
+  for (const l of out.filter((x) => x.kind === 'needs')) lines.push(noted(l, said(`It needs ${termOf(deck, l.to)}`, l.label)));
+  for (const l of out.filter((x) => x.kind === 'blocks')) lines.push(regulation(deck, l) ?? `It ${HOLDS_BACK} ${termOf(deck, l.to)}.`);
+  for (const l of into.filter((x) => x.kind === 'needs')) lines.push(noted(l, said(`${termOf(deck, l.from)} needs it`, l.label)));
+  for (const l of into.filter((x) => x.kind === 'blocks')) lines.push(regulation(deck, l) ?? `${HELD_BACK_BY} ${termOf(deck, l.from)}.`);
   for (const l of links.filter((x) => x.kind === 'mirrors' && (x.from === item.id || x.to === item.id))) {
-    lines.push(said(`Paired with ${termOf(deck, l.from === item.id ? l.to : l.from)}`, l.label));
+    lines.push(noted(l, said(`Paired with ${termOf(deck, l.from === item.id ? l.to : l.from)}`, l.label)));
   }
-  return lines;
+  // Two links may say the same thing (one note for both, one label from one step to two others): it is said once.
+  return [...new Set(lines)];
 }
 
 /**
@@ -139,8 +157,10 @@ export interface LinkQuestion {
   kind: AskedKind;
   /** What answers it: what happens to a step, in the few words of a link's label, or a step of the deck. */
   asks: 'label' | 'term';
-  /** "What happens to Citrate next?", "What did Stream come from?", "Which step does Sea hold back?", "What does Stream need?" */
+  /** "What happens to Citrate next?", "What did Stream come from?", "Which step inhibits citrate synthase?", "What does Stream need?" */
   prompt: string;
+  /** The question as it is put after the last place, where "this one" would point at another step. Absent = the same. */
+  later?: string;
   /** Every right answer, and the sentence shown with it once the question has been answered. */
   answers: { text: string; fact: string }[];
   /**
@@ -152,19 +172,25 @@ export interface LinkQuestion {
 
 /**
  * The questions that belong to an item: what happens to it next (or, failing a label, what it
- * came from), then what it holds back (`blocks`), then what it needs, two at most. An item
+ * came from), then which step acts on it (`blocks`), then what it needs, two at most. An item
  * with several links of one kind (a branch) gets one question for that kind, and any of them
  * is a right answer.
+ *
+ * Regulation is asked for by its actor, in the link's own words and at the step it acts on:
+ * "Which step inhibits citrate synthase?", answer Succinyl-CoA. Never "which step does X hold
+ * back?" with the product as the answer: the link's label names an enzyme, not the product.
  */
 function questionsAbout(deck: Deck, item: MemoryItem): LinkQuestion[] {
   const links = linksOf(deck);
   const term = answerOf(item);
   const questions: LinkQuestion[] = [];
-  const ask = (what: string, kind: AskedKind, asks: LinkQuestion['asks'], prompt: string, answers: LinkQuestion['answers'], ends: string[]) => {
+  const ask = (what: string, kind: AskedKind, asks: LinkQuestion['asks'], prompt: string, answers: LinkQuestion['answers'], ends: string[], later?: string) => {
     const seen = new Set<string>();
     const unique = answers.filter((a) => !seen.has(normalize(a.text)) && seen.add(normalize(a.text)));
-    if (unique.length) questions.push({ id: `${item.id}:${what}`, about: item.id, kind, asks, prompt, answers: unique, names: [item.id, ...ends] });
+    if (unique.length) questions.push({ id: `${item.id}:${what}`, about: item.id, kind, asks, prompt, answers: unique, names: [item.id, ...ends], ...(later ? { later } : {}) });
   };
+  // The link's own sentence where it has one; otherwise the sentence built for it.
+  const noted = (l: ItemLink, built: string): string => (noteOf(l) ? ended(noteOf(l)) : built);
   const out = links.filter((l) => l.from === item.id);
 
   const next = out.filter((l) => asksWhatHappens(deck, l));
@@ -176,19 +202,25 @@ function questionsAbout(deck: Deck, item: MemoryItem): LinkQuestion[] {
     'becomes',
     'term',
     `What did ${term} come from?`,
-    sources.map((l) => ({ text: termOf(deck, l.from), fact: said(`${term} comes from ${termOf(deck, l.from)}`, l.label) })),
+    sources.map((l) => ({ text: termOf(deck, l.from), fact: noted(l, said(`${term} comes from ${termOf(deck, l.from)}`, l.label)) })),
     sources.map((l) => l.from),
   );
 
-  const held = out.filter((l) => l.kind === 'blocks');
-  ask(
-    'blocks',
-    'blocks',
-    'term',
-    `Which step does ${term} hold back?`,
-    held.map((l) => ({ text: termOf(deck, l.to), fact: said(`${term} ${HOLDS_BACK} ${termOf(deck, l.to)}`, l.label) })),
-    held.map((l) => l.to),
-  );
+  // One question for each thing that is done to this step: links with the same label share it, and any of their actors is right.
+  const acting = new Map<string, ItemLink[]>();
+  for (const l of links.filter((x) => x.to === item.id && x.kind === 'blocks')) acting.set(normalize(labelOf(l)), [...(acting.get(normalize(labelOf(l))) ?? []), l]);
+  [...acting.values()].forEach((same, n) => {
+    const label = labelOf(same[0]);
+    ask(
+      n === 0 ? 'blocks' : `blocks-${n + 1}`,
+      'blocks',
+      'term',
+      label ? `Which step ${label.replace(/[.?!]+$/, '')}?` : 'Which step holds this one back?',
+      same.map((l) => ({ text: termOf(deck, l.from), fact: regulation(deck, l) ?? `${termOf(deck, l.from)} ${HOLDS_BACK} ${term}.` })),
+      same.map((l) => l.from),
+      label ? undefined : `Which step holds ${term} back?`,
+    );
+  });
 
   const needed = out.filter((l) => l.kind === 'needs');
   ask(
@@ -196,7 +228,7 @@ function questionsAbout(deck: Deck, item: MemoryItem): LinkQuestion[] {
     'needs',
     'term',
     `What does ${term} need?`,
-    needed.map((l) => ({ text: termOf(deck, l.to), fact: said(`${term} needs ${termOf(deck, l.to)}`, l.label) })),
+    needed.map((l) => ({ text: termOf(deck, l.to), fact: noted(l, said(`${term} needs ${termOf(deck, l.to)}`, l.label)) })),
     needed.map((l) => l.to),
   );
 
@@ -219,7 +251,10 @@ export function walkLinkQuestions(deck: Deck | undefined, walk: readonly string[
     const item = deck.items.find((it) => it.id === id);
     if (!item || at.has(id)) return;
     const asked: LinkQuestion[] = [];
-    for (const q of questionsAbout(deck, item)) (q.names.some((name) => (position.get(name) ?? -1) > here) ? waiting : asked).push(q);
+    for (const q of questionsAbout(deck, item)) {
+      if (q.names.some((name) => (position.get(name) ?? -1) > here)) waiting.push(q.later ? { ...q, prompt: q.later } : q);
+      else asked.push(q);
+    }
     at.set(id, asked);
   });
   const last = walk[walk.length - 1];
