@@ -57,8 +57,8 @@
  *      connects; the recall walk asks the place first, then about the step's links (never a matched
  *      pair), and no question or feedback names a step whose place has not been asked yet: what a step
  *      turns into is asked as what happens to it, and a question that names a later step waits for the
- *      last place; regulation is worded from the link's label or note, never from its kind (the citric
- *      acid cycle, walked to the end); the steps of a cycle are put in order, started in the middle,
+ *      last place; regulation is worded from the link's label, never from its kind; the built-in cell
+ *      cycle, walked from the title to the end, asks about its links and their order; the steps of a cycle are put in order, started in the middle,
  *      with undo, and once more after a reload; the results count places, links and order apart; the
  *      walk record holds `relations` and `order`; and the same answers on the same deck marked as
  *      facts give the same place scores and review cards, with no question about a link at all
@@ -137,12 +137,17 @@ if (Object.keys(termAt).length !== 8) {
 const routeOrder = [...layoutSrc.matchAll(/\{ id: '(domus-\d+)', index: (\d+),/g)]
   .sort((a, b) => Number(a[2]) - Number(b[2]))
   .map((m) => placeName[m[1]]);
-const fixtureCount = readFileSync('src/ai/fixtures/index.ts', 'utf8').match(/FIXTURE_DECKS: Deck\[\] = \[([^\]]+)\]/)[1].split(',').length;
+const fixturesSrc = readFileSync('src/ai/fixtures/index.ts', 'utf8');
+/** The built-in decks listed on the title: FIXTURE_DECKS less UNLISTED_DECK_IDS (kept for the comparison test only). */
+const fixtureCount =
+  fixturesSrc.match(/FIXTURE_DECKS: Deck\[\] = \[([^\]]+)\]/)[1].split(',').length - fixturesSrc.match(/UNLISTED_DECK_IDS[^=]*= new Set\(\[([^\]]+)\]\)/)[1].split(',').length;
 const JUDGE_DECK_TITLE = 'The eight carpal bones';
 /** The short Judge run (?judge=short): the cell-cycle deck, the term at each named place, in route order. */
 const cellSrc = readFileSync('src/ai/fixtures/cell-cycle.ts', 'utf8');
-const cellAt = Object.fromEntries([...cellSrc.matchAll(/term: '([^']+)'[^\n]*?locusId: '([^']+)'/g)].map((m) => [placeName[m[2]], m[1]]));
 const CELL_TERMS = ['Interphase', 'Prophase', 'Metaphase', 'Anaphase', 'Telophase'];
+/** The five stations of its Workshop hall, in route order (checked against the layout by scripts/architect-smoke.mjs). */
+const CELL_STATIONS = ['The Screw Press', 'The Grindstone', 'The Alembic Still', 'The Hopper and Chute', 'The Water Wheel'];
+const cellAt = Object.fromEntries(CELL_STATIONS.map((name, n) => [name, CELL_TERMS[n]]));
 /** JUDGE_PROMISE.short.label in src/flows/timing.ts. */
 const SHORT_PROMISE = readFileSync('src/flows/timing.ts', 'utf8').match(/short: \{ measuredSeconds: \d+, label: '([^']+)' \}/)[1];
 /** The pitch variant's spot check: this many of the eight places (spotCheckStops in src/flows/timing.ts). */
@@ -509,7 +514,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     }
     const end = at('results');
     assert(end, 'no state of repair noted on the results');
-    const asked = visited.map((v) => routeOrder.indexOf(v));
+    const asked = visited.map((v) => (short ? CELL_STATIONS : routeOrder).indexOf(v));
     const wantEnd = Array.from({ length: N }, (_, k) => (asked.includes(k) ? (expected[asked.indexOf(k)].state === 'right' ? 1 : 0.3) : 0.6)).join(' ');
     assert(eight(end) === wantEnd, `results: the places are ${eight(end)}, expected ${wantEnd} (asked: ${asked})`);
     assert(end.integrity.slice(N).every((v) => v === 1), 'a place that holds nothing is not whole');
@@ -845,11 +850,12 @@ const cases = {
   },
 
   async i() {
-    // The deck itself: five stages, in order, on the first five places, an alternate each, glyphs that draw everywhere
-    // (one emoji code point, the full Unicode-13 rule is checked by scripts/architect-smoke.mjs).
-    const items = [...cellSrc.matchAll(/term: '([^']+)'[^\n]*?locusId: '([^']+)'/g)].map((m) => [m[1], m[2]]);
+    // The deck itself: five stages, in order, on the five places of one Workshop hall, an alternate each, glyphs that
+    // draw everywhere (one emoji code point, the full Unicode-13 rule is checked by scripts/architect-smoke.mjs).
+    const items = [...cellSrc.matchAll(/term: '([^']+)'[^\n]*?locusId: PLACES\[(\d)\]/g)].map((m) => [m[1], m[2]]);
     assert(items.map(([t]) => t).join() === CELL_TERMS.join(), `cell-cycle terms: ${items.map(([t]) => t)}`);
-    assert(items.map(([, l]) => l).join() === ['01', '02', '03', '04', '05'].map((n) => `domus-${n}`).join(), `cell-cycle places: ${items.map(([, l]) => l)}`);
+    assert(items.map(([, l]) => l).join() === '0,1,2,3,4', `cell-cycle places: ${items.map(([, l]) => l)}`);
+    assert(cellSrc.includes("planSpec('workshop', [{ name: 'The cell cycle', count: 5 }])"), 'the cell cycle should stand in one five-place Workshop hall');
     assert((cellSrc.match(/alternates: \[\{/g) ?? []).length === 5, 'every cell-cycle item needs one alternate');
     const glyphs = [...cellSrc.matchAll(/glyphs: \[([^\]]+)\]/g)].flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((g) => g[1]));
     const bad = glyphs.filter((g) => [...g].filter((c) => c !== '\uFE0F').length !== 1 || !/\p{Extended_Pictographic}/u.test(g));
@@ -2649,8 +2655,9 @@ const cases = {
     await page.getByTestId('settings').locator('summary').click();
     await page.locator('#set-recall').selectOption('choice');
 
-    // ── The built-in showcase is a process too: its first step says how it connects, and names no step ahead.
-    await page.getByRole('button', { name: 'Walk The citric acid cycle, as a cycle' }).click();
+    // ── The built-in process deck, the cell cycle, walked from the title (not as a Judge run): its first stage says
+    // how it connects and names no stage ahead; walked to the end, it asks what each stage becomes, then the order.
+    await page.getByRole('button', { name: 'Walk The five stages of the cell cycle' }).click();
     await page.getByTestId('survey').waitFor();
     await page.getByTestId('survey-skip').click();
     await page.getByTestId('survey-skip-yes').click();
@@ -2659,74 +2666,55 @@ const cases = {
     await page.evaluate(() => window.__memoria.settings.getState().markFamiliarized(window.__memoria.session.getState().layoutId));
     await page.getByTestId('survey-study').click();
     await page.getByTestId('encode-term').waitFor();
-    // Walked to the end, study and recall: its regulation link is worded from its note, never from its kind
-    // (QA review 4, issue 5; docs/research.md 9.4 item 3), and no question gives away a place not asked yet.
-    const NOTE = 'Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate.';
-    const REGULATION = 'Which step inhibits citrate synthase?';
     const cycleTerms = [];
-    const cycleSaid = [];
-    for (let i = 1; i <= 8; i++) {
-      await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 8")`).waitFor();
+    for (let i = 1; i <= 5; i++) {
+      await page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place ${i} of 5")`).waitFor();
       await page.getByTestId('encode-term').waitFor();
       cycleTerms.push(await text(page.getByTestId('encode-term')));
       const said = await page.getByTestId('encode-links').locator('li').allTextContents();
-      cycleSaid.push(...said);
       if (i === 1) {
         assert(
-          JSON.stringify(said) === JSON.stringify(['Comes from a step further along the route: joins acetyl-CoA (citrate synthase).', 'It becomes the step at the next place.', NOTE]),
-          `the citric acid cycle's first step connects as ${JSON.stringify(said)}`,
+          JSON.stringify(said) === JSON.stringify(['Comes from a step further along the route: cell splits in two.', 'It becomes the step at the next place.']),
+          `the cell cycle's first stage connects as ${JSON.stringify(said)}`,
         );
         await shot(page, 'process-cycle-study');
       }
-      // The same sentence at the other end of the link, where the step that acts stands.
-      if (cycleTerms[i - 1] === 'Succinyl-CoA') assert(said.includes(NOTE), `at Succinyl-CoA the study walk says ${JSON.stringify(said)}`);
       await page.getByTestId('walk-next').click();
     }
-    assert(cycleTerms[0] === 'Citrate' && cycleTerms.includes('Succinyl-CoA'), `the cycle's steps: ${cycleTerms}`);
+    assert(cycleTerms.join() === CELL_TERMS.join(), `the cycle's stages: ${cycleTerms}`);
     await page.getByTestId('interstitial').waitFor();
     await page.getByTestId('recall-start').click();
     const cycleAsked = [];
-    for (let i = 1; i <= 8; i++) {
-      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 8")`).waitFor();
+    for (let i = 1; i <= 5; i++) {
+      await page.locator(`[data-testid=recall] [data-testid=walk-label]:has-text("Place ${i} of 5")`).waitFor();
       await page.getByTestId('recall-question').waitFor();
       await page.getByTestId('recall-pass').click();
       await page.getByTestId('recall-verdict').waitFor();
-      cycleSaid.push(await text(page.getByTestId('recall-feedback')));
       await page.getByTestId('recall-next').click();
       const ahead = cycleTerms.slice(i);
       for (let more = true; more; ) {
         // The question on screen, not yet answered (the one before it leaves the screen as this one arrives).
         await page.waitForFunction(() => document.querySelector('[data-testid=link-question]') !== null && document.querySelector('[data-testid=link-verdict]') === null);
         const prompt = await text(page.getByTestId('link-question'));
-        assert(!ahead.some((term) => prompt.includes(term)), `the cycle, place ${i}: "${prompt}" names a step whose place has not been asked yet`);
+        assert(!ahead.some((term) => prompt.includes(term)), `the cycle, place ${i}: "${prompt}" names a stage whose place has not been asked yet`);
         cycleAsked.push(`${i}: ${prompt}`);
-        if (prompt === REGULATION) {
-          // Asked for by its actor, with the deck's terms as options; the answer is the step that inhibits, not the product.
-          const options = await choiceTexts(page, 'link-choice');
-          assert(options.includes('Succinyl-CoA'), `"${REGULATION}" is offered ${options}`);
-          await shot(page, 'process-cycle-regulation');
-          await page.getByTestId('link-choice').nth(options.indexOf('Succinyl-CoA')).click();
-        } else await page.getByTestId('link-unknown').click();
+        await page.getByTestId('link-unknown').click();
         await page.getByTestId('link-verdict').waitFor();
         const feedback = await text(page.getByTestId('link-feedback'));
-        assert(!ahead.some((term) => feedback.includes(term)), `the cycle, place ${i}: the feedback to "${prompt}" names a step whose place has not been asked yet: ${feedback}`);
-        if (prompt === REGULATION) assert((await text(page.getByTestId('link-verdict'))) === 'Correct.' && (await text(page.getByTestId('link-fact'))) === NOTE, `the feedback to "${REGULATION}" reads "${await text(page.getByTestId('link-fact'))}"`);
-        cycleSaid.push(prompt, feedback);
+        assert(!ahead.some((term) => feedback.includes(term)), `the cycle, place ${i}: the feedback to "${prompt}" names a stage whose place has not been asked yet: ${feedback}`);
         more = (await text(page.getByTestId('link-next'))) === 'Next question';
         await page.getByTestId('link-next').click();
       }
     }
     await page.getByTestId('order').waitFor();
-    // Eight questions about what happens next, one at each place, and the one about regulation after the last place.
-    assert(cycleAsked.length === 9 && cycleAsked.filter((p) => /: What happens to .+ next\?$/.test(p)).length === 8 && cycleAsked[8] === `8: ${REGULATION}`, `the cycle's questions about links: ${cycleAsked}`);
-    const kindBuilt = cycleSaid.filter((line) => /holds back Citrate|Held back by|hold back|holds back/i.test(line));
-    assert(kindBuilt.length === 0, `the cycle deck words its regulation link from its kind: ${kindBuilt}`);
+    // Five questions about what each stage becomes (the last closes the loop), then the order of the stages.
+    assert(cycleAsked.length === 5 && cycleAsked.every((p) => /: What happens to .+ next\?$/.test(p)), `the cycle's questions about links: ${cycleAsked}`);
     await key('Escape');
     await page.getByTestId('leave-yes').click();
     await page.getByTestId('title').waitFor();
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
-    return 'process deck, keyboard only: study lines; 8 questions about links after the places, none naming a place not asked yet ("What happens to X next?" answered with the label; two wait for the last place); a cycle ordered from the middle 5 of 5, then 2 of 5 after a reload; "Places: 4 of 5. Links: 5 of 8. Order: 2 of 5."; the same answers as plain facts give the same place scores and review cards; the citric acid cycle walked to the end: "Which step inhibits citrate synthase?" after the last place, answered by the note, and never "holds back"';
+    return 'process deck, keyboard only: study lines; 8 questions about links after the places, none naming a place not asked yet ("What happens to X next?" answered with the label; two wait for the last place); a cycle ordered from the middle 5 of 5, then 2 of 5 after a reload; "Places: 4 of 5. Links: 5 of 8. Order: 2 of 5."; the same answers as plain facts give the same place scores and review cards; the cell cycle walked from the title to the end: 5 questions about what each stage becomes, then the order task';
   },
 
   /** A section walk: the places added to a palace, and nothing else. */

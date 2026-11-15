@@ -55,7 +55,7 @@ try {
   const { getLayout } = await vite.ssrLoadModule('/src/layouts/index.ts');
   const { PROPS } = await vite.ssrLoadModule('/src/layouts/props/index.ts');
   const { SPANISH_TENSES } = await vite.ssrLoadModule('/src/ai/fixtures/spanish-tenses.ts');
-  const { KREBS_CYCLE } = await vite.ssrLoadModule('/src/ai/fixtures/krebs-cycle.ts');
+  const { CELL_CYCLE } = await vite.ssrLoadModule('/src/ai/fixtures/cell-cycle.ts');
 
   /** Everything about a plan that is data, with features named by id. */
   const snapshot = (plan) => ({
@@ -263,7 +263,7 @@ try {
 
   // Seed 0: every palace without a seed is furnished as it was before seeds existed. And the
   // seeded palaces kept with them: a seed furnishes a palace the same way for good.
-  const builtIn = { 'built-in deck: Spanish tenses': SPANISH_TENSES.layoutId, 'built-in deck: citric acid cycle': KREBS_CYCLE.layoutId };
+  const builtIn = { 'built-in deck: Spanish tenses': SPANISH_TENSES.layoutId, 'built-in deck: cell cycle': CELL_CYCLE.layoutId };
   for (const [label, golden] of Object.entries(goldenPalaces())) {
     if (builtIn[label]) ok(builtIn[label] === golden.id, `golden, ${label}: the deck's layout id is now ${builtIn[label]}`);
     const plan = planLayout(parsePalaceId(golden.id));
