@@ -107,6 +107,11 @@ const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|$
  * itself, one link for any two facts, a label of at most four words, and a cap.
  * `fresh`: when extending, a link must touch at least one new fact. `standing`: links the
  * palace already has, which are not proposed again.
+ *
+ * `ItemLink.note` (one exact sentence, shown instead of one built from the kind) is never
+ * produced here: it is hand-written, in a fixture or a saved deck. A proposed link is rebuilt
+ * from its four known fields, so a note cannot arrive from the model; the links that stand
+ * are only read, and keep theirs.
  */
 export function cleanLinks<T extends { from: string; to: string; kind: LinkKind; label?: string }>(
   links: readonly T[],

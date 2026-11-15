@@ -63,6 +63,7 @@ try {
       pairs.add(pair);
       if (!['becomes', 'needs', 'blocks', 'mirrors'].includes(l.kind)) fail(`${label}: unknown link kind ${l.kind}`);
       if (l.label !== undefined && (!l.label || wordCount(l.label) > 4)) fail(`${label}: the link label "${l.label}" is empty or longer than four words`);
+      if (l.note !== undefined && (typeof l.note !== 'string' || !l.note.trim() || l.note.length > 200)) fail(`${label}: the link note is empty or longer than 200 characters`);
     }
     if (links.length > Math.floor(facts * 1.5)) fail(`${label}: ${links.length} links for ${facts} facts (the cap is one and a half per fact)`);
   };
@@ -134,7 +135,8 @@ try {
     createdAt: z.number(),
     fixture: z.literal(true),
     items: z.array(Item).min(1).max(MAX_PLACES),
-    links: z.array(z.object({ from: z.string(), to: z.string(), kind: z.enum(['becomes', 'needs', 'blocks', 'mirrors']), label: z.string().optional() }).strict()).optional(),
+    // `note`: one exact sentence shown instead of a sentence built from the kind (ItemLink.note). Hand-written only.
+    links: z.array(z.object({ from: z.string(), to: z.string(), kind: z.enum(['becomes', 'needs', 'blocks', 'mirrors']), label: z.string().optional(), note: z.string().min(8).max(200).optional() }).strict()).optional(),
     focus: z.enum(['facts', 'process']).optional(),
   });
 
@@ -267,6 +269,9 @@ try {
     const blocks = cycle.links.filter((l) => l.kind === 'blocks');
     if (cycle.links.filter((l) => l.kind === 'becomes').length !== 8 || blocks.length < 1 || blocks.length > 2 || cycle.links.some((l) => !l.label)) fail('fixture-krebs-cycle: expected eight labelled "becomes" links and one or two labelled "blocks" links');
     if (cycle.focus !== 'process') fail('fixture-krebs-cycle: focus should be process');
+    // Regulation is stated in an exact sentence (research 9.4): "X blocks Y" built from the kind would be false here.
+    const inhibition = blocks.find((l) => l.from === cycle.items[3].id && l.to === cycle.items[0].id);
+    if (inhibition?.note !== 'Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate.') fail(`fixture-krebs-cycle: the inhibition link should carry its exact sentence, got ${JSON.stringify(inhibition)}`);
   }
   // The comparison test swaps its two materials between the palace arm and the list arm.
   // That is only fair if a deck and its plain list are the same material (same terms, same
@@ -718,6 +723,11 @@ try {
     const heroesBefore = new Set(deck.items.map((i) => i.imago.glyphs[0]));
     if (ext.added.some((i) => heroesBefore.has(i.imago.glyphs[0]))) fail('offline extension: a new image reuses a picture that is already in the palace');
     if (ext.steps.some((s) => /Skipped/.test(s.label)) === false) fail('offline extension: "comí" is already in the palace and should be reported as skipped');
+    // A note on a link that stands (a fixture, a saved deck) goes through an extension untouched; new links never carry one.
+    const noted = { ...deck, links: [{ ...deck.links[0], note: 'Comí and como are the same person, in the past and in the present.' }, ...deck.links.slice(1)] };
+    const notedExt = extendPalaceLocal(noted, '## Conditional\ncomería - I would eat\ncomerías - you would eat\ncomeré -> comería');
+    if (notedExt.deck.links[0] !== noted.links[0] || notedExt.deck.links.filter((l) => l.note).length !== 1) fail(`offline extension: the note on a standing link was lost or copied: ${JSON.stringify(notedExt.deck.links)}`);
+    if (notedExt.links.length !== 1 || notedExt.links.some((l) => 'note' in l)) fail(`offline extension: a new link should have no note: ${JSON.stringify(notedExt.links)}`);
     const wing = extendPalaceLocal(deck, '## Conditional\ncomería - I would eat\ncomerías - you would eat');
     if (wing.spec.rooms.map((r) => `${r.name}:${r.places}`).join() !== 'Past:3,Present:3,Future:3,Conditional:2' || wing.added.map((i) => i.locusId).join() !== 'r4-1,r4-2') fail(`offline extension: a new category of two should open its own room at the end: ${wing.spec.rooms.map((r) => `${r.name}:${r.places}`)}`);
     // A plain palace simply continues.
@@ -747,7 +757,7 @@ try {
         items: [{ ref: 'i1', term: 'one', category: 0, picture: '🍋' }, { ref: 'i2', term: 'two', category: 1, picture: '🍋' }, { ref: 'i3', term: 'three', category: 0, picture: '👨‍👩‍👧' }, { ref: 'i4', term: 'four', category: 1 }],
         links: [
           { from: 'i1', to: 'i1', kind: 'becomes' }, { from: 'i1', to: 'i2', kind: 'becomes', label: 'a label of far too many words' }, { from: 'i2', to: 'i1', kind: 'mirrors' },
-          { from: 'i1', to: 'i9', kind: 'needs' }, { from: 'i3', to: 'i4', kind: 'explodes' }, { from: 'i3', to: 'i4', kind: 'blocks', label: 'two words' },
+          { from: 'i1', to: 'i9', kind: 'needs' }, { from: 'i3', to: 'i4', kind: 'explodes' }, { from: 'i3', to: 'i4', kind: 'blocks', label: 'two words', note: 'The Architect does not write notes.' },
           { from: 'i1', to: 'i3', kind: 'needs' }, { from: 'i1', to: 'i4', kind: 'needs' }, { from: 'i2', to: 'i3', kind: 'needs' }, { from: 'i2', to: 'i4', kind: 'needs' }, { from: 'e1', to: 'i1', kind: 'needs' },
         ],
         overflow: ['left'], steps: [{ kind: 'plan', label: 'Found 1 facts.' }, { kind: 'nope', label: 'x' }],
@@ -757,6 +767,7 @@ try {
     const got = dirty?.links.map((l) => `${l.from}>${l.to}:${l.kind}${l.label ? `:${l.label}` : ''}`).join(' ');
     console.log(`[link rules]  ${got}`);
     if (got !== 'i1>i2:becomes i3>i4:blocks:two words i1>i3:needs i1>i4:needs i2>i3:needs i2>i4:needs') fail(`client link rules: ${got}`);
+    if (dirty.links.some((l) => 'note' in l)) fail('client link rules: a note arrived over the wire; notes are hand-written (fixtures, saved decks), never the Architect\'s');
     if (dirty.items.map((i) => i.ref).join() !== 'i1,i3,i2,i4' || dirty.items[2].picture || dirty.items[1].picture) fail('client outline rules: items should be in walking order, with repeated or unsafe pictures removed');
     if (dirty.steps.length !== 1 || dirty.steps[0].label !== 'Found 1 fact.' || dirty.kit?.id !== 'workshop') fail('client outline rules: steps or kit not cleaned');
     if (toOutline({ title: 'T', kind: 'list', categories: [{ name: 'A' }], items: [{ ref: 'i1', term: 'one', category: 3 }] }, { cap: 30 })) fail('client outline rules: an item in a category that does not exist was accepted');
