@@ -79,6 +79,11 @@ export interface RegenerateRequest {
   missed?: boolean;
   /** Free-text nudge from the learner ("make it about food"). */
   hint?: string;
+  /**
+   * The names of the places of the palace (`getLayout(layoutId).loci.map((l) => l.name)`), so
+   * that the new image does not take the object of a place as its hero. Optional.
+   */
+  places?: string[];
 }
 
 /** Longer than the server's own deadline, so a slow answer still arrives before we give up. */
@@ -262,6 +267,7 @@ export async function regenerateImago(req: RegenerateRequest): Promise<Imago> {
         .map((o) => ({ scene: o.scene, glyphs: o.glyphs, action: o.action })),
       missed: req.missed === true,
       ...(req.hint?.trim() ? { hint: req.hint.trim().slice(0, 200) } : {}),
+      ...(req.places?.length ? { places: req.places.slice(0, 30).map((name) => name.trim().slice(0, 60)) } : {}),
     };
     const key = cacheKey(body);
     const answer = await callArchitect(body, REGENERATE_TIMEOUT_MS);

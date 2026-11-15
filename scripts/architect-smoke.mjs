@@ -47,8 +47,8 @@ try {
   const { DOMUS_META } = await load('/src/layouts/domus/meta.ts');
   const { planPalace, planPalaceLocal, regenerateImago, isNoStrongerSuggestion, parseLine, designPalace, designPalaceLocal, extendPalace, extendPalaceLocal } = await load('/src/ai/architect.ts');
   const { parsePalaceId, specPlaces, isGeneratedId, MAX_ROOMS, ROOM_CAPACITY, MAX_PLACES } = await load('/src/layouts/spec.ts');
-  const { toOutline, cleanLinks, linkCap, roomName } = await load('/src/ai/wire.ts');
-  const { isSafeGlyph, wordCount, IMAGO_ACTIONS } = await load('/src/ai/glyphs.ts');
+  const { toOutline, toImago, cleanLinks, linkCap, roomName } = await load('/src/ai/wire.ts');
+  const { isSafeGlyph, wordCount, hasEmoji, IMAGO_ACTIONS } = await load('/src/ai/glyphs.ts');
   const { LEXICON } = await load('/src/ai/lexicon.ts');
   const { nameSentences, deriveTerm, singularCounts } = await load('/src/ai/parse.ts');
 
@@ -1300,6 +1300,64 @@ try {
       check('links: unsupported links are dropped, unjudged ones kept', r.status === 200 && JSON.stringify(r.json.keep) === '[true,false,true]' && /dropped 1 that the notes do not support/.test(r.json.steps[0].label), JSON.stringify(r.json));
       check('links request: the notes and each link in words', /<material>\nCitrate becomes isocitrate\.\n<\/material>/.test(linkPrompt) && /l1\. "Citrate" becomes, or leads to, "Isocitrate" \(rearranged\)/.test(linkPrompt) && /l2\. "Malate" blocks, or inhibits, "Citrate"/.test(linkPrompt) && /even if the link is true in the world/.test(String(seen[0]?.system?.[0]?.text)));
 
+      // QA review 4, issue 15: what one live run of twelve images got wrong, all in one room.
+      const faultyBody = {
+        op: 'images', title: 'Heart drugs', kind: 'pairs', room: { name: 'Diuretics', shape: 'hall', index: 3 },
+        items: [
+          { ref: 'i1', term: 'furosemide', meaning: 'loses potassium', picture: '🚿', place: { name: 'The Gargoyle', hint: 'A stone gargoyle with a spout.' } },
+          { ref: 'i2', term: 'spironolactone', meaning: 'keeps potassium', picture: '🔒', place: { name: 'The Chained Lectern', hint: 'An oak lectern with a chained book.' } },
+          { ref: 'i3', term: 'captopril', meaning: 'cough', picture: '😷', place: { name: 'The Rose Window', hint: 'A round window of red glass.' } },
+          { ref: 'i4', term: 'amiloride', meaning: 'spares potassium', place: { name: 'The Ladder Bookcase', hint: 'A tall bookcase with a ladder.' } },
+        ],
+        places: ['The Gargoyle', 'The Chained Lectern', 'The Rose Window', 'The Ladder Bookcase', 'The Hourglass', 'The Anchor'],
+      };
+      const faultyDraft = {
+        images: [
+          { id: 'i1', scene: 'A banana 🍌 shoots out of the gargoyle, shouting "furosemide".', glyphs: ['🚿', '🍌'], action: 'spin', reason: 'Furosemide loses potassium; bananas are full of it.' },
+          { id: 'i2', scene: 'A banana is locked to the lectern, shouting "spironolactone".', glyphs: ['🍌', '🔒'], action: 'bob', reason: 'Spironolactone keeps potassium.' },
+          { id: 'i3', scene: 'An hourglass coughs sand at the rose window, shouting "captopril".', glyphs: ['⌛', '😷'], action: 'pulse', reason: 'Captopril causes a cough.' },
+          { id: 'i4', scene: 'A padlock swings from the ladder of the bookcase.', glyphs: ['🔐', '📚'], action: 'hop', reason: 'Amiloride spares potassium.' },
+        ],
+      };
+      const faultyReview = {
+        verdicts: [{ id: 'i1', ok: false, issue: 'emoji in the sentence' }, { id: 'i2', ok: false, issue: 'shares the banana' }, { id: 'i3', ok: false, issue: 'an hourglass is a place' }, { id: 'i4', ok: true, issue: '' }],
+        revisions: [
+          { id: 'i1', scene: 'A hose floods the gargoyle until it spits out salt.', glyphs: ['🚿', '🧂'], action: 'spin', reason: 'Furosemide flushes potassium out.' },
+          // The critic can miss one: the sentence still leaves in words only.
+          { id: 'i2', scene: 'A safe 🔒 swallows the lectern\'s chain and clicks shut 🍌.', glyphs: ['🔒', '⛓️'], action: 'bob', reason: 'Spironolactone locks potassium in.' },
+          { id: 'i3', scene: 'A masked doctor coughs dust over the rose window.', glyphs: ['😷', '💨'], action: 'pulse', reason: 'Captopril causes a cough.' },
+        ],
+      };
+      seen.length = 0;
+      queue.push(answer(JSON.stringify(faultyDraft)), answer(JSON.stringify(faultyReview)));
+      r = await call(faultyBody);
+      const fDraft = String(seen[0]?.messages?.[0]?.content);
+      const fCritic = String(seen[1]?.messages?.[0]?.content);
+      const fRules = String(seen[0]?.system?.[0]?.text);
+      const fCriticRules = String(seen[1]?.system?.[0]?.text);
+      check('images (quality): still two model calls for a room, no more', r.status === 200 && seen.length === 2 && r.json.images?.length === 4, `HTTP ${r.status}, ${seen.length} upstream calls`);
+      check(
+        'images (quality): the places of the palace are passed to the draft and to the critic, compactly, with the rule',
+        [fDraft, fCritic].every((text) => text.includes('The places of this palace, each an object that stands somewhere on the route: Gargoyle, Chained Lectern, Rose Window, Ladder Bookcase, Hourglass, Anchor.') && text.includes('None of these objects may be the hero of an image')),
+        fDraft.split('The places of this palace')[1]?.slice(0, 160),
+      );
+      check(
+        'images (quality): the rules say words only, varied endings, no shared glyph in a room, no place object as hero',
+        [fRules, fCriticRules].every((text) => /no emoji characters inside the sentence/.test(text) && /the scene need not say the term at all/.test(text) && /Within one room no glyph appears in two images/.test(text) && /never make such an object the hero of an image/.test(text) && /Scenes that stand in one room do not end the same way/.test(text)) && /Four faults seen in real palaces/.test(fCriticRules) && /let no two scenes end the same way/.test(fDraft),
+      );
+      check(
+        'images (quality): the critic is told each fault as a measured problem',
+        ['furosemide [i1]: the scene sentence has emoji characters in it', 'spironolactone [i2] and furosemide both show 🍌', 'captopril [i3]: the scene uses the object of another place of this palace (The Hourglass)', 'furosemide [i1], spironolactone [i2], captopril [i3] end the same way (shouting "…")'].every((f) => fCritic.includes(f)) && !fCritic.includes('amiloride [i4]: the scene uses the object of another place'),
+        fCritic.split('Measured problems')[1]?.slice(0, 700),
+      );
+      check('images (quality): a scene sentence leaves in words only, and the trace says so', r.json.images[1].scene === 'A safe swallows the lectern\'s chain and clicks shut.' && r.json.images.every((im) => !hasEmoji(im.scene)) && r.json.steps.some((st) => st.kind === 'revise' && st.label === 'Took the emoji out of 1 scene sentence in Diuretics: the glyphs carry the picture.'), r.json.images.map((im) => im.scene).join(' | '));
+      expect('images with 31 place names', await call({ ...faultyBody, places: Array.from({ length: 31 }, (_, i) => `Place ${i}`) }), 400);
+      queue.push(answer(JSON.stringify({ scene: 'A pear 🍐 drums on the bench 🥁.', glyphs: ['🍐', '🥁'], action: 'shake', reason: 'Because.' })));
+      seen.length = 0;
+      r = await call({ op: 'regenerate', item: { term: 'pera', meaning: 'pear', scene: 'Old scene.', glyphs: ['🍎'], action: 'bob' }, locus: { name: 'The Bench', hint: 'A stone bench.' }, others: [], places: ['The Bench', 'The Hourglass'] });
+      check('regenerate (quality): words only, and the places of the palace are ruled out as heroes', r.status === 200 && r.json.imago.scene === 'A pear drums on the bench.' && String(seen[0]?.messages?.[0]?.content).includes('Bench, Hourglass. None of these objects may be the hero of the image.'), r.json?.imago?.scene);
+      if (toImago({ scene: 'A pear 🍐 drums 🥁 on the bench.', glyphs: ['🍐'], action: 'hop', reason: 'x' })?.scene !== 'A pear drums on the bench.' || toImago({ scene: '🍐🥁', glyphs: ['🍐'], action: 'hop' }) !== null) fail('client: an image that arrives with emoji in its sentence should be cleaned, and one with nothing else refused');
+
       expect('outline with 31 items', await call({ ...outlineBody, maxItems: 31 }), 400);
       expect('images with six facts in one room', await call({ ...roomBody, items: Array.from({ length: 6 }, (_, i) => ({ ref: `i${i + 1}`, term: `t${i}` })) }), 400);
       expect('images with the same ref twice', await call({ ...roomBody, items: [{ ref: 'i1', term: 'a' }, { ref: 'i1', term: 'b' }] }), 400);
@@ -1417,6 +1475,8 @@ try {
       check('palace: the trace covers plan, draw, check', ['plan', 'generate', 'check'].every((kind) => palace.steps.some((s) => s.kind === kind)) && palace.steps.some((s) => /Drew 30 images room by room, 6 rooms at the same time/.test(s.label)) && palace.steps.some((s) => /Checked 30 images/.test(s.label)) && palace.steps.some((s) => /dropped 1 that the notes do not support/.test(s.label)) && said[0] === 'Reading your notes' && said.some((l) => /^Drew 5 images for Group/.test(l)), palace.steps.map((s) => s.label).join(' | ').slice(0, 300));
       const prompts = seen.map((b) => String(b.messages?.[0]?.content));
       check('palace: each image is asked to act on the feature of its place', prompts.some((p) => p.includes('locus: Stone r4-2: A grey stone numbered r4-2.')));
+      const drafts30 = prompts.filter((p) => p.startsWith('Write one memory image for each'));
+      check('palace: every room is given the names of all thirty places of the palace', drafts30.length === 6 && drafts30.every((p) => p.includes('The places of this palace') && p.includes('Stone r1-1, Stone r1-2') && p.includes('Stone r6-5.')), drafts30[0]?.split('The places of this palace')[1]?.slice(0, 120));
 
       let before = fetches;
       const cachedPalace = await designPalace({ text: thirty, kits: kitList }, { places: stones });
@@ -1443,6 +1503,22 @@ try {
       script.clash = { i6: GLYPHS[0] };
       const clashing = await designPalace({ text: `${thirty}\nthing 32 - gloss 32`, kits: kitList });
       check('palace: a picture chosen by two rooms is redrawn once', script.redraws === 1 && new Set(clashing.items.map((it) => it.imago.glyphs[0])).size === 30 && clashing.items[5].imago.glyphs[0] === '☄️' && clashing.steps.some((s) => s.kind === 'revise' && /same picture once: redrew thing 6/.test(s.label)), clashing.steps.filter((s) => s.kind === 'revise').map((s) => s.label).join(' | '));
+      script.clash = {};
+
+      // QA review 4, issue 15: two neighbours in one room with the same picture. Things 7 and 8 come back
+      // with the picture of thing 6 (their room), and three more share one with another room. The stand-in
+      // redraws everything as a comet, so only one redraw can be kept: the rule must hold without it.
+      script.clash = { i7: GLYPHS[5], i8: GLYPHS[5], i12: GLYPHS[0], i17: GLYPHS[0], i22: GLYPHS[0] };
+      script.redraws = 0;
+      seen.length = 0;
+      const twinned = await designPalace({ text: `${thirty}\nthing 33 - gloss 33`, kits: kitList });
+      const heroesByRoom = twinned.spec.rooms.map((room) => twinned.items.filter((it) => it.locusId.startsWith(`${room.id}-`)).map((it) => it.imago.glyphs[0]));
+      const redrawnFor = seen.map((b) => String(b.messages?.[0]?.content)).filter((text) => text.startsWith('Write one new memory image')).map((text) => text.match(/thing \d+/)?.[0]);
+      console.log(`[within a room]  ${heroesByRoom.map((h) => h.join('')).join(' | ')}`);
+      check('palace: no two images of a room share a first glyph, whatever the model answered', heroesByRoom.every((h) => new Set(h).size === h.length) && heroesByRoom[1][0] === GLYPHS[5], heroesByRoom.map((h) => h.join('')).join(' | '));
+      check('palace: the clashes inside a room are redrawn first, and no call is added for the rule', script.redraws === 3 && redrawnFor.includes('thing 7') && redrawnFor.includes('thing 8'), `${script.redraws} redraws: ${redrawnFor.join(', ')}`);
+      check('palace: the trace says which image was led by another glyph', twinned.steps.some((st) => st.kind === 'revise' && /^Two images in one room had the same picture: thing [78] now leads with /.test(st.label)), twinned.steps.filter((st) => st.kind === 'revise').map((st) => st.label).join(' | '));
+      checkPalace('client within-room rule', twinned);
       script.clash = {};
 
       // A process: the chain of steps is whole, the loop closed, and the link check cannot cut it.

@@ -212,6 +212,8 @@ const RegenerateIn = z.object({
   hint: z.string().max(200).nullish(),
   /** First glyphs the new image may not use: the pictures of the rest of the palace. */
   avoid: z.array(z.string().max(16)).max(80).nullish(),
+  /** The names of the places of the palace: their objects may not be the hero of an image. */
+  places: z.array(z.string().max(60)).max(MAX_PLACES).nullish(),
 });
 /** `i7` a new fact, `e3` a fact already in the palace. */
 const Ref = z.string().regex(/^[ie][0-9]{1,2}$/);
@@ -259,6 +261,8 @@ const ImagesIn = z.object({
   taken: z.array(z.string().max(16)).max(80).nullish(),
   /** Images that already stand in this room, before the new ones (a palace being extended). */
   beside: z.array(ImagoIn.extend({ term: short(160) })).max(ROOM_CAPACITY).nullish(),
+  /** The names of every place of the palace, this room's and the others': their objects may not be the hero of an image. */
+  places: z.array(z.string().max(60)).max(MAX_PLACES).nullish(),
   /** Links that touch this room, by term, for context. */
   links: z.array(z.object({ from: short(160), to: short(160), kind: z.enum(LINK_KINDS), label: z.string().max(60).nullish() })).max(16).nullish(),
 });
@@ -302,17 +306,68 @@ const safeGlyphSet = (glyphs: string[] | null | undefined): Set<string> => new S
 const oneLine = (s: string, max: number): string => s.replace(/\s+/g, ' ').trim().slice(0, max);
 const words = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
 
+/**
+ * Emoji, and the characters that only join or style them. A scene sentence holds none: the
+ * glyphs are the picture. Mirrors `wordsOnly` in src/ai/glyphs.ts (the client cleans again on arrival).
+ */
+const EMOJI = /\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]|[\u{1F3FB}-\u{1F3FF}]|\u{FE0F}|\u{200D}|\u{20E3}/gu;
+const hasEmoji = (text: string): boolean => /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}]/u.test(text);
+const wordsOnly = (scene: string): string =>
+  scene
+    .replace(EMOJI, ' ')
+    .replace(/\(\s*\)/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** How a scene ends when it ends on a quoted word: the word before the quote ("shouting"). Otherwise empty. */
+function quotedEnding(scene: string): string {
+  const m = scene.match(/(\p{L}+)[,:]?\s+["“][^"”]{1,60}["”][.!?]?$/u);
+  return m ? m[1].toLowerCase() : '';
+}
+
+/** Scenes that stand together and end the same way ('shouting "…"' four times in a row, on the live model). */
+function endingFindings(scenes: { where: string; scene: string }[]): string[] {
+  const groups = new Map<string, string[]>();
+  for (const s of scenes) {
+    const ending = quotedEnding(s.scene);
+    if (ending) groups.set(ending, [...(groups.get(ending) ?? []), s.where]);
+  }
+  return [...groups]
+    .filter(([, who]) => who.length >= 2)
+    .map(([verb, who]) => `${who.join(', ')} end the same way (${verb} "…"). Only the first may keep that ending: rewrite the others so that each scene ends differently. A scene need not say the term aloud.`);
+}
+
+const placeWord = (name: string): string => name.replace(/^the\s+/i, '').trim().toLowerCase();
+const escapeRe = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The place of this palace, other than the image's own, whose object the scene uses
+ * ("hourglass" in a palace that has The Hourglass); undefined when there is none. Read from
+ * the words of the sentence: the whole name of a place, or the last word of a longer name.
+ */
+function borrowedPlace(scene: string, own: { name: string; hint: string } | undefined, places: readonly string[]): string | undefined {
+  const text = scene.toLowerCase();
+  const mine = `${own?.name ?? ''} ${own?.hint ?? ''}`.toLowerCase();
+  const uses = (word: string): boolean => word.length >= 3 && !mine.includes(word) && new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(word)}s?(?![\\p{L}\\p{N}])`, 'u').test(text);
+  return places.find((name) => {
+    const word = placeWord(name);
+    const head = word.split(/\s+/).pop() ?? '';
+    return uses(word) || (head !== word && head.length >= 5 && uses(head));
+  });
+}
+
 // ───────────────────────── Prompts ─────────────────────────
 
 const IMAGE_RULES = `Rules for every memory image:
 1. Concrete. A physical thing you could photograph. An abstract fact gets a concrete stand-in.
 2. Active. The thing is doing one clear, visible action.
-3. At its place. It acts on or with the specific feature of its locus (each locus has a name and a hint describing that feature). Name the feature in the sentence. An image that could sit at any locus fails. Only when a fact is given with no locus feature at all is this rule waived: then the image must be complete in itself, and you do not invent furniture for it.
-4. Different from every other image. Never use the same subject, or the same first glyph, twice in one deck. The images just before and just after it on the route must also differ from it in action. Strangeness helps memory only when images are distinct from each other, so do not make them all odd in the same way.
+3. At its place. It acts on or with the specific feature of its locus (each locus has a name and a hint describing that feature). Name the feature in the sentence. An image that could sit at any locus fails. Only when a fact is given with no locus feature at all is this rule waived: then the image must be complete in itself, and you do not invent furniture for it. An object that stands as a place of this palace belongs to that place alone: never make such an object the hero of an image, at its own place or at any other (no hourglass as a hero in a palace that has a place called The Hourglass). The hero is the fact's own picture; the object of its place is what the hero acts on.
+4. Different from every other image. Never use the same subject, or the same first glyph, twice in one deck. The images just before and just after it on the route must also differ from it in action. Strangeness helps memory only when images are distinct from each other, so do not make them all odd in the same way. Within one room no glyph appears in two images, in any position: when two facts are about the same thing (two drugs that both act on potassium), picture what differs between them, not the thing they share.
 5. Tied to the meaning. The picture shows what the fact means or does: its definition, its function, or where its name comes from. A sound-alike of the word is allowed only when there is no meaning to show, or as a second hook added to a picture of the meaning. Never use a sound-alike that pictures something other than the meaning (no horn for "horno" when it means oven). Weirdness alone is not a link.
-   Vocabulary pairs (a foreign word and what it means): the subject of the picture is the meaning, and the scene carries the foreign word itself, in quotes, spoken, shouted or written in the scene, so that word and meaning are stored together: A giant spoon stirs the fountain while the water chants "cuchara".
+   Vocabulary pairs (a foreign word and what it means): the subject of the picture is the meaning, and the scene carries the foreign word itself, in quotes, so that word and meaning are stored together: A giant spoon stirs the fountain while the water chants "cuchara". Bring the word in a different way in each image of a room (carved, painted, on a label, sung, whispered, echoed, stamped, spelled out), never by ending scene after scene with someone shouting it. Only a foreign word has to be in the scene: for any other fact (a term and its definition, a name, a drug and what it does) the scene need not say the term at all; the picture and the reason carry it.
 6. reason: required, never empty. One short, true line saying how the picture gives the fact back ("Scaphoid means boat-shaped.", "Cuchara means spoon."). Never invent an etymology. If you are not sure of one, link to what the thing does, or use a sound-alike and say that it is one.
-7. Short. One sentence, present tense (second person is fine), plain words. Aim for about 12 words; never more than 22.
+7. Short. One sentence, present tense (second person is fine), plain words. Aim for about 12 words; never more than 22. Words only: no emoji characters inside the sentence (the glyphs field carries the picture). Scenes that stand in one room do not end the same way.
 8. Safe and original. Learners may be children. No copyrighted or trademarked characters, no real private people, nothing gory, sexual, cruel or demeaning.
 9. glyphs: 1 to 3 emoji, and they are the picture: the palace draws the image from them and nothing else, so they must show the scene, not decorate it. The first is the hero (the main subject of the sentence); the others are what it acts on or with, or what it is doing. Every glyph is a thing or an action that the scene sentence names. One glyph alone is enough only when the scene has a single thing in it. A single generic glyph (a box, a star, a speech bubble) standing in for an abstract term fails: choose a concrete stand-in that an emoji can show, and write the scene around it. Use only widely supported single emoji from Unicode 13 (2020) or earlier: no skin-tone variants, no joined sequences (family, profession or gendered emoji), no flags.
 10. action: the motion that best fits the scene, one of spin, bob, pulse, shake, orbit, swing, hop. Neighbours should not share one.`;
@@ -338,6 +393,8 @@ const PLAN_RULES = `How to plan:
 const CRITIC_SYSTEM = `You are the reviewer for Memoria's Palace Architect. You receive a drafted memory palace: facts placed on a fixed route, one image each. Judge every image against every rule below, strictly. Rules 3, 4 and 5 fail most often: an image that ignores its locus feature, repeats a subject or first glyph used anywhere else in the deck, shares an action with the image before or after it, or has no real link to the fact's meaning, fails. For a vocabulary pair, an image whose subject is not the meaning, or whose scene does not carry the foreign word, fails; so does a sound-alike that pictures something other than the meaning. An empty reason, or one that states a false or invented etymology, also fails.
 
 The glyphs are what the learner actually sees in the palace, so judge them as strictly as the sentence (rule 9). An image fails when its first glyph is not the hero of its scene, when a glyph shows something the scene sentence does not name, when a glyph only decorates, or when one generic glyph stands in for an abstract term. Rewrite those like any other failing image: keep the scene and correct the glyphs when the scene is good, otherwise write a scene whose hero and action emoji can show.
+
+Four faults seen in real palaces fail an image whatever else is good about it. An emoji character inside the scene sentence: the sentence is words only, so rewrite it in words. A scene that ends the way another scene in its room ends (several closing on someone shouting the term): all but the first fail, and a replacement ends differently or does not say the term at all. A glyph that another image of the same room also uses, in any position: the later image fails, and its replacement pictures what makes its fact different. A hero that is an object standing as a place of this palace (the places are listed with the images when the palace has named places): the replacement uses another object.
 
 ${IMAGE_RULES}
 
@@ -515,10 +572,12 @@ function mechanicalFindings(items: PlannedItem[], nameOf: (id: string) => string
     const hero = item.imago.glyphs[0];
     const earlier = hero ? items.slice(0, i).find((o) => o.imago.glyphs[0] === hero) : undefined;
     if (earlier) out.push(`${where} repeats the first glyph ${hero} of ${nameOf(earlier.locusId)}: no subject may appear twice in a deck.`);
+    if (hasEmoji(item.imago.scene)) out.push(`${where}: the scene sentence has emoji characters in it. Write it in words only; the glyphs carry the picture.`);
     const next = items[i + 1];
     if (!next) return;
     if (next.imago.action === item.imago.action) out.push(`${where} and the next image share the action "${item.imago.action}".`);
   });
+  out.push(...endingFindings(items.map((item) => ({ where: nameOf(item.locusId), scene: item.imago.scene }))));
   return out;
 }
 
@@ -664,7 +723,8 @@ Give a verdict for all ${items.length} images, and a revision for each one that 
   return {
     title: oneLine(draft.title, 80) || 'Untitled palace',
     kind,
-    items: items.map((it) => ({ ...it, imago: { ...it.imago, glyphs: it.imago.glyphs.length ? it.imago.glyphs : ['❓'] } })),
+    // Whatever the check did, a scene sentence leaves here in words only.
+    items: items.map((it) => ({ ...it, imago: { ...it.imago, scene: wordsOnly(it.imago.scene) || it.imago.scene, glyphs: it.imago.glyphs.length ? it.imago.glyphs : ['❓'] } })),
     steps,
     overflow,
   };
@@ -1203,7 +1263,7 @@ interface RoomImage {
 }
 
 /** Mechanical findings for one room: things code can measure better than a model. */
-function roomFindings(drawn: RoomImage[], taken: ReadonlySet<string>, input: ImagesInput): string[] {
+function roomFindings(drawn: RoomImage[], taken: ReadonlySet<string>, input: ImagesInput, places: readonly string[]): string[] {
   const out: string[] = [];
   const beside = input.beside ?? [];
   const lastStanding = beside[beside.length - 1];
@@ -1217,6 +1277,13 @@ function roomFindings(drawn: RoomImage[], taken: ReadonlySet<string>, input: Ima
     const earlier = hero ? drawn.slice(0, i).find((o) => o.imago.glyphs[0] === hero) : undefined;
     if (earlier) out.push(`${where} repeats the first glyph ${hero} of ${earlier.term}: no subject may appear twice.`);
     else if (hero && taken.has(hero)) out.push(`${where}: its first glyph ${hero} is already used in another room of this palace.`);
+    // Seen live: two neighbours in one room both drawn with a banana, one as the hero and one beside it.
+    const sharer = earlier ? undefined : drawn.slice(0, i).find((o) => image.imago.glyphs.some((g) => o.imago.glyphs.includes(g)));
+    const sharedGlyph = sharer ? image.imago.glyphs.find((g) => sharer.imago.glyphs.includes(g)) : undefined;
+    if (sharer && sharedGlyph) out.push(`${where} and ${sharer.term} both show ${sharedGlyph}: in one room no glyph appears in two images. Give ${image.term} a picture of what makes it different.`);
+    if (hasEmoji(image.imago.scene)) out.push(`${where}: the scene sentence has emoji characters in it. Write it in words only; the glyphs carry the picture.`);
+    const borrowed = borrowedPlace(image.imago.scene, image.place, places);
+    if (borrowed) out.push(`${where}: the scene uses the object of another place of this palace (${borrowed}). The object of a place belongs to that place: use something else.`);
     const next = drawn[i + 1];
     if (next && next.imago.action === image.imago.action) out.push(`${where} and the next image share the action "${image.imago.action}".`);
     if (i === 0 && lastStanding?.action && lastStanding.action === image.imago.action) out.push(`${where} shares the action "${image.imago.action}" with the image that stands before it in this room.`);
@@ -1226,6 +1293,7 @@ function roomFindings(drawn: RoomImage[], taken: ReadonlySet<string>, input: Ima
     if (!OPENING_ACTIONS.includes(first.imago.action)) out.push(`${first.term} [${first.ref}] opens the room: its action must be one of ${OPENING_ACTIONS.join(', ')}.`);
     if (!CLOSING_ACTIONS.includes(last.imago.action)) out.push(`${last.term} [${last.ref}] closes the room: its action must be one of ${CLOSING_ACTIONS.join(', ')}.`);
   }
+  out.push(...endingFindings(drawn.map((image) => ({ where: `${image.term} [${image.ref}]`, scene: image.imago.scene }))));
   return out;
 }
 
@@ -1241,6 +1309,11 @@ async function images(input: ImagesInput, client: Anthropic, model: string, effo
   const placeLine = (p: { name: string; hint?: string | null }) => `${oneLine(p.name, 60)}${p.hint ? `: ${oneLine(p.hint, 240)}` : ''}`;
   const linkLines = (input.links ?? []).map((l) => `- ${oneLine(l.from, 80)} ${LINK_PHRASE[l.kind]} ${oneLine(l.to, 80)}${l.label ? ` (${oneLine(l.label, 60)})` : ''}`);
   const takenLine = taken.size ? `\nPictures already used or planned elsewhere in this palace. Never use one of them as a first glyph: ${[...taken].join(' ')}\n` : '';
+  // Every place of the palace, compactly: an image whose hero is an hourglass sends the learner to The Hourglass.
+  const places = [...new Set((input.places ?? []).map((name) => oneLine(name, 60)).filter(Boolean))];
+  const placesLine = places.length
+    ? `\nThe places of this palace, each an object that stands somewhere on the route: ${places.map((name) => name.replace(/^the\s+/i, '')).join(', ')}. None of these objects may be the hero of an image, here or anywhere: the learner would look for the fact at that object's own place. An image acts on the object of its own place and uses no other place's.\n`
+    : '';
   const edged = input.items.length >= 2 && beside.length === 0;
   const edges = edged
     ? `\nThe first image opens the room and the last one closes it, next to the doorways: give the first one of the actions ${OPENING_ACTIONS.join(', ')}, and the last one of ${CLOSING_ACTIONS.join(', ')}, so that neither matches the image beyond its doorway.\n`
@@ -1271,7 +1344,8 @@ Facts, in walking order:
 ${factLines.join('\n')}
 
 A planned picture was chosen when the palace was outlined, so that no two facts in the palace share one. Keep it as the first glyph when it fits what the fact means; otherwise choose another that is not in the list below.
-${takenLine}${standingLines}${edges}${linked}`,
+${takenLine}${placesLine}${standingLines}${edges}${linked}
+Write each scene in words only (no emoji inside the sentence), give no two images of this room the same glyph, and let no two scenes end the same way.`,
   });
 
   let drawn: RoomImage[] = input.items.flatMap((it) => {
@@ -1298,7 +1372,7 @@ ${takenLine}${standingLines}${edges}${linked}`,
     steps.push({ kind: 'check', label: `Ran out of time before the self-check in ${where}: these are unchecked first drafts.` });
   } else {
     try {
-      const findings = roomFindings(drawn, taken, input);
+      const findings = roomFindings(drawn, taken, input, places);
       const listing = drawn
         .map(
           (image, i) => `${i + 1}. [${image.ref}] ${image.place ? `locus: ${placeLine(image.place)}` : '(no locus feature given: rule 3 is waived for this image)'}
@@ -1323,7 +1397,7 @@ ${takenLine}${standingLines}${edges}${linked}`,
         user: `Deck: ${deck}. One room of the palace, ${room}: ${drawn.length} ${drawn.length === 1 ? 'image' : 'images'} in walking order. The other rooms are checked separately.
 
 ${listing}
-${takenLine}${standingLines}${edged ? `\nThe first image of a room must use one of the actions ${OPENING_ACTIONS.join(', ')} and the last one of ${CLOSING_ACTIONS.join(', ')}.\n` : ''}${
+${takenLine}${placesLine}${standingLines}${edged ? `\nThe first image of a room must use one of the actions ${OPENING_ACTIONS.join(', ')} and the last one of ${CLOSING_ACTIONS.join(', ')}.\n` : ''}${
           findings.length ? `\nMeasured problems that must be fixed:\n${findings.map((f) => `- ${f}`).join('\n')}\n` : ''
         }
 Give a verdict for all ${drawn.length} images, and a revision for each one that fails.`,
@@ -1352,6 +1426,16 @@ Give a verdict for all ${drawn.length} images, and a revision for each one that 
       steps.push({ kind: 'check', label: `The self-check did not finish in ${where}: these are unchecked first drafts.` });
     }
   }
+
+  // Whatever the check did, a scene sentence leaves here in words only: the glyphs carry the picture.
+  let worded = 0;
+  drawn = drawn.map((image) => {
+    const scene = hasEmoji(image.imago.scene) ? wordsOnly(image.imago.scene) : '';
+    if (!scene) return image;
+    worded++;
+    return { ...image, imago: { ...image.imago, scene } };
+  });
+  if (worded > 0) steps.push({ kind: 'revise', label: `Took the emoji out of ${worded} scene ${worded === 1 ? 'sentence' : 'sentences'} in ${where}: the glyphs carry the picture.` });
 
   return {
     images: drawn.map((image) => ({ ref: image.ref, ...image.imago, glyphs: image.imago.glyphs.length ? image.imago.glyphs : ['❓'] })),
@@ -1428,7 +1512,11 @@ The image it has now, which you must replace with something clearly different:
 ${oneLine(input.item.scene, 400) || '(none)'}
 
 ${others.length ? `Other images in this deck. Stay different from all of them in subject and action:\n${others.map((o) => `- ${oneLine(o.scene, 300)}${o.action ? ` (${o.action})` : ''}`).join('\n')}\n` : ''}
-${safeGlyphSet(input.avoid).size ? `Pictures already used in this palace. Never use one of them as the first glyph: ${[...safeGlyphSet(input.avoid)].join(' ')}\n` : ''}${input.missed ? 'The learner failed to recall this fact with the current image. Do not polish it: change the approach. If it leaned on a sound-alike, show the meaning instead. If it already showed the meaning, show the meaning with a different subject and action. Never drop the meaning for a sound-alike. Make it simpler and bigger: one subject, one forceful action, an unmistakable tie to the fact, about 12 words.\n' : ''}${
+${safeGlyphSet(input.avoid).size ? `Pictures already used in this palace. Never use one of them as the first glyph: ${[...safeGlyphSet(input.avoid)].join(' ')}\n` : ''}${
+      (input.places ?? []).some((name) => name.trim())
+        ? `The places of this palace, each an object that stands somewhere on the route: ${(input.places ?? []).map((name) => oneLine(name, 60).replace(/^the\s+/i, '')).filter(Boolean).join(', ')}. None of these objects may be the hero of the image.\n`
+        : ''
+    }${input.missed ? 'The learner failed to recall this fact with the current image. Do not polish it: change the approach. If it leaned on a sound-alike, show the meaning instead. If it already showed the meaning, show the meaning with a different subject and action. Never drop the meaning for a sound-alike. Make it simpler and bigger: one subject, one forceful action, an unmistakable tie to the fact, about 12 words.\n' : ''}${
       input.hint?.trim()
         ? `The learner asks, about the image only: <preference>${oneLine(input.hint, 200)}</preference>. Follow it where the rules allow.\n`
         : ''
@@ -1446,7 +1534,7 @@ ${safeGlyphSet(input.avoid).size ? `Pictures already used in this palace. Never 
       deadline,
       user: base + retryNote,
     });
-    const scene = oneLine(out.scene, 280);
+    const scene = wordsOnly(oneLine(out.scene, 280));
     if (!scene) throw new BadModelOutput('empty scene');
     if (notANewImage(scene, input)) {
       // Ask once more, saying what was wrong; a second miss is a failure the client can fall back from.

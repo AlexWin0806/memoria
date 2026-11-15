@@ -1,7 +1,7 @@
 import type { DeckFocus, DeckKind, Imago, ItemLink, LinkKind } from '@/core/types';
 import { MAX_ROOMS, ROOM_CAPACITY } from '@/layouts/spec';
 import type { ArchitectStep } from './architect';
-import { cleanGlyphs, isImagoAction, isSafeGlyph } from './glyphs';
+import { cleanGlyphs, isImagoAction, isSafeGlyph, wordsOnly } from './glyphs';
 import { singularCounts } from './parse';
 
 /**
@@ -25,7 +25,8 @@ export const cleanText = (v: unknown, max: number): string | undefined => {
 /** Accepts only what an Imago may hold; anything else means "do not trust this payload". */
 export function toImago(raw: unknown): Imago | null {
   if (!isRecord(raw)) return null;
-  const scene = cleanText(raw.scene, 280);
+  // Words only: an emoji inside the sentence would show the picture twice.
+  const scene = cleanText(typeof raw.scene === 'string' ? wordsOnly(raw.scene) : raw.scene, 280);
   if (!scene) return null;
   return {
     scene,
