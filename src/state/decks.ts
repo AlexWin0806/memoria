@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { FIXTURE_DECKS } from '@/ai/fixtures';
 import type { Deck, MemoryItem } from '@/core/types';
 import { useSession } from './session';
@@ -18,6 +18,41 @@ interface DecksState {
   remove: (deckId: string) => void;
   updateItem: (deckId: string, itemId: string, patch: Partial<MemoryItem>) => void;
 }
+
+/** Set when the last write of the decks did not reach localStorage (storage full or blocked). */
+let writeFailed = false;
+
+/** True when the last change to the decks was kept in memory only: the browser refused to store it. */
+export function decksWriteFailed(): boolean {
+  return writeFailed;
+}
+
+// A full localStorage throws on write. Without this the error escaped the click that saved a
+// palace: nothing on screen changed and the palace was not stored (break test, Sun 2:30 AM).
+const storage = createJSONStorage<Pick<DecksState, 'decks'>>(() => ({
+  getItem: (key) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+      writeFailed = false;
+    } catch {
+      writeFailed = true;
+    }
+  },
+  removeItem: (key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* nothing to remove */
+    }
+  },
+}));
 
 export const useDecks = create<DecksState>()(
   persist(
@@ -45,6 +80,7 @@ export const useDecks = create<DecksState>()(
     {
       name: STORE_KEYS.decks,
       // The sandbox is a demo's working copy, not saved data.
+      storage,
       partialize: (s) => ({ decks: s.decks }),
       // Whatever is read (at start, or when another tab writes) is cleaned first: see ./storage.
       merge: (stored, current) => ({ ...current, ...cleanDecksState(stored, newTally()) }),
