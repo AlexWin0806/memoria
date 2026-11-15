@@ -194,7 +194,7 @@ function questionsAbout(deck: Deck, item: MemoryItem): LinkQuestion[] {
   const out = links.filter((l) => l.from === item.id);
 
   const next = out.filter((l) => asksWhatHappens(deck, l));
-  ask('becomes', 'becomes', 'label', `What happens to ${term} next?`, next.map((l) => ({ text: labelOf(l), fact: `${term}: ${labelOf(l)}.` })), []);
+  ask('becomes', 'becomes', 'label', `What happens to ${term} next?`, next.map((l) => ({ text: labelOf(l), fact: `Next after ${term}: ${labelOf(l)}.` })), []);
 
   const sources = links.filter((l) => l.to === item.id && l.kind === 'becomes' && !asksWhatHappens(deck, l));
   ask(

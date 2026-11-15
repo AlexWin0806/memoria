@@ -2361,18 +2361,18 @@ const cases = {
     // label, and a question that has to name a later step waits until after the last place.
     const LABELS = ['gathers', 'widens', 'empties', 'evaporates', 'rains'];
     const linkPlan = [
-      [['What happens to Spring next?', 'label', 'gathers', 'Spring: gathers.', 'right']],
-      [['What happens to Stream next?', 'label', 'widens', 'Stream: widens.', 'wrong']],
-      [['What happens to River next?', 'label', 'empties', 'River: empties.', 'right']],
+      [['What happens to Spring next?', 'label', 'gathers', 'Next after Spring: gathers.', 'right']],
+      [['What happens to Stream next?', 'label', 'widens', 'Next after Stream: widens.', 'wrong']],
+      [['What happens to River next?', 'label', 'empties', 'Next after River: empties.', 'right']],
       // What the Sea needs is a step already answered, so it is asked here.
       [
-        ['What happens to Sea next?', 'label', 'evaporates', 'Sea: evaporates.', 'right'],
+        ['What happens to Sea next?', 'label', 'evaporates', 'Next after Sea: evaporates.', 'right'],
         ['What does Sea need?', 'term', 'Stream', 'Sea needs Stream: flow.', 'unknown'],
       ],
       // After the last place: its own question, then the two that had to wait because they name a later step.
       // The Sea acts on the Spring (asked for by its actor, in the label's words); the Stream needs the Cloud.
       [
-        ['What happens to Cloud next?', 'label', 'rains', 'Cloud: rains.', 'right'],
+        ['What happens to Cloud next?', 'label', 'rains', 'Next after Cloud: rains.', 'right'],
         ['Which step salts fresh water?', 'term', 'Sea', 'Sea salts fresh water.', 'wrong'],
         ['What does Stream need?', 'term', 'Cloud', 'Stream needs Cloud: rain.', 'right'],
       ],
@@ -2599,7 +2599,7 @@ const cases = {
     await linkField.fill('GATHER');
     await key('Enter');
     await page.getByTestId('link-verdict').waitFor();
-    assert((await linkVerdict()) === 'Correct.' && (await text(page.getByTestId('link-fact'))) === 'Spring: gathers.', `typed link with a typo: ${await linkVerdict()}`);
+    assert((await linkVerdict()) === 'Correct.' && (await text(page.getByTestId('link-fact'))) === 'Next after Spring: gathers.', `typed link with a typo: ${await linkVerdict()}`);
     await page.reload({ waitUntil: 'load' });
     await page.getByTestId('resume-walk').click();
     await page.locator('[data-testid=recall] [data-testid=walk-label]:has-text("Place 1 of 5")').waitFor();
@@ -2614,7 +2614,7 @@ const cases = {
     await linkField.fill('narrows');
     await key('Enter');
     await page.getByTestId('link-verdict').waitFor();
-    assert((await linkVerdict()) === 'Not this time.' && (await text(page.getByTestId('link-fact'))) === 'Stream: widens.' && (await page.getByTestId('link-overrule').count()) === 1, `a typed miss about what happens: ${await linkVerdict()} / ${await text(page.getByTestId('link-fact'))}`);
+    assert((await linkVerdict()) === 'Not this time.' && (await text(page.getByTestId('link-fact'))) === 'Next after Stream: widens.' && (await page.getByTestId('link-overrule').count()) === 1, `a typed miss about what happens: ${await linkVerdict()} / ${await text(page.getByTestId('link-fact'))}`);
     assert(!(await text(page.getByTestId('link-feedback'))).includes('River') && (await page.getByTestId('link-held').count()) === 0, 'a typed miss names a step whose place has not been asked yet');
     await page.getByTestId('link-next').click();
     // A question mark in the empty field is "I don't know".
@@ -2674,7 +2674,7 @@ const cases = {
       const said = await page.getByTestId('encode-links').locator('li').allTextContents();
       if (i === 1) {
         assert(
-          JSON.stringify(said) === JSON.stringify(['Comes from a step further along the route: cell splits in two.', 'It becomes the step at the next place.']),
+          JSON.stringify(said) === JSON.stringify(['Comes from a step further along the route: cytokinesis splits the cell.', 'It becomes the step at the next place.']),
           `the cell cycle's first stage connects as ${JSON.stringify(said)}`,
         );
         await shot(page, 'process-cycle-study');

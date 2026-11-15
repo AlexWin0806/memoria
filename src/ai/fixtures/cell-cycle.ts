@@ -19,7 +19,7 @@ const { spec, places } = planSpec('workshop', [{ name: 'The cell cycle', count: 
 const PLACES = places.flat();
 
 /** What happens between one stage and the next, in four words or fewer. The fifth closes the loop. */
-const STEPS = ['chromosomes coil up', 'align at the middle', 'copies pulled apart', 'two nuclei form', 'cell splits in two'];
+const STEPS = ['chromosomes coil up', 'align at the middle', 'copies pulled apart', 'two nuclei form', 'cytokinesis splits the cell'];
 const itemId = (n: number): string => `cell-${n + 1}`;
 const links: ItemLink[] = STEPS.map((label, n): ItemLink => ({ from: itemId(n), to: itemId((n + 1) % STEPS.length), kind: 'becomes', label }));
 
@@ -35,13 +35,13 @@ export const CELL_CYCLE: Deck = {
   items: [
     {
       id: 'cell-1', term: 'Interphase', meaning: 'The cell grows and copies its DNA.', locusId: PLACES[0],
-      imago: { scene: 'The screw press turns, and a second DNA strand rolls out from under it, a copy of the first.', glyphs: ['🧬', '🗜️'], action: 'pulse', reason: 'Inter- means between (Latin inter): between divisions, the cell grows and copies its DNA.', source: 'fixture' },
-      alternates: [{ scene: 'A copier on the screw press prints a second DNA strand.', glyphs: ['🖨️', '🧬'], action: 'shake', reason: 'Interphase comes between divisions (Latin inter, between): the DNA is copied here.', source: 'fixture' }],
+      imago: { scene: 'The screw press turns, and a second DNA molecule rolls out from under it, a copy of the first.', glyphs: ['🧬', '🗜️'], action: 'pulse', reason: 'Inter- means between (Latin inter): between divisions, the cell grows and copies its DNA.', source: 'fixture' },
+      alternates: [{ scene: 'A copier on the screw press prints a second DNA molecule.', glyphs: ['🖨️', '🧬'], action: 'shake', reason: 'Interphase comes between divisions (Latin inter, between): the DNA is copied here.', source: 'fixture' }],
     },
     {
       id: 'cell-2', term: 'Prophase', meaning: 'The chromosomes coil up and become visible.', locusId: PLACES[1],
-      imago: { scene: 'The grindstone spins and winds a loose thread into fat coils, plain to see.', glyphs: ['🌀', '🧵'], action: 'spin', reason: 'Pro- means before (Greek pro): first, before anything moves, the chromosomes coil up and show.', source: 'fixture' },
-      alternates: [{ scene: 'A snake coils up on the grindstone and rears into view.', glyphs: ['🐍', '🪨'], action: 'bob', reason: 'Prophase comes first (Greek pro, before): the chromosomes coil up and become visible.', source: 'fixture' }],
+      imago: { scene: 'The grindstone spins and winds a loose thread into fat coils, plain to see.', glyphs: ['🌀', '🧵'], action: 'spin', reason: 'Pro- means before (Greek pro): first, before the chromosomes are moved, they coil up and show.', source: 'fixture' },
+      alternates: [{ scene: 'A snake coils up on the grindstone and rears into view.', glyphs: ['🐍', '🪨'], action: 'bob', reason: 'Prophase comes first in mitosis (Greek pro, before): the chromosomes coil up and become visible.', source: 'fixture' }],
     },
     {
       id: 'cell-3', term: 'Metaphase', meaning: 'The chromosomes line up across the middle.', locusId: PLACES[2],

@@ -557,3 +557,158 @@ Spanish
 - GTG. Real Academia Española, *Glosario de términos gramaticales*: persona https://www.rae.es/gtg/persona ; pretérito perfecto simple https://www.rae.es/gtg/pret%C3%A9rito-perfecto-simple ; presente https://www.rae.es/gtg/presente
 - Real Academia Española, *Libro de estilo de la lengua española*, tiempos verbales: https://www.rae.es/libro-estilo-lengua-española/tiempos-verbales
 - 3P. Third-party conjugation tables for comer: https://ellaverbs.com/spanish-verbs/comer-conjugation/ ; https://www.inklingo.app/spanish/conjugations/comer ; https://www.tellmeinspanish.com/verbs/comer-conjugation/ ; future endings: https://sublearn.com/learn/es/grammar/es-simple-future-regular-verbs
+
+## 10. Fact-check of the cell cycle deck
+
+Added early on 15 November 2026. Scope: every statement a learner or judge can read in `src/ai/fixtures/cell-cycle.ts` ("The five stages of the cell cycle", the deck of the short demo `?judge=short`): the title, the room name, the five terms and meanings, the five link labels (written on the floor in every walk, the demo included), the ten scenes and their reasons, and the header comment. Also the one sentence the app builds from each label on the recall walk (`src/flows/process.ts` line 197). Sections 1 to 9 are unchanged.
+
+### 10.1 Bottom line
+
+Nothing in the deck is wrong. The order, the five meanings, the five link labels and the three word origins agree with the sources, and the two letter hooks are labelled as hooks. Nothing a judge sees in the two-minute demo has to change for the demo to be true. Six things are imprecise. Two of them matter:
+
+- **The recall-walk feedback (C13).** Outside Judge Mode the walk asks "What happens to Interphase next?" and, once it is answered, shows "Interphase: chromosomes coil up." Read on its own, that sentence says the chromosomes condense during interphase. They do not: they condense in prophase. The same template gives "Anaphase: two nuclei form." and "Telophase: cell splits in two." The labels are right; the sentence leaves out "next". The fix is one line of code (10.3 item 1), not a change to the deck. Judge Mode does not ask about links, so the demo never shows this sentence.
+- **The title (C23).** "The five stages of the cell cycle" is the school list (IPMAT). College texts divide the cycle into interphase and the mitotic phase, give mitosis five phases (prometaphase included), and treat cytokinesis as a step of its own.
+
+The other four are small wording fixes in the reasons, the scenes and one meaning (C6, C19, C20, C21).
+
+Count: 24 rows. Correct: 18. Imprecise: 6 (C6, C13, C19, C20, C21, C23). Wrong: 0.
+
+**How this was verified.** I could not open any page. `openstax.org`, `www.khanacademy.org` and `www.ncbi.nlm.nih.gov` did not resolve, and I tried no other hosts. Every source was checked through web-search extracts, as in sections 8 and 9, and no page was read in full. Words in quotation marks are as they appeared in an extract. ‡ marks a reproduction, an adaptation or a secondary page. Campbell and Urry's *Biology* did not appear in any extract, so the main biology source is OpenStax *Biology 2e*, an introductory college textbook. Source keys are expanded in 10.7.
+
+### 10.2 The deck, row by row
+
+| # | Deck text | Verdict | Source | Note or replacement |
+|---|-----------|---------|--------|---------------------|
+| C1 | Order: Interphase, Prophase, Metaphase, Anaphase, Telophase, and back to Interphase | Correct | OS §10.2: interphase (G1, S, G2), then the mitotic phase; mitosis "is divided into a series of phases—prophase, prometaphase, metaphase, anaphase, and telophase" | Prometaphase is left out, as it is in school lists (C23). |
+| C2 | Interphase is presented as the stage before the four phases of mitosis, not as one of them | Correct | OS §10.2; KA‡ (transcript): interphase "it's not a phase of mitosis" | No line in the deck calls interphase a phase of mitosis. The header comment says so in as many words. |
+| C3 | Interphase: "The cell grows and copies its DNA." | Correct | OS‡ (copies of §10.2, extracts): the cell grows and its DNA is duplicated during interphase; DNA replication happens in S phase | Do not call interphase a "resting" phase (10.6). |
+| C4 | Prophase: "The chromosomes coil up and become visible." | Correct | OS‡ (Lumen): "The sister chromatids begin to coil more tightly and now become visible under a light microscope"; OS §10.2: "chromosomes condense and are now visible" | |
+| C5 | Metaphase: "The chromosomes line up across the middle." | Correct | OS §10.2: chromosomes "are aligned at the 'equatorial plate'"; OS‡ (a copy): "All the chromosomes are aligned in a plane called the metaphase plate", midway between the poles | |
+| C6 | Anaphase: "The two copies are pulled apart to opposite ends." | Imprecise (minor): it does not say what the two copies are | OS §10.2: "Sister chromatids are pulled apart by spindle fibers and are separated from each other" | Optional: `'The two copies of each chromosome (sister chromatids) are pulled to opposite ends.'` |
+| C7 | Telophase: "Two new nuclei form, one at each end." | Correct | OS §10.2: "The nuclear envelope reassembles and begins to surround each new set of chromosomes"; chromosomes "arrive at opposite poles and start to decondense" | It rightly says nuclei, not that the cell splits. |
+| C8 | Link, Interphase to Prophase: "chromosomes coil up" | Correct | As C4 | |
+| C9 | Link, Prophase to Metaphase: "align at the middle" | Correct | As C5 | Prometaphase falls between the two and is left out (C1). |
+| C10 | Link, Metaphase to Anaphase: "copies pulled apart" | Correct | As C6 | |
+| C11 | Link, Anaphase to Telophase: "two nuclei form" | Correct | As C7 | |
+| C12 | Link, Telophase back to Interphase: "cell splits in two"; header comment: "after the cell splits each daughter cell starts interphase again" | Correct | OS‡ (LibreTexts): "The second portion of the mitotic phase, called cytokinesis, is the physical separation of the cytoplasmic components into the two daughter cells"; OS‡ (a copy): "In animal cells, cytokinesis typically starts during late anaphase"; MO ch. 11: "the daughter cells are now free to enter G1 phase" | The label describes cytokinesis. It sits on the link from telophase to interphase, not on telophase, so the deck does not say that telophase is the split, and that is a fair place for it. Cells that stop dividing (G0) were not checked; the deck does not mention them. Optional, to name the step: `'cytokinesis: cell splits'` (three words). |
+| C13 | The sentence the recall walk builds from each label once it is answered, outside Judge Mode: "Interphase: chromosomes coil up.", "Prophase: align at the middle.", "Metaphase: copies pulled apart.", "Anaphase: two nuclei form.", "Telophase: cell splits in two." (`src/flows/process.ts` line 197, shown as `link-fact` by `src/ui/Process.tsx`) | Imprecise; misleading when read on its own | OS‡ (a copy of §10.2): the DNA stays in a semi-condensed chromatin form throughout interphase (extract, paraphrased); C4 to C7, C12 | Each sentence describes the stage after the one it names; the telophase one runs telophase and cytokinesis together. The question above it says "next" and the sentence does not. Judge runs do not ask about links (`JUDGE_ASKS_LINKS = false` in `src/flows/timing.ts`), so the demo never shows these sentences. Walking the deck from the list does, and `docs/pitch.md` line 199 suggests doing that. Fix: 10.3 item 1. |
+| C14 | Origin: "Inter- means between (Latin inter)" (two reasons) | Correct | EO interphase‡ (translated pages): coined 1913 from German, inter- "between" + phase; EO inter alia: Latin "among, between"; Wiktionary‡ inter- | |
+| C15 | Origin: "Pro- means before (Greek pro)" (two reasons) | Correct | EO prophase‡ (translated pages): from German (Strasburger, 1884), pro- + phase; AF: Greek pro-, "before in time, place, order", with prophase among its examples; Wiktionary‡ pro-: Greek πρό, "before" | |
+| C16 | Origin: "Telo- is the Greek telos, end" (two reasons) | Correct | DC telo-: from Greek *telos*, "end"; DC telophase: telo- + phase; EO telophase‡ (translated page): coined 1895 from telo-, the combining form of *telos*, + phase | |
+| C17 | "A letter hook: M for middle" (two reasons) | Correct: labelled as a hook, not as an origin | I saw no dictionary entry for metaphase | Keep the words "A letter hook". Do not say that meta- means middle (10.6). |
+| C18 | "A letter hook: A for apart" (two reasons) | Correct: labelled as a hook | EO anaphase‡ (translated page): Greek *ana*, "back" (also "up", "again") | Do not say that ana- means apart. |
+| C19 | Prophase reason: "first, before anything moves, the chromosomes coil up and show" | Imprecise: things do move in prophase | OS‡ (Lumen): in prophase "the centrosomes begin to move to opposite poles of the cell" | `'Pro- means before (Greek pro): first, before the chromosomes are moved, they coil up and show.'` |
+| C20 | Prophase alternate reason: "Prophase comes first (Greek pro, before)" | Imprecise (minor): prophase is the first phase of mitosis but the second stage in this deck | OS §10.2 | `'Prophase comes first in mitosis (Greek pro, before): the chromosomes coil up and become visible.'` |
+| C21 | Interphase scene: "a second DNA strand rolls out from under it, a copy of the first"; alternate: "prints a second DNA strand" | Imprecise (minor): a new strand is complementary to its template, not a copy of it. What is copied is the whole molecule | OSO §28.3: "Each new strand is complementary to its old template strand, so two identical DNA double helices are produced"; OSAP §14.3: a newly replicated molecule "consists of one 'old' strand and one 'new' strand" | Replace "strand" with "molecule" in both (same word count). Scene: `'The screw press turns, and a second DNA molecule rolls out from under it, a copy of the first.'` Alternate: `'A copier on the screw press prints a second DNA molecule.'` |
+| C22 | The other scenes and reasons: magnets or log halves flying to opposite ends (anaphase), ants or darts across the middle (metaphase), an egg or a light at each end (telophase), and "Telophase comes last (Greek telos, end)" | Correct | As C5 to C7 and C16 | Telophase is the last phase of mitosis. The ants march "around the middle ... like a belt", which is a ring, while the plate is a plane across the cell. The darts' "one straight line across the middle" shows it better. Not worth changing tonight. |
+| C23 | Title: "The five stages of the cell cycle" | Imprecise | OS §10.2: the cycle is interphase and the mitotic phase; mitosis has five phases, prometaphase included; cytokinesis is the second part of the mitotic phase. AL ch. 18 (introduction, extract): M phase is nuclear division (mitosis) and cytoplasmic division (cytokinesis), with five stages of nuclear division | This is the school list (IPMAT) and is fine for a high-school deck if it is presented as such. Replacement: `'Interphase and mitosis (IPMAT)'`. Cost: the title is matched in `scripts/smoke.mjs` lines 882 and 2660 and `scripts/capture.mjs` line 216, and quoted in `README.md`, `docs/pitch.md` and `docs/devpost.md`. The layout id carries the room name, not the title. If that is too much tonight, keep the title and use sentence 1 in 10.4. |
+| C24 | Room name: "The cell cycle" | Correct | OS §10.2 | It is part of the layout id. Do not change it. |
+
+### 10.3 Replacement wording, ready to paste
+
+In order of importance. Item 1 is the only one a biology teacher is likely to object to on screen. The rest are optional.
+
+1. **The recall-walk sentence, `src/flows/process.ts` line 197** (code, not the deck, so it is the Lead's call after the freeze). Make the `fact` say "next":
+
+```
+fact: `Next after ${term}: ${labelOf(l)}.`
+```
+
+It then reads "Next after Interphase: chromosomes coil up." and "Next after Telophase: cell splits in two." The change applies to every process deck, so the expected sentences in `scripts/smoke.mjs` must change to match: lines 2364 to 2375 ("Spring: gathers." becomes "Next after Spring: gathers.", and so on for Stream, River, Sea and Cloud), 2602 and 2617. If there is no time, do not walk the cell cycle deck from the list in front of a biologist, or say "next" aloud when the feedback appears. The Judge run is not affected.
+
+2. **Prophase reason, `cell-cycle.ts`** (C19):
+
+```
+reason: 'Pro- means before (Greek pro): first, before the chromosomes are moved, they coil up and show.',
+```
+
+3. **Prophase alternate reason** (C20):
+
+```
+reason: 'Prophase comes first in mitosis (Greek pro, before): the chromosomes coil up and become visible.',
+```
+
+4. **Interphase scenes** (C21):
+
+```
+scene: 'The screw press turns, and a second DNA molecule rolls out from under it, a copy of the first.',
+scene: 'A copier on the screw press prints a second DNA molecule.',
+```
+
+5. **Anaphase meaning** (C6, optional). It has no apostrophe, so it needs no escaping:
+
+```
+meaning: 'The two copies of each chromosome (sister chromatids) are pulled to opposite ends.',
+```
+
+6. **Title** (C23, optional; the cost is in the row): `title: 'Interphase and mitosis (IPMAT)',`
+
+7. **Fifth link label** (C12, optional): `'cytokinesis: cell splits'` in place of `'cell splits in two'`, the last entry of `STEPS`. Three words, within the four-word rule in `scripts/architect-smoke.mjs`.
+
+No change is needed to the order, the other four meanings, the other four labels, the three word origins, the two letter hooks or the room name.
+
+### 10.4 Principles and sentences
+
+**Principles for built-in decks** (proposed wording for the Lead; CLAUDE.md is not ours to edit)
+
+- **10a.** "A sentence built from a link label says 'next', so that what happens between two steps is never read as a description of the step it leaves." (Row C13)
+- **10b.** "A built-in deck that follows a school simplification says so in its title or when it is presented." (Rows C1, C23)
+
+**Sentences we may say**
+
+1. "The demo deck is the cell cycle as it is taught in school, IPMAT: interphase, when the cell grows and copies its DNA, then prophase, metaphase, anaphase and telophase. College textbooks also name prometaphase and treat cytokinesis as a step of its own; in our palace, cytokinesis is the link from telophase back to interphase, 'cell splits in two'."
+2. "Where an image relies on a word origin, the origin is real: inter-, between; pro-, before; telos, end. Where there is no handy one, the deck says it is using a letter hook: M for middle, A for apart."
+3. "We checked every line of the deck against OpenStax *Biology* and two dictionaries of word origins, Etymonline and Dictionary.com. We read search extracts of those sources, not the full pages."
+
+**Sentences we must not say**
+
+- "Metaphase means middle" or "ana- means apart". They are letter hooks, and the deck says so.
+- "Telophase is when the cell splits in two." The split is cytokinesis, which usually begins in late anaphase and overlaps telophase.
+- "Interphase is a phase of mitosis" or "interphase is a resting phase."
+- "The five stages of the cell cycle" as a textbook fact in front of a biologist. Say "the five stages as taught in school".
+- Who named the phases, or when (10.6).
+- "Checked against the textbook" without "through search extracts".
+
+### 10.5 Honest caveats: what could not be verified
+
+- No page was opened in full. `openstax.org`, `www.khanacademy.org` and `www.ncbi.nlm.nih.gov` have to be allowed in the session's network settings before the primary pages can be read.
+- Campbell and Urry's *Biology* was not seen. Alberts's *Molecular Biology of the Cell* was seen only as an extract of the chapter 18 introduction on the NCBI Bookshelf, not its text on each stage.
+- Khan Academy was seen only through third-party summaries of its video transcripts, not its article.
+- OpenStax wording was seen in a search extract of the *Biology 2e* page and in adaptations and copies (Lumen Learning, LibreTexts, a PDF copy). Wording varies between editions. The extract for "cytokinesis typically starts during late anaphase" did not say which copy it came from.
+- Merriam-Webster's entries for prophase, telophase and inter- were not reached. Etymonline's entries for interphase, prophase, telophase and anaphase were seen only on its translated pages. No dictionary entry for metaphase was seen at all.
+- The title of the Morris text is not given here: the extract gave only the publisher's address (`morris2e`, chapter 11).
+- G0 (cells that leave the cycle) was not checked. The deck does not mention it.
+
+### 10.6 Leads that did not check out
+
+- **"Meta- means middle."** No source says so. One etymology blog glosses metaphase as "after appearance"; no dictionary entry was seen. Keep the letter hook.
+- **"Ana- means apart."** Etymonline gives Greek *ana* as "back" (also "up", "again"). Keep the letter hook.
+- **Who named the phases, and when.** An extract of a *CBE—Life Sciences Education* article credits Strasburger (1884) with prophase, metaphase and anaphase, and Heidenhain (1894) with telophase. Other pages credit Flemming. Etymonline dates telophase to 1895, and its anaphase page gives both 1884 and 1887; Dictionary.com dates telophase to 1895–1900. Do not state a name or a date.
+- **The date of "interphase".** Etymonline gives 1913 and Dictionary.com 1920–25. The deck does not use it.
+- **Prophase and the Greek *prophasis*.** Etymonline's translated page mentions *prophasis* ("pretext"), which is a different word. The deck is right to give pro- + phase.
+- **Interphase as a "resting" phase.** OpenStax says a cell in G1 looks little changed but is "very active biochemically". The deck does not say "resting", and should not.
+- **The Campbell sentence on prophase.** Not found. C4 and C19 rest on OpenStax.
+
+### 10.7 Sources (section 10)
+
+All seen through search extracts on 15 November 2026.
+
+Biology
+- OS. OpenStax, *Biology 2e*, §10.2 "The Cell Cycle": https://openstax.org/books/biology-2e/pages/10-2-the-cell-cycle (extract only). Copies and adaptations‡: PDF copy of §10.2, https://www.theexpertta.com/book-files/OpenStaxBio2e/10.2%20The%20Cell%20Cycle.pdf ; Lumen Learning, "Reading: Mitosis", https://courses.lumenlearning.com/wm-nmbiology1/chapter/reading-mitosis/ ; LibreTexts (Boundless), 10.2B "The Mitotic Phase and the G0 Phase", https://bio.libretexts.org/Bookshelves/Introductory_and_General_Biology/General_Biology_(Boundless)/10%3A_Cell_Reproduction/10.02%3A_The_Cell_Cycle/10.2B%3A_The_Mitotic_Phase_and_the_G0_Phase
+- OSAP. OpenStax, *Biology for AP Courses*, §14.3 "Basics of DNA Replication": https://openstax.org/books/biology-ap-courses/pages/14-3-basics-of-dna-replication
+- OSO. OpenStax, *Organic Chemistry*, §28.3 "Replication of DNA": https://openstax.org/books/organic-chemistry/pages/28-3-replication-of-dna
+- AL. Alberts and colleagues, *Molecular Biology of the Cell*, 4th ed., chapter 18 "The Mechanics of Cell Division", NCBI Bookshelf: https://ncbi.nlm.nih.gov/books/NBK21065 (introduction only, through an extract)
+- MO. Morris and colleagues, 2nd ed., chapter 11, publisher's online page (title not seen): https://digfir-published.macmillanusa.com/morris2e/morris2e_ch11_13.html
+- KA‡. Khan Academy, video "Phases of mitosis", through third-party transcript summaries: https://rosetta.to/u/khanacademy/phases-of-mitosis ; https://chaindesk.ai/tools/youtube-summarizer/mitosis-cells-mcat-khan-academy-TKGcfbyFXsw
+
+Word origins
+- EO. Online Etymology Dictionary: inter alia https://www.etymonline.com/word/inter%20alia ; interphase https://www.etymonline.com/it/word/interphase and https://www.etymonline.com/fr/word/interphase ; prophase https://www.etymonline.com/es/word/prophase and https://www.etymonline.com/de/word/prophase ; telophase https://www.etymonline.com/de/word/telophase ; anaphase https://www.etymonline.com/de/word/anaphase (translated pages of the English entries, except inter alia)
+- DC. Dictionary.com: telo- https://www.dictionary.com/browse/telo ; telophase https://www.dictionary.com/browse/telophase ; interphase https://dictionary.com/browse/interphase
+- AF. *The building blocks of English* (affixes.org), pro- (Greek): https://www.affixes.org/pro-2.html
+- Wiktionary‡: inter- https://en.wiktionary.org/wiki/inter- ; pro- https://en.wiktionary.com/wiki/pro-
+
+For 10.6 only
+- *CBE—Life Sciences Education*, article on the history of mitosis terms (extract only): https://www.lifescied.org/doi/10.1187/cbe.03-10-0043
+- Bioetymology blog, metaphase (not authoritative): https://bioetymology.blogspot.com/2011/09/metaphase.html?m=1
+
+**Applied on Sun 3:30 AM ET** (Lead): items 1 to 4 of 10.3 as written; item 7 as "cytokinesis splits the cell" (four words, no colon, so the sentences built from it read cleanly). Items 5 and 6 left as they are: the title is the one the team lead chose, and the pitch says that the deck is the school list (IPMAT).
