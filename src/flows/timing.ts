@@ -62,14 +62,15 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
  * for the pitch run's 18). Measured on the greybox theme, each case alone, with
  *   node scripts/smoke.mjs --only a --serial     default: 123 s
  *   node scripts/smoke.mjs --only p --serial     pitch:    77 s (a few seconds either way: the three spot-check places are random)
- * The pitch label is rounded up, so that the promise is kept with room to spare; the default
+ *   node scripts/smoke.mjs --only i --serial     short:    80 s (five places studied, all five asked, the 33-word screen read in eight seconds)
+ * The pitch and short labels are rounded up, so that the promise is kept with room to spare; the default
  * label is the run's length to the nearest half minute. Re-measure and update both the number
  * and the wording after changing anything above.
  */
 export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; label: string }> = {
   default: { measuredSeconds: 123, label: 'Try it in 2 minutes' },
   pitch: { measuredSeconds: 77, label: 'Try it in 90 seconds' },
-  short: { measuredSeconds: 60, label: 'Try it in 60 seconds' },
+  short: { measuredSeconds: 80, label: 'Try it in 90 seconds' },
 };
 
 /**

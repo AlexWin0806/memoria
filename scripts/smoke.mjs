@@ -26,6 +26,9 @@
  *      a timed encode stop can be paused (P) and resumed (Space), whichever stop the key lands on
  *   p  Judge pitch variant (?judge=pitch), passive: no preview, spot check of three -> "3 of 3";
  *      the learner's saved state survives it too
+ *   i  Judge short variant (?judge=short), passive, with the network off: the cell-cycle deck is
+ *      well formed; five places studied in order, all five asked -> "5 of 5", no spot-check wording,
+ *      no requests, nothing written, the learner's saved state kept; prints the measured time
  *   r  Compose: the draft survives a reload at both steps; dropped lines, the three-fact minimum,
  *      emoji-only glyphs, the read-to-the-end gate, validation that names the card, Discard draft
  *   t  Typed recall on a pairs deck: the place is the cue, articles and brackets are forgiven,
@@ -82,11 +85,12 @@
  * Cases f, t and w start from a deck whose images have been placed (seedStudied): they test the
  * recall walk, and a palace nobody has studied no longer has one.
  *
- * Timing. Cases a and p print how long a passive run took, with THINK_MS of thought per
+ * Timing. Cases a, p and i print how long a passive run took, with THINK_MS of thought per
  * answer. Run them alone for a fair figure (software rendering slows down when cases share
  * the machine), then keep JUDGE_PROMISE in src/flows/timing.ts in step:
  *   node scripts/smoke.mjs --only a --serial
  *   node scripts/smoke.mjs --only p --serial
+ *   node scripts/smoke.mjs --only i --serial
  *
  * Screenshots of each screen go to qa/shots/ui/.
  */
@@ -135,6 +139,10 @@ const routeOrder = [...layoutSrc.matchAll(/\{ id: '(domus-\d+)', index: (\d+),/g
   .map((m) => placeName[m[1]]);
 const fixtureCount = readFileSync('src/ai/fixtures/index.ts', 'utf8').match(/FIXTURE_DECKS: Deck\[\] = \[([^\]]+)\]/)[1].split(',').length;
 const JUDGE_DECK_TITLE = 'The eight carpal bones';
+/** The short Judge run (?judge=short): the cell-cycle deck, the term at each named place, in route order. */
+const cellSrc = readFileSync('src/ai/fixtures/cell-cycle.ts', 'utf8');
+const cellAt = Object.fromEntries([...cellSrc.matchAll(/term: '([^']+)'[^\n]*?locusId: '([^']+)'/g)].map((m) => [placeName[m[2]], m[1]]));
+const CELL_TERMS = ['Interphase', 'Prophase', 'Metaphase', 'Anaphase', 'Telophase'];
 /** The pitch variant's spot check: this many of the eight places (spotCheckStops in src/flows/timing.ts). */
 const SPOT = 3;
 const SPOT_WORDS = 'three of the eight';
@@ -343,11 +351,14 @@ async function checkPausedStop(page, screen, pausedAt, seconds) {
  *   passive     press nothing but the answers, as a judge who just watches would
  *   think       ms of thought before each answer
  *   pitch       the ?judge=pitch variant: no preview, spot check of three places
+ *   short       the ?judge=short variant: no preview, the five-place cell-cycle deck, every place asked
  *   pauseCheck  pause the feedback after an answer with P and check that it holds (once)
  * Returns the score text, how long the run took, and the places recalled.
  */
-async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 0, pitch = false, pauseCheck = false } = {}) {
+async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 0, pitch = false, short = false, pauseCheck = false } = {}) {
   const LONG = { timeout: 240000 };
+  const N = short ? 5 : 8;
+  const terms = short ? cellAt : termAt;
   const quietShot = (name) => (shots ? shot(page, `${shots}-${name}`).catch(() => {}) : undefined);
   await page.evaluate(installWalkLog);
   const started = Date.now();
@@ -356,11 +367,11 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     phases[name] = Math.round((Date.now() - started) / 100) / 10;
   };
   await page.getByTestId('title-judge').click();
-  if (!pitch) await quietShot('preview');
+  if (!pitch && !short) await quietShot('preview');
 
   if (passive) {
     // Watch only. A screenshot of the third image is taken on the side, if it can be caught.
-    const third = page.locator('[data-testid=encode] [data-testid=walk-label]:has-text("Place 3 of 8")');
+    const third = page.locator(`[data-testid=encode] [data-testid=walk-label]:has-text("Place 3 of ${N}")`);
     const side = shots ? third.waitFor(LONG).then(() => page.getByTestId('encode-term').waitFor({ timeout: 3000 })).then(() => quietShot('encode'), () => {}) : null;
     await page.getByTestId('encode-term').first().waitFor(LONG);
     mark('first image');
@@ -379,15 +390,15 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   mark('encode done');
   const interstitialAt = Date.now();
   const { encode: shown, preview, spotNote, extra } = await page.evaluate(() => window.__walkLog);
-  assert(preview === !pitch, pitch ? 'the pitch variant should have no route preview' : 'the route preview was not shown');
+  assert(preview === !(pitch || short), pitch || short ? 'the pitch and short variants should have no route preview' : 'the route preview was not shown');
   assert(extra.length === 0, `a Judge run showed more to read than it should: ${extra}`);
   // What the ruins mean is said from the first screen until a place or two has been rebuilt, and not after
   // (QA review 4, issue 1); it pushes nothing the judge has to read below the fold.
   const { ruins, ruinsText, previewRuins, fold, overlap } = await page.evaluate(() => window.__walkLog);
   assert(ruinsText === RUINS_LINE, `the line about the ruins reads "${ruinsText}"`);
-  if (!pitch) assert(previewRuins === true, 'the route preview does not say what the ruins mean');
+  if (!pitch && !short) assert(previewRuins === true, 'the route preview does not say what the ruins mean');
   const withLine = ruins.filter((e) => e.shown).map((e) => e.label.split('·')[0].trim());
-  assert(ruins.length === 8 && withLine.join() === 'Place 1 of 8,Place 2 of 8', `the line about the ruins was shown at: ${withLine} (of ${ruins.length} stops)`);
+  assert(ruins.length === N && withLine.join() === `Place 1 of ${N},Place 2 of ${N}`, `the line about the ruins was shown at: ${withLine} (of ${ruins.length} stops)`);
   assert(fold > 0 && fold <= page.viewportSize().height && overlap <= 0, `with the line about the ruins the scene sentence ends at y = ${Math.round(fold)} (${Math.round(overlap)} px past the top of the pinned buttons)`);
   assert((await page.getByTestId('judge-ruins').count()) === 0, 'the line about the ruins is still there after the study walk');
   if (pitch) {
@@ -395,11 +406,11 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     const said = `${await text(page.locator('[data-testid=interstitial] h1'))} ${spotNote}`.split(/\s+/).filter(Boolean).length;
     assert(said <= 20, `the spot-check screen says its piece in ${said} words (20 at most)`);
   }
-  assert(shown.length === 8, `expected eight images on the encode walk, saw ${shown.length}: ${shown.map((e) => e.label)}`);
+  assert(shown.length === N, `expected ${N} images on the encode walk, saw ${shown.length}: ${shown.map((e) => e.label)}`);
   shown.forEach((e, i) => {
     const [step, place] = e.label.split('·').map((part) => part.trim());
-    assert(step === `Place ${i + 1} of 8`, `encode stop ${i + 1}: out of order (${e.label})`);
-    assert(e.term.trim() === termAt[place], `encode stop ${i + 1}: wrong term at ${place}`);
+    assert(step === `Place ${i + 1} of ${N}`, `encode stop ${i + 1}: out of order (${e.label})`);
+    assert(e.term.trim() === terms[place], `encode stop ${i + 1}: wrong term at ${place}`);
   });
   await quietShot('interstitial');
   // Both runs wait here for the button, however long the judge takes to read.
@@ -410,8 +421,8 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   await page.getByTestId('recall-start').click();
   mark(pitch ? 'spot check started' : 'recall walk started');
 
-  const stops = pitch ? SPOT : 8;
-  const label = (i) => (pitch ? `Spot check ${i} of ${SPOT}` : `Place ${i} of 8`);
+  const stops = pitch ? SPOT : N;
+  const label = (i) => (pitch ? `Spot check ${i} of ${SPOT}` : `Place ${i} of ${N}`);
   const visited = [];
   const expected = [];
   let pauseChecked = false;
@@ -422,7 +433,7 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     if (i === 1) mark('first question');
     const place = await question.getAttribute('data-place');
     visited.push(place);
-    const answer = termAt[place];
+    const answer = terms[place];
     // Retrieval practice: nothing may be revealed before the learner commits. (Nothing moves on before an answer either.)
     assert((await text(page.getByTestId('recall-feedback'))) === '', `recall stop ${i}: feedback shown before answering`);
     const options = await choiceTexts(page, 'choice');
@@ -474,12 +485,12 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
   const { whole } = await page.evaluate(() => window.__walkLog);
   if (whole.length) {
     const at = (moment) => whole.find((e) => e.moment.startsWith(moment));
-    const eight = (e) => e.integrity.slice(0, 8).join(' ');
-    if (!pitch) assert(at('preview') && eight(at('preview')) === '0 0 0 0 0 0 0 0', `a Judge run does not start in ruins: ${at('preview') && eight(at('preview'))}`);
-    for (let i = 1; i <= 8; i++) {
-      const e = at(`image:Place ${i} of 8`);
+    const eight = (e) => e.integrity.slice(0, N).join(' ');
+    if (!pitch && !short) assert(at('preview') && eight(at('preview')) === '0 0 0 0 0 0 0 0', `a Judge run does not start in ruins: ${at('preview') && eight(at('preview'))}`);
+    for (let i = 1; i <= N; i++) {
+      const e = at(`image:Place ${i} of ${N}`);
       assert(e, `no state of repair noted for encode stop ${i}`);
-      const want = Array.from({ length: 8 }, (_, k) => (k < i ? 0.6 : 0)).join(' ');
+      const want = Array.from({ length: N }, (_, k) => (k < i ? 0.6 : 0)).join(' ');
       assert(eight(e) === want, `encode stop ${i}: the places are ${eight(e)}, expected ${want}`);
       // No image is ever shown at a place in ruins.
       assert(e.shown.every((k) => e.integrity[k] > 0), `encode stop ${i}: an image is shown at a place in ruins`);
@@ -487,9 +498,9 @@ async function judgeRun(page, { wrong = 0, shots = '', passive = false, think = 
     const end = at('results');
     assert(end, 'no state of repair noted on the results');
     const asked = visited.map((v) => routeOrder.indexOf(v));
-    const wantEnd = Array.from({ length: 8 }, (_, k) => (asked.includes(k) ? (expected[asked.indexOf(k)].state === 'right' ? 1 : 0.3) : 0.6)).join(' ');
+    const wantEnd = Array.from({ length: N }, (_, k) => (asked.includes(k) ? (expected[asked.indexOf(k)].state === 'right' ? 1 : 0.3) : 0.6)).join(' ');
     assert(eight(end) === wantEnd, `results: the places are ${eight(end)}, expected ${wantEnd} (asked: ${asked})`);
-    assert(end.integrity.slice(8).every((v) => v === 1), 'a place that holds nothing is not whole');
+    assert(end.integrity.slice(N).every((v) => v === 1), 'a place that holds nothing is not whole');
   }
   // The legend of the states is on the results (a Judge run has no survey, so no place "standing"); it has no trend and no Progress view to offer.
   assert((await text(page.getByTestId('repair-legend'))) === JUDGE_LEGEND, `the legend on the Judge results reads "${await text(page.getByTestId('repair-legend'))}"`);
@@ -819,6 +830,52 @@ const cases = {
     assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
     await context.close();
     return `${score}; passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
+  },
+
+  async i() {
+    // The deck itself: five stages, in order, on the first five places, an alternate each, glyphs that draw everywhere
+    // (one emoji code point, the full Unicode-13 rule is checked by scripts/architect-smoke.mjs).
+    const items = [...cellSrc.matchAll(/term: '([^']+)'[^\n]*?locusId: '([^']+)'/g)].map((m) => [m[1], m[2]]);
+    assert(items.map(([t]) => t).join() === CELL_TERMS.join(), `cell-cycle terms: ${items.map(([t]) => t)}`);
+    assert(items.map(([, l]) => l).join() === ['01', '02', '03', '04', '05'].map((n) => `domus-${n}`).join(), `cell-cycle places: ${items.map(([, l]) => l)}`);
+    assert((cellSrc.match(/alternates: \[\{/g) ?? []).length === 5, 'every cell-cycle item needs one alternate');
+    const glyphs = [...cellSrc.matchAll(/glyphs: \[([^\]]+)\]/g)].flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((g) => g[1]));
+    const bad = glyphs.filter((g) => [...g].filter((c) => c !== '\uFE0F').length !== 1 || !/\p{Extended_Pictographic}/u.test(g));
+    assert(glyphs.length === 20 && bad.length === 0, `cell-cycle glyphs: ${glyphs.length}, unsafe: ${bad}`);
+
+    const { context, page, errors, requests } = await open();
+    // ?judge=short waits on the title screen, like the pitch run; the title button starts it.
+    await page.goto(`${base}/?judge=short&debug=stores&${FAST}`, { waitUntil: 'load' });
+    await page.getByTestId('title').waitFor();
+    await page.waitForFunction(() => window.__memoriaApp);
+    const seeded = await seedLearner(page);
+    await page.waitForFunction(() => window.__memoriaApp);
+    const promised = await text(page.getByTestId('title-judge'));
+    assert(promised === 'Try it in 90 seconds', `the short run's button says "${promised}"`);
+    await context.setOffline(true);
+    requests.length = 0;
+    const { score, ms, visited, timeline, checkedRepair } = await judgeRun(page, { passive: true, think: THINK_MS, short: true, shots: 'short' });
+    assert(score === '5 of 5', `expected 5 of 5, got "${score}"`);
+    assert(checkedRepair, 'the state of the places was not checked (no debug hook)');
+    assert(visited.map((v) => cellAt[v]).join() === CELL_TERMS.join(), `the recall walk asked: ${visited}`);
+    assert((await page.getByTestId('result-row').count()) === 5, 'expected five result rows');
+    assert((await page.getByTestId('results-spot').count()) === 0, 'a run that asked every place calls itself a spot check');
+    const label = await text(page.locator('[data-testid=results] > .label'));
+    assert(label === 'Results · The five stages of the cell cycle', `the results label reads "${label}"`);
+    assert((await text(page.getByTestId('results-again'))) === 'Recall again', `the results offer "${await text(page.getByTestId('results-again'))}"`);
+    const note = await text(page.getByTestId('judge-note'));
+    assert(!/spot|not tested/i.test(note) && note.includes('walked it again with the images hidden'), `the note on a run that asked every place: ${note}`);
+    assert(note.includes('We have not run an efficacy study of Memoria.'), 'caveat missing');
+    assert((await text(page.getByTestId('repair-legend'))) === JUDGE_LEGEND, 'the legend is missing');
+    assert(requests.length === 0, `Judge Mode made requests while offline: ${requests.join(', ')}`);
+    // A demo run is not study: no record, no new card, and the learner's deck and card are as they were.
+    assert((await storedProgress(page)).records.length === 0, 'a short run wrote a walk record');
+    assertLearnerKept(seeded, await learnerState(page), 'after a short run');
+    const sandbox = await page.evaluate(() => window.__memoria?.decks?.getState().sandbox?.id ?? null);
+    assert(sandbox === 'fixture-cell-cycle', `the short run walked ${sandbox}`);
+    assert(errors.length === 0, `page errors: ${errors.join(' | ')}`);
+    await context.close();
+    return `${score} offline (${visited.map((v) => cellAt[v]).join(', ')}); passive run took ${Math.round(ms / 1000)} s (${timeline}); the button says "${promised}"`;
   },
 
   async p() {
