@@ -1,6 +1,6 @@
 import type { Deck, DeckFocus, DeckKind, Imago, ItemLink, MemoryItem, PalaceSpec } from '@/core/types';
 import { DEFAULT_KIT_ID, KIT_LIST } from '@/layouts/kits/list';
-import { MAX_PLACES, MAX_ROOMS, ROOM_CAPACITY, extendSpec, palaceLayoutId, parsePalaceId, planSpec, specPlaces, specRoomLeft, type Growth } from '@/layouts/spec';
+import { MAX_PLACES, MAX_ROOMS, ROOM_CAPACITY, extendSpec, newPalaceSeed, palaceLayoutId, parsePalaceId, planSpec, specPlaces, specRoomLeft, type Growth } from '@/layouts/spec';
 import type { ArchitectPlan, ArchitectStep } from './architect';
 import { describeDrafts, draftImagos, newId, type Place } from './local';
 import { categoryOfRoom, outlineLocally } from './local-outline';
@@ -78,6 +78,10 @@ export interface PalaceCategory {
 export interface PalacePlan extends ArchitectPlan {
   /** The deck's `layoutId`: `palaceLayoutId(spec)`. */
   layoutId: string;
+  /**
+   * A newly planned palace carries a seed (`spec.seed`, and `@<seed>` in `layoutId`), so that
+   * two palaces in one style are furnished differently. An extension keeps the palace's seed.
+   */
   spec: PalaceSpec;
   kit: PalaceKitChoice;
   /** In walking order. Every item's `locusId` is a place of one of its category's rooms. */
@@ -144,6 +148,10 @@ const LINKS_TIMEOUT_MS = 17_000;
 const REDRAW_TIMEOUT_MS = 22_000;
 const MAX_TEXT = 12_000;
 const MAX_REDRAWS = 3;
+/** As `PalaceSpec.seed` is checked in src/layouts/spec.ts. */
+const SEED = /^[a-z0-9]{1,8}$/;
+/** Bumped when what is cached changes shape: version 2 holds the palace's seed. Older entries are never read. */
+const CACHE_VERSION = 2;
 
 const roomOf = (placeId: string): string => placeId.slice(0, placeId.lastIndexOf('-'));
 /** As `planSpec` numbers the rooms a category continues in. */
@@ -415,15 +423,19 @@ interface Built {
   links: OutlineLink[];
 }
 
-/** Turns an outline into a palace: rooms from the categories, a place for every fact, an offline draft in every place. */
-function build(outline: Outline, kit: PalaceKitChoice, source: 'api' | 'local', seed: string, places: PalaceOptions['places']): Built {
+/**
+ * Turns an outline into a palace: rooms from the categories, a place for every fact, an offline draft in every place.
+ * `seed` gives the offline drafts their stable variety (the notes themselves). `furnishing` is
+ * the palace's own seed (`PalaceSpec.seed`): which of the kit's objects stand where.
+ */
+function build(outline: Outline, kit: PalaceKitChoice, source: 'api' | 'local', seed: string, places: PalaceOptions['places'], furnishing: string): Built {
   const groups = outline.categories.map((c, k) => ({ ...c, items: outline.items.filter((it) => it.category === k) })).filter((g) => g.items.length > 0);
   // A category of more than five continues next door ("Past", "Past II"), and never with a
   // last room of one place: six are three and three (see `roomSizes`).
   const wings = groups.flatMap((g, group) =>
     roomSizes(g.items.length).map((count, part) => ({ group, name: part === 0 ? g.name : `${g.name} ${ROMAN[part + 1] ?? part + 1}`, count, shape: g.shape })),
   );
-  const built = planSpec(kit.id, wings.map(({ name, count, shape }) => ({ name, count, shape })));
+  const built = planSpec(kit.id, wings.map(({ name, count, shape }) => ({ name, count, shape })), furnishing);
   const planned = { spec: built.spec, places: groups.map((_, group) => wings.flatMap((w, i) => (w.group === group ? (built.places[i] ?? []) : []))) };
   const spec = planned.spec;
   const layoutId = palaceLayoutId(spec);
@@ -520,12 +532,17 @@ function pace(say: (step: ArchitectStep) => void): () => void {
   return () => timers.forEach(clearTimeout);
 }
 
-/** Rebuilds a palace from the cache. Item ids are minted again, so two decks from one text never share ids. */
+/**
+ * Rebuilds a palace from the cache. Item ids are minted again, so two decks from one text
+ * never share ids. The seed is the cached one, not a new one: every cached image acts on the
+ * object that stands at its place, and a new seed would put other objects there. (The same
+ * notes are the same topic, so the same furnishing twice does not break one route per topic.)
+ */
 function fromCache(value: unknown, req: PalaceRequest, kits: KitOption[], cap: number, places: PalaceOptions['places']): PalacePlan | null {
-  if (!isRecord(value) || !isRecord(value.images)) return null;
+  if (!isRecord(value) || !isRecord(value.images) || typeof value.seed !== 'string' || !SEED.test(value.seed)) return null;
   const outline = toOutline(value.outline, { cap, kitIds: kits.map((k) => k.id) });
   if (!outline) return null;
-  const built = build(outline, kitFor(req, kits, outline), 'api', req.text, places);
+  const built = build(outline, kitFor(req, kits, outline), 'api', req.text, places, value.seed);
   const steps = toSteps(value.steps);
   const refs = new Map([...built.ids].map(([ref, id]) => [id, ref]));
   const items: MemoryItem[] = [];
@@ -551,7 +568,7 @@ export async function designPalace(req: PalaceRequest, opts?: PalaceOptions): Pr
     const cap = clampCap(req.maxItems);
     if (text && text.length <= MAX_TEXT) {
       const body = { op: 'outline' as const, text, ...(req.kind ? { kind: req.kind } : {}), maxItems: cap, kit: req.kit && req.kit !== 'auto' ? (askedKit(req, kits) ?? DEFAULT_KIT) : 'auto', kits };
-      const key = cacheKey({ palace: 1, ...body });
+      const key = cacheKey({ palace: CACHE_VERSION, ...body });
       const cached = fromCache(readCache(key), req, kits, cap, opts?.places);
       if (cached) {
         say({ kind: 'plan', label: 'Found the palace the Architect designed for this text earlier' });
@@ -564,7 +581,8 @@ export async function designPalace(req: PalaceRequest, opts?: PalaceOptions): Pr
         stop();
         const outline = isRecord(answer) ? toOutline(answer.outline, { cap, kitIds: kits.map((k) => k.id) }) : null;
         if (outline && isRecord(answer)) {
-          const built = build(outline, kitFor(req, kits, outline), 'api', text, opts?.places);
+          // A learner's new palace is furnished in its own order, so that it is not mistaken for another in the same style.
+          const built = build(outline, kitFor(req, kits, outline), 'api', text, opts?.places, newPalaceSeed());
           const plan = built.plan;
           plan.pendingRooms = built.rooms.map((r) => r.roomId);
           plan.steps.forEach(say);
@@ -600,7 +618,7 @@ export async function designPalace(req: PalaceRequest, opts?: PalaceOptions): Pr
           if (drawn.count === 0) plan.source = 'local';
           if (drawn.complete) {
             const raw = isRecord(answer.outline) ? answer.outline : {};
-            writeCache(key, { outline: { ...raw, links }, images: drawn.images, steps: plan.steps });
+            writeCache(key, { outline: { ...raw, links }, images: drawn.images, steps: plan.steps, seed: plan.spec.seed });
           }
           emit(plan, opts?.onProgress);
           return plan;
@@ -623,12 +641,12 @@ export function designPalaceLocal(req: PalaceRequest, opts?: PalaceOptions): Pal
   let plan: PalacePlan;
   try {
     const outline = outlineLocally(req.text, { cap: clampCap(req.maxItems), kind: req.kind });
-    plan = build(outline, kit, 'local', req.text, opts?.places).plan;
+    plan = build(outline, kit, 'local', req.text, opts?.places, newPalaceSeed()).plan;
     if (kit.chosenBy === 'default' && kits.length > 1 && (!req.kit || req.kit === 'auto')) {
       plan.steps.push({ kind: 'plan', label: `No kit was suggested offline: this palace uses ${kits.find((k) => k.id === kit.id)?.name ?? kit.id}. Choose another if it suits the material better.` });
     }
   } catch {
-    const spec = planSpec(kit.id, []).spec;
+    const spec = planSpec(kit.id, [], newPalaceSeed()).spec;
     plan = {
       title: 'Untitled palace',
       kind: req.kind ?? 'list',

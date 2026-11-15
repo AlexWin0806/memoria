@@ -53,6 +53,9 @@ try {
   const { nameSentences, deriveTerm, singularCounts } = await load('/src/ai/parse.ts');
 
   // ── Checks shared by everything that builds a generated palace ──────────────
+  /** As PalaceSpec.seed is checked in src/layouts/spec.ts. */
+  const SEED = /^[a-z0-9]{1,8}$/;
+  const seedOf = (layoutId) => parsePalaceId(layoutId)?.seed;
   const checkLinkList = (label, links, ids, facts) => {
     const pairs = new Set();
     for (const l of links) {
@@ -72,6 +75,7 @@ try {
     const spec = parsePalaceId(plan.layoutId);
     if (!spec) return fail(`${label}: layoutId is not a generated palace: ${plan.layoutId}`);
     if (plan.spec && JSON.stringify(spec) !== JSON.stringify(plan.spec)) fail(`${label}: layoutId and spec disagree`);
+    if (plan.spec && plan.spec.seed !== spec.seed) fail(`${label}: the seed in the spec (${plan.spec.seed}) is not the one in the layoutId (${spec.seed})`);
     if (spec.rooms.length > MAX_ROOMS || spec.rooms.some((r) => r.places < 1 || r.places > ROOM_CAPACITY)) fail(`${label}: more than ${MAX_ROOMS} rooms, or a room with more than ${ROOM_CAPACITY} places`);
     if (plan.items.length > MAX_PLACES) fail(`${label}: ${plan.items.length} items`);
     // A new palace has no room of a single place. (Only a palace that is extended can: nothing in it may move.)
@@ -637,6 +641,11 @@ try {
     if (snapshots.length !== 1 || snapshots[0].pendingRooms.length !== 0) fail('offline headings: onProgress should be called once with nothing pending');
     const again = designPalaceLocal({ text: verbs, kits: kitList });
     if (JSON.stringify(again.items.map((i) => [i.term, i.locusId, i.imago])) !== JSON.stringify(plan.items.map((i) => [i.term, i.locusId, i.imago]))) fail('offline headings: not deterministic');
+    // A learner's new palace carries a seed (which of the kit's objects stand where), so that two palaces
+    // in one style are not furnished alike. The layoutId holds it; the built-in decks have none.
+    if (!SEED.test(plan.spec.seed ?? '') || seedOf(plan.layoutId) !== plan.spec.seed || !plan.layoutId.startsWith(`gen:gothic@${plan.spec.seed};`)) fail(`offline: a new palace should carry a seed, in its spec and in its layoutId: ${plan.spec.seed} / ${plan.layoutId}`);
+    if (again.spec.seed === plan.spec.seed || again.layoutId === plan.layoutId) fail(`offline: two palaces planned from the same notes share the seed ${plan.spec.seed}`);
+    if (FIXTURE_DECKS.some((d) => seedOf(d.layoutId) !== undefined)) fail('a built-in deck carries a seed: built-in palaces keep the kit\'s own order');
 
     const colon = designPalaceLocal({ text: 'Verb tenses:\nPast tense:\ncomí\ncomiste\ncomió\nPresent tense:\ncomo\ncomes\ncome' });
     checkPalace('offline colon headings', colon);
@@ -717,6 +726,8 @@ try {
     if (ext.added.map((i) => i.locusId).join() !== 'r1-4,r3-4,r4-1,r4-2') fail(`offline extension: expected one more in Past, two in a new "Past II", and the lone conditional in Future: ${ext.added.map((i) => `${i.term}@${i.locusId}`)}`);
     if (!ext.steps.some((s) => s.label === '"Conditional" had one fact and shares a room with "Future".')) fail(`offline extension: the steps do not say where the lone fact went: ${ext.steps.map((s) => s.label).join(' | ')}`);
     if (ext.spec.rooms.map((r) => `${r.id}:${r.name}:${r.places}`).join() !== 'r1:Past:4,r2:Present:3,r3:Future:4,r4:Past II:2') fail(`offline extension: rooms ${ext.spec.rooms.map((r) => `${r.id}:${r.name}:${r.places}`)}`);
+    // The seed is fixed for the life of a palace: growing it keeps the furniture that stands.
+    if (ext.spec.seed !== plan.spec.seed || seedOf(ext.deck.layoutId) !== plan.spec.seed || seedOf(ext.layoutId) !== plan.spec.seed) fail(`offline extension: the seed ${plan.spec.seed} did not survive: ${ext.deck.layoutId}`);
     const future1 = deck.items.find((i) => i.term === 'comeré');
     if (ext.links.length !== 1 || ext.links[0].from !== future1.id || ext.links[0].to !== ext.added.find((i) => i.term === 'comería').id || ext.links[0].kind !== 'becomes') fail(`offline extension: the link from an old fact to a new one is missing: ${JSON.stringify(ext.links)}`);
     if (ext.deck.links.length !== 3 || ext.deck.id !== deck.id) fail('offline extension: the grown deck should keep its id and its old links');
@@ -1282,6 +1293,8 @@ try {
       const newIds = new Set(cachedPalace.items.map((it) => it.id));
       check('palace: the same request is served from the cache, with fresh ids and the links remapped', fetches === before && cachedPalace.source === 'api' && cachedPalace.items.length === 30 && cachedPalace.items[0].id !== palace.items[0].id && cachedPalace.links.length === 2 && cachedPalace.links.every((l) => newIds.has(l.from) && newIds.has(l.to)) && cachedPalace.items.every((it, i) => it.imago.scene === palace.items[i].imago.scene), `${fetches - before} request(s)`);
       checkPalace('client cached palace', cachedPalace);
+      // The cached images act on the objects of the first palace's places, so the cached seed is kept, not replaced.
+      check('palace: a new palace carries a seed; served again from the cache it keeps that seed', SEED.test(palace.spec.seed ?? '') && seedOf(palace.layoutId) === palace.spec.seed && cachedPalace.spec.seed === palace.spec.seed && cachedPalace.layoutId === palace.layoutId, `${palace.spec.seed} then ${cachedPalace.spec.seed}`);
 
       // One room never answers: its places keep their offline drafts, flagged, and nothing is cached.
       script.delay = 0;
@@ -1294,6 +1307,7 @@ try {
       script.failRoom = null;
       const retried = await designPalace({ text: `${thirty}\nthing 31 - gloss 31`, kits: kitList });
       check('palace: an incomplete palace is not cached', fetches > before && retried.items.every((it) => it.imago.source === 'architect'), `${fetches - before} request(s)`);
+      check('palace: each newly planned palace has a seed of its own', new Set([palace, partial, retried].map((pl) => pl.spec.seed)).size === 3 && [partial, retried].every((pl) => SEED.test(pl.spec.seed ?? '')), [palace, partial, retried].map((pl) => pl.spec.seed).join(' '));
 
       // Two rooms choose the same picture at the same time: the later one is redrawn.
       script.clash = { i6: GLYPHS[0] };
@@ -1334,6 +1348,7 @@ try {
       check('extend: the Architect is shown what stands, and the images that stand beside the new ones', extPrompts[0].includes('This palace already stands ("Comer")') && extPrompts.some((p) => p.startsWith('Write one memory image') && p.includes('Images that already stand in this room') && p.includes(stand.items[0].imago.scene)));
       check('extend: progress is reported as rooms arrive', snapsE.length >= 3 && snapsE[0].pendingRooms.length === 2 && snapsE.at(-1).pendingRooms.length === 0 && snapsE[0].deck.items.length === 7);
       checkPalace('client extension', { items: grownDeck.deck.items, links: grownDeck.deck.links, spec: grownDeck.spec, layoutId: grownDeck.deck.layoutId, categories: null });
+      check('extend: the palace keeps its seed', SEED.test(stand.spec.seed ?? '') && grownDeck.spec.seed === stand.spec.seed && seedOf(grownDeck.deck.layoutId) === stand.spec.seed, `${stand.spec.seed} then ${grownDeck.spec.seed}`);
       responder = null;
 
       before = fetches;
