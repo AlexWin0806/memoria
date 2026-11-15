@@ -4,7 +4,7 @@
  * times 0.7 in Judge Mode) and comes on top of the per-stop times below.
  */
 
-export type JudgeVariant = 'default' | 'pitch';
+export type JudgeVariant = 'default' | 'pitch' | 'short';
 
 export interface JudgeTiming {
   /** Route preview: seconds per stop. 0 = no preview, straight to the encode walk. */
@@ -20,7 +20,7 @@ export interface JudgeTiming {
 }
 
 /*
- * In both variants the screen between the two walks waits for its button, and every timed
+ * In every variant the screen between the two walks waits for its button, and every timed
  * stop (an image on the encode walk, the feedback after a recall answer) can be paused (P):
  * nothing a judge has to read is taken away by a timer. The learner's own walks have two
  * timed stops of the same kind, further down: SURVEY_HOLD_SECONDS, FAMILIARIZE_SECONDS_PER_STOP.
@@ -42,6 +42,17 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
     missFeedbackSeconds: 3.5,
     spotCheckStops: 3,
   },
+  /**
+   * `?judge=short`: the five stages of the cell cycle instead of the eight carpal bones, timed
+   * as the pitch run, and every place is asked: on five places a spot check would save little.
+   */
+  short: {
+    previewSecondsPerStop: 0,
+    encodeSecondsPerStop: 4,
+    feedbackSeconds: 2,
+    missFeedbackSeconds: 3.5,
+    spotCheckStops: null,
+  },
 };
 
 /**
@@ -58,6 +69,7 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
 export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; label: string }> = {
   default: { measuredSeconds: 123, label: 'Try it in 2 minutes' },
   pitch: { measuredSeconds: 77, label: 'Try it in 90 seconds' },
+  short: { measuredSeconds: 60, label: 'Try it in 60 seconds' },
 };
 
 /**

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { JUDGE_DECK_ID } from '@/ai/fixtures';
+import { JUDGE_DECK_ID, SHORT_JUDGE_DECK_ID } from '@/ai/fixtures';
 import type { Deck, Locus, MemoryItem, ReviewCard, WalkKind, WalkRecord } from '@/core/types';
 import { getLayout, type PalaceLayout } from '@/layouts';
 import { getDeck, openSandbox, useDecks } from '@/state/decks';
@@ -143,10 +143,11 @@ export const useFlow = create<FlowState>()(() => ({
   savedWalk: readSavedWalk(),
 }));
 
-/** `?judge=pitch` selects the pitch variant, for the URL start and for the title button alike. */
+/** `?judge=pitch` and `?judge=short` select their variants, for the URL start and for the title button alike. */
 export function judgeVariantFromUrl(): JudgeVariant {
   if (typeof location === 'undefined') return 'default';
-  return new URLSearchParams(location.search).get('judge') === 'pitch' ? 'pitch' : 'default';
+  const v = new URLSearchParams(location.search).get('judge');
+  return v === 'pitch' || v === 'short' ? v : 'default';
 }
 
 /** Timing of the Judge Mode run in progress. */
@@ -192,13 +193,14 @@ function begin(mode: WalkMode, deck: Deck, stops: number[], judge: boolean, opts
 
 /**
  * Judge Mode: fixture deck, fast route preview, timed encode, multiple-choice recall.
- * The pitch variant drops the preview and checks only some of the places afterwards.
+ * The pitch variant drops the preview and checks only some of the places afterwards; the short
+ * variant drops the preview too, walks the five-stage cell-cycle deck and checks every place.
  * Every run is a sandbox: it walks a fresh copy of the pristine fixture, and it neither reads
  * nor changes the learner's own copy of that deck or their review cards (a demo run is not
  * study). Nothing here touches the network.
  */
 export function startJudge(variant: JudgeVariant = judgeVariantFromUrl()): void {
-  const deck = openSandbox(JUDGE_DECK_ID);
+  const deck = openSandbox(variant === 'short' ? SHORT_JUDGE_DECK_ID : JUDGE_DECK_ID);
   if (!deck) return;
   useFlow.setState({ judgeVariant: variant });
   const preview = JUDGE_TIMING[variant].previewSecondsPerStop > 0;

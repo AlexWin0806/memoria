@@ -23,3 +23,5 @@ export { SPANISH_TENSES } from './spanish-tenses';
  */
 export const FIXTURE_DECKS: Deck[] = [CARPALS, CRANIAL_NERVES, MOHS, SPANISH_KITCHEN, KREBS, CELL_CYCLE, SPANISH_TENSES, KREBS_CYCLE];
 export const JUDGE_DECK_ID = CARPALS.id;
+/** The deck of the short Judge run (`?judge=short`). */
+export const SHORT_JUDGE_DECK_ID = CELL_CYCLE.id;

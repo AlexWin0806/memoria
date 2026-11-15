@@ -489,7 +489,7 @@ export interface CleanWalk {
   step: number;
   results: (RecallResult & { selfMarked?: boolean })[];
   judge: boolean;
-  judgeVariant: 'default' | 'pitch';
+  judgeVariant: 'default' | 'pitch' | 'short';
   walkId: string;
   recallSpentMs: number;
   /** A recall walk over the whole deck, or a review of the places that were due. */
@@ -518,7 +518,7 @@ export function cleanWalk(v: unknown, t: Tally = newTally()): CleanWalk | null {
     step: v.step as number,
     results: cleanList(v.results, cleanResult, t),
     judge: v.judge === true,
-    judgeVariant: v.judgeVariant === 'pitch' ? 'pitch' : 'default',
+    judgeVariant: v.judgeVariant === 'pitch' || v.judgeVariant === 'short' ? v.judgeVariant : 'default',
     walkId: str(v.walkId) ? v.walkId : '',
     recallSpentMs: num(v.recallSpentMs) ? v.recallSpentMs : 0,
     recallScope: v.recallScope === 'due' ? 'due' : 'all',
