@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { answerOf, buildChoices, surveyQuestion, typedMatches } from '@/flows/answers';
 import { advanceSurvey, answerSurvey, beginStudyAfterSurvey, itemAt, leave, skipSurvey, stopsFor, useFlow } from '@/flows/flow';
 import { plural, termLength } from '@/flows/format';
-import { useWalkKeys } from '@/flows/hooks';
+import { useTimedStop, useWalkKeys } from '@/flows/hooks';
+import { SURVEY_HOLD_SECONDS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { useReview } from '@/state/review';
@@ -16,8 +17,12 @@ import { ADVANCE_KEYS } from './Walk';
  * studied. It finds out what the learner already knows, and it is also their first walk
  * of the route, so each stop names its place as the familiarization walk does.
  *
- * It reveals nothing: no right answer, no memory image, no verdict. What the learner sees
- * of their answer is the place itself, which stands or falls in the scene.
+ * It shows no right answer and no memory image. What the learner sees of their answer is the
+ * place itself, which stands or falls in the scene: that tells them whether they were right,
+ * never what the right answer is.
+ *
+ * One key press per place: after an answer the stop holds for a moment, so that the place is
+ * seen standing or falling, and the walk goes on by itself (SURVEY_HOLD_SECONDS).
  */
 export function Survey() {
   const phase = useFlow((s) => s.phase);
@@ -44,9 +49,25 @@ function SurveyWalk() {
   const [skipping, setSkipping] = useState(false);
   const arrivedAt = useRef(0);
   const nextRef = useRef<HTMLButtonElement>(null);
+  const pauseRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLHeadingElement>(null);
   const answersRef = useRef<HTMLDivElement>(null);
+
+  // The stop that was answered on this visit holds for a moment, then the walk moves on by
+  // itself. A stop the learner has come back to was answered earlier: it waits for its button,
+  // or Back would show the place for a second and leave again.
+  const [answeredAt, setAnsweredAt] = useState<number | null>(null);
+  const holding = answered && answeredAt === step;
+  const { held, toggle } = useTimedStop('survey', step, SURVEY_HOLD_SECONDS, holding, advanceSurvey);
+  const toggleHold = () => {
+    // Paused, the focus is on the control, so that Space resumes; resumed, it is back on the way on.
+    (toggle() ? pauseRef : nextRef).current?.focus({ preventScroll: true });
+  };
+  const goBack = () => {
+    setAnsweredAt(null);
+    useSession.getState().prev();
+  };
 
   // When the stop is ready, focus goes to the answer field, or (multiple choice) to the
   // question, so that the next Tab is the first option and no stray key press can answer.
@@ -77,6 +98,7 @@ function SurveyWalk() {
     if (!deck || !item || !arrived || result) return;
     const right = answerOf(item);
     const correct = !unknown && (input === 'choice' ? given === right : typedMatches(given, right));
+    setAnsweredAt(step);
     answerSurvey({ itemId: item.id, correct, given, ms: Date.now() - arrivedAt.current, ...(unknown ? { unknown: true } : {}) });
   };
   const dontKnow = () => commit('', true);
@@ -85,7 +107,9 @@ function SurveyWalk() {
     pick: input === 'choice' && arrived && !result ? (i) => choices[i] !== undefined && commit(choices[i]) : undefined,
     unknown: arrived && !result ? dontKnow : undefined,
     next: result ? advanceSurvey : undefined,
-    back: step > 0 ? () => useSession.getState().prev() : undefined,
+    back: step > 0 ? goBack : undefined,
+    pause: holding ? toggleHold : undefined,
+    resume: held ? toggleHold : undefined,
   });
 
   if (!deck || !locus || !item) return null;
@@ -227,7 +251,15 @@ function SurveyWalk() {
           <button type="button" className="btn btn--primary" ref={nextRef} onClick={advanceSurvey} data-testid="survey-next">
             {last ? 'Finish the survey' : 'Next place'}
           </button>
-          <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
+          {holding && (
+            <button type="button" className="btn" ref={pauseRef} aria-pressed={held} onClick={toggleHold} data-testid="survey-pause">
+              {held ? 'Resume' : 'Pause'}
+              <span className="key" aria-hidden="true">
+                P
+              </span>
+            </button>
+          )}
+          <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={goBack} data-testid="survey-back">
             Back
           </button>
         </div>
@@ -235,7 +267,11 @@ function SurveyWalk() {
 
       <p className="hint" data-testid="survey-hint">
         {result
-          ? `The answers come in the study walk. ${ADVANCE_KEYS}: next.`
+          ? held
+            ? 'Paused. Space or P resumes.'
+            : holding
+              ? 'The answers come in the study walk. It moves on by itself; P pauses. Left arrow: back.'
+              : `The answers come in the study walk. ${ADVANCE_KEYS}: next.`
           : !ready
             ? 'A question waits at each place.'
             : input === 'choice'

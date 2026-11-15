@@ -13,7 +13,7 @@ import {
 import { numberWord, termLength } from '@/flows/format';
 import { useCountdown, useTimedStop, useWalkKeys } from '@/flows/hooks';
 import { studyLines } from '@/flows/process';
-import { JUDGE_RUINS_LINE_STOPS, JUDGE_STARTS_IN_RUINS } from '@/flows/timing';
+import { FAMILIARIZE_SECONDS_PER_STOP, JUDGE_RUINS_LINE_STOPS, JUDGE_STARTS_IN_RUINS } from '@/flows/timing';
 import { getLayout } from '@/layouts';
 import { useDeck } from '@/state/decks';
 import { useReview } from '@/state/review';
@@ -54,7 +54,12 @@ function useFocusWhenReady<T extends HTMLElement>(ready: boolean, key: string | 
   return ref;
 }
 
-/** Familiarization: the empty route, place by place, then a two-question route check. */
+/**
+ * Familiarization: the empty route, place by place, then a two-question route check. The
+ * learner's walk moves on by itself at a readable pace (FAMILIARIZE_SECONDS_PER_STOP at each
+ * place, from arrival): there is nothing to do at an empty place but look, and one press per
+ * place was a press too many. Space moves on sooner, P pauses, Left arrow goes back.
+ */
 export function Familiarize() {
   const { stops, step, arrived, judge, layoutId } = useSession();
   const phase = useFlow((s) => s.phase);
@@ -71,10 +76,20 @@ export function Familiarize() {
   const paused = useFlow((s) => s.confirmLeave);
   const progress = useCountdown(judge && phase === 'walk' && !paused, judgeTiming().previewSecondsPerStop, step, advance);
   const nextRef = useFocusWhenReady<HTMLButtonElement>(!judge && phase === 'walk' && arrived, step);
+  // The learner's walk: a timed stop like the others, which can be paused. The pause belongs to the stop it was set at.
+  const canHold = !judge && phase === 'walk' && arrived;
+  const { progress: atPlace, held, toggle } = useTimedStop('familiarize', step, FAMILIARIZE_SECONDS_PER_STOP, canHold, advance);
+  const pauseRef = useRef<HTMLButtonElement>(null);
+  const toggleHold = () => {
+    // Paused, the focus is on the control, so that Space resumes; resumed, it is back on "Next place".
+    (toggle() ? pauseRef : nextRef).current?.focus({ preventScroll: true });
+  };
 
   useWalkKeys({
     next: phase === 'walk' && (arrived || judge) ? advance : undefined,
     back: phase === 'walk' && step > 0 ? () => useSession.getState().prev() : undefined,
+    pause: canHold ? toggleHold : undefined,
+    resume: held ? toggleHold : undefined,
   });
 
   if (phase === 'routeCheck') return <RouteCheck />;
@@ -127,16 +142,25 @@ export function Familiarize() {
         )}
       </div>
       <div className="pin">
+        <ProgressBar value={arrived ? atPlace : 0} label="Time at this place" />
         <div className="actions">
           <button type="button" className="btn btn--primary" ref={nextRef} disabled={!arrived} onClick={advance} data-testid="walk-next">
             {last ? 'Check the route' : 'Next place'}
+          </button>
+          <button type="button" className="btn" ref={pauseRef} disabled={!arrived} aria-pressed={held} onClick={toggleHold} data-testid="familiarize-pause">
+            {held ? 'Resume' : 'Pause'}
+            <span className="key" aria-hidden="true">
+              P
+            </span>
           </button>
           <button type="button" className="btn btn--quiet" disabled={step === 0} onClick={() => useSession.getState().prev()}>
             Back
           </button>
         </div>
       </div>
-      <p className="hint">{ADVANCE_KEYS}: next. Left arrow: back.</p>
+      <p className="hint" data-testid="familiarize-hint">
+        {held ? 'Paused. Space or P resumes.' : `It moves on by itself; ${ADVANCE_KEYS} moves on sooner. P pauses. Left arrow: back.`}
+      </p>
     </section>
   );
 }

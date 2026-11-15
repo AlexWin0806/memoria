@@ -128,10 +128,11 @@ export function useCountdown(active: boolean, seconds: number, key: string | num
 const stopBlocked = (heldAt: { current: number | null }, stop: string | number) => heldAt.current === stop || useFlow.getState().confirmLeave;
 
 /**
- * The clock of a timed stop in Judge Mode: an image on the encode walk, or the feedback after
- * a recall answer. `seconds` after the stop is `ready` the walk moves on with `advance`,
- * unless the stop is paused (the P key or the Pause button) or the "leave?" question is open;
- * the clock then goes on from where it was.
+ * The clock of a timed stop: in Judge Mode an image on the encode walk or the feedback after
+ * a recall answer; on the learner's own walks the hold after a survey answer and a place on
+ * the walk of the empty route. `seconds` after the stop is `ready` the walk moves on with
+ * `advance`, unless the stop is paused (the P key or the Pause button) or the "leave?"
+ * question is open; the clock then goes on from where it was.
  *
  * A pause does not wait for React. `toggle` sets a ref inside the key press or the click
  * itself; the clock reads that ref at every tick, before it spends time or fires; and the
@@ -140,7 +141,7 @@ const stopBlocked = (heldAt: { current: number | null }, stop: string | number) 
  * already due when Pause was pressed cannot follow the press, however late the next render is.
  */
 export function useTimedStop(
-  mode: 'encode' | 'recall',
+  mode: 'familiarize' | 'survey' | 'encode' | 'recall',
   step: number,
   seconds: number,
   ready: boolean,

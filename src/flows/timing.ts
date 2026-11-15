@@ -22,7 +22,8 @@ export interface JudgeTiming {
 /*
  * In both variants the screen between the two walks waits for its button, and every timed
  * stop (an image on the encode walk, the feedback after a recall answer) can be paused (P):
- * nothing a judge has to read is taken away by a timer.
+ * nothing a judge has to read is taken away by a timer. The learner's own walks have two
+ * timed stops of the same kind, further down: SURVEY_HOLD_SECONDS, FAMILIARIZE_SECONDS_PER_STOP.
  */
 export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
   /** The title button and `?judge`. */
@@ -76,6 +77,21 @@ export const JUDGE_STARTS_IN_RUINS = true;
  * would only be one more thing to read in four seconds. It sets no timer either.
  */
 export const JUDGE_RUINS_LINE_STOPS = 2;
+
+/**
+ * The survey moves on by itself after an answer. The place stands or falls (the engine's
+ * collapse takes 0.9 s); the walk holds this long so that it is seen, then goes to the next
+ * place: one key press per place. Under reduced motion the hold stays: it is also the time
+ * to read "Noted". Like every timed stop it can be paused (P).
+ */
+export const SURVEY_HOLD_SECONDS = 1.2;
+
+/**
+ * The walk of the empty route (after a skipped survey, or again from the route check) moves on
+ * by itself: seconds at each place, counted from arrival, to read its name and what it looks
+ * like. Space moves on sooner, P pauses.
+ */
+export const FAMILIARIZE_SECONDS_PER_STOP = 2.5;
 
 /** If the engine has not reported `arrived` after this long, the walk carries on anyway. */
 export const ARRIVED_FALLBACK_MS = 6000;
