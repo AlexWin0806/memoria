@@ -93,6 +93,13 @@ export interface ItemLink {
   kind: LinkKind;
   /** A few words shown on the link, e.g. "loses CO2". Optional. */
   label?: string;
+  /**
+   * One full sentence that states the relationship exactly, for the study walk and for the
+   * feedback after a question about this link ("Succinyl-CoA inhibits citrate synthase, the
+   * enzyme that makes citrate."). When present it is shown instead of a sentence built from
+   * the kind, which for regulation would say something false ("X blocks Y"). Optional.
+   */
+  note?: string;
 }
 
 // ───────────────────────── Palace plan ─────────────────────────

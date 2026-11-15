@@ -74,7 +74,7 @@ const itemId = (n: number): string => `krebs-cycle-${n + 1}`;
 const links: ItemLink[] = [
   ...STEPS.map((label, n): ItemLink => ({ from: itemId(n), to: itemId((n + 1) % STEPS.length), kind: 'becomes', label })),
   // Succinyl-CoA (4) inhibits citrate synthase, which makes citrate (1).
-  { from: itemId(3), to: itemId(0), kind: 'blocks', label: 'inhibits citrate synthase' },
+  { from: itemId(3), to: itemId(0), kind: 'blocks', label: 'inhibits citrate synthase', note: 'Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate.' },
 ];
 
 export const KREBS_CYCLE: Deck = {
