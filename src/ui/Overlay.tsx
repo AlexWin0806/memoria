@@ -50,11 +50,11 @@ function OverlayRoot() {
   }, [theme]);
 
   useEffect(() => {
-    // `?judge` starts the run on load (for links and tests). `?judge=pitch` waits on the
-    // title screen instead, because in a live pitch the judge presses the button.
+    // `?judge` starts the run on load (for links and tests). `?judge=pitch` and `?judge=short`
+    // wait on the title screen instead, because in a live pitch the judge presses the button.
     const judge = query().get('judge');
     if (judge !== null) {
-      if (judge !== 'pitch') startJudge();
+      if (judge !== 'pitch' && judge !== 'short') startJudge();
       return;
     }
     // A reload while composing returns straight to the draft. A walk that was cut short

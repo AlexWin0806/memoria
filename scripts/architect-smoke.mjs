@@ -263,8 +263,8 @@ try {
   }
   if (!deckIds.has(JUDGE_DECK_ID)) fail('JUDGE_DECK_ID is not a registered fixture deck');
   const registered = FIXTURE_DECKS.map((d) => d.id).join();
-  if (registered !== 'fixture-carpals,fixture-cranial-nerves,fixture-mohs,fixture-spanish-kitchen,fixture-krebs,fixture-spanish-tenses,fixture-krebs-cycle') {
-    fail(`the five Domus decks should come first, in their old order, then the two showcase decks: ${registered}`);
+  if (registered !== 'fixture-carpals,fixture-cranial-nerves,fixture-mohs,fixture-spanish-kitchen,fixture-krebs,fixture-cell-cycle,fixture-spanish-tenses,fixture-krebs-cycle') {
+    fail(`the five Domus decks should come first, in their old order, then the cell cycle, then the two showcase decks: ${registered}`);
   }
   {
     // The two showcases of generated palaces: rooms from categories, links between places.

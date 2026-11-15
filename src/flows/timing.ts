@@ -4,7 +4,7 @@
  * times 0.7 in Judge Mode) and comes on top of the per-stop times below.
  */
 
-export type JudgeVariant = 'default' | 'pitch';
+export type JudgeVariant = 'default' | 'pitch' | 'short';
 
 export interface JudgeTiming {
   /** Route preview: seconds per stop. 0 = no preview, straight to the encode walk. */
@@ -17,10 +17,12 @@ export interface JudgeTiming {
   missFeedbackSeconds: number;
   /** Recall checks this many places, picked at random, in route order. null = all of them. */
   spotCheckStops: number | null;
+  /** The screen between the walks says its piece in a few words, as the pitch run's does (about 15, not 33). */
+  briefInterstitial: boolean;
 }
 
 /*
- * In both variants the screen between the two walks waits for its button, and every timed
+ * In every variant the screen between the two walks waits for its button, and every timed
  * stop (an image on the encode walk, the feedback after a recall answer) can be paused (P):
  * nothing a judge has to read is taken away by a timer. The learner's own walks have two
  * timed stops of the same kind, further down: SURVEY_HOLD_SECONDS, FAMILIARIZE_SECONDS_PER_STOP.
@@ -33,6 +35,7 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
     feedbackSeconds: 2,
     missFeedbackSeconds: 3.5,
     spotCheckStops: null,
+    briefInterstitial: false,
   },
   /** `?judge=pitch`: sized to sit inside a 2-minute live pitch. */
   pitch: {
@@ -41,6 +44,20 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
     feedbackSeconds: 2,
     missFeedbackSeconds: 3.5,
     spotCheckStops: 3,
+    briefInterstitial: true,
+  },
+  /**
+   * `?judge=short`: the five stages of the cell cycle instead of the eight carpal bones, and
+   * every place is asked: on five places a spot check would save little. Sized to be clearly
+   * shorter than the pitch run: a little less time per image, the feedback held a little less.
+   */
+  short: {
+    previewSecondsPerStop: 0,
+    encodeSecondsPerStop: 3.5,
+    feedbackSeconds: 1.5,
+    missFeedbackSeconds: 2.5,
+    spotCheckStops: null,
+    briefInterstitial: true,
   },
 };
 
@@ -48,16 +65,18 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
  * What the title button promises, per variant: the measured length of a passive run (nothing
  * skipped or paused, two seconds of thought per answer, and time to read the screen between
  * the walks before pressing its button: eight seconds for the default run's 33 words, four
- * for the pitch run's 18). Measured on the greybox theme, each case alone, with
+ * for the pitch run's 18 and the short run's 15). Measured on the greybox theme, each case alone, with
  *   node scripts/smoke.mjs --only a --serial     default: 123 s
  *   node scripts/smoke.mjs --only p --serial     pitch:    77 s (a few seconds either way: the three spot-check places are random)
- * The pitch label is rounded up, so that the promise is kept with room to spare; the default
+ *   node scripts/smoke.mjs --only i --serial     short:    63 s (five places studied, all five asked; about 20 s of it is the ten glides)
+ * The pitch and short labels are rounded up, so that the promise is kept with room to spare; the default
  * label is the run's length to the nearest half minute. Re-measure and update both the number
  * and the wording after changing anything above.
  */
 export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; label: string }> = {
   default: { measuredSeconds: 123, label: 'Try it in 2 minutes' },
   pitch: { measuredSeconds: 77, label: 'Try it in 90 seconds' },
+  short: { measuredSeconds: 63, label: 'Try it in 70 seconds' },
 };
 
 /**

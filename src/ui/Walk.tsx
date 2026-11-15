@@ -313,6 +313,14 @@ export function Encode() {
               We check {numberWord(spot)} of the {numberWord(stops.length)} places. Answer from memory before you look.
             </p>
           </>
+        ) : judge && timing.briefInterstitial ? (
+          // The short run: as few words, every place asked.
+          <>
+            <h1 className="question">The images are now hidden.</h1>
+            <p className="body" data-testid="brief-note">
+              We check all {numberWord(stops.length)} places. Answer from memory before you look.
+            </p>
+          </>
         ) : (
           <>
             <h1 className="question">Now walk it again. The images are hidden. Answer from memory.</h1>
