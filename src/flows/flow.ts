@@ -10,7 +10,7 @@ import { useSettings } from '@/state/settings';
 import { cleanWalk, STORE_KEYS } from '@/state/storage';
 import { shuffle } from './answers';
 import { isProcessDeck, orderTask, walkLinkQuestions, type LinkAnswer, type LinkQuestion, type StepOrder } from './process';
-import { JUDGE_TIMING, type JudgeTiming, type JudgeVariant } from './timing';
+import { JUDGE_ASKS_LINKS, JUDGE_TIMING, type JudgeTiming, type JudgeVariant } from './timing';
 
 /**
  * Overlay-only flow state. The engine never reads this: everything the scene needs is in
@@ -500,14 +500,17 @@ function walkedItems(deck: Deck, s: Pick<SessionState, 'stops'>): MemoryItem[] {
   return s.stops.flatMap((index) => itemAt(deck, layout.loci[index]) ?? []);
 }
 
+/** Whether a walk asks the questions about links and the ordering task: a Judge run does only if JUDGE_ASKS_LINKS. */
+const asksLinks = (judge: boolean): boolean => !judge || JUDGE_ASKS_LINKS;
+
 /**
  * The questions about links at the current stop of a recall walk: none unless the deck is a
  * process (see ./process). The last stop also has the ones that had to wait for every place
- * to be answered. A Judge run asks about places only.
+ * to be answered. A Judge run asks about places only, unless JUDGE_ASKS_LINKS.
  */
 export function linkQuestionsHere(): LinkQuestion[] {
   const s = useSession.getState();
-  const deck = s.judge || s.mode !== 'recall' ? undefined : getDeck(s.deckId);
+  const deck = !asksLinks(s.judge) || s.mode !== 'recall' ? undefined : getDeck(s.deckId);
   const here = deck ? itemAt(deck, getLayout(deck.layoutId).loci[s.stops[s.step]]) : undefined;
   if (!deck || !here) return [];
   return walkLinkQuestions(deck, walkedItems(deck, s).map((it) => it.id)).get(here.id) ?? [];
@@ -516,7 +519,7 @@ export function linkQuestionsHere(): LinkQuestion[] {
 /** The ordering task that follows the recall walk in progress, if its deck is a process with steps to put in order. */
 export function orderTaskOfWalk(): StepOrder | null {
   const s = useSession.getState();
-  const deck = s.judge || s.mode !== 'recall' ? undefined : getDeck(s.deckId);
+  const deck = !asksLinks(s.judge) || s.mode !== 'recall' ? undefined : getDeck(s.deckId);
   return deck ? orderTask(deck, walkedItems(deck, s).map((it) => it.id)) : null;
 }
 
@@ -555,7 +558,7 @@ export function markRight(itemId: string): void {
  */
 export function answerLink(answer: LinkAnswer): void {
   const s = useSession.getState();
-  if (s.mode !== 'recall' || s.judge) return;
+  if (s.mode !== 'recall' || !asksLinks(s.judge)) return;
   useFlow.setState((f) => ({ linkAnswers: [...f.linkAnswers.filter((a) => a.id !== answer.id), answer] }));
 }
 
@@ -639,7 +642,7 @@ export function backRecall(): void {
 export function finishOrder(result: { total: number; correct: number }): void {
   const s = useSession.getState();
   const f = useFlow.getState();
-  if (s.mode !== 'recall' || f.phase !== 'order' || s.judge) return;
+  if (s.mode !== 'recall' || f.phase !== 'order' || !asksLinks(s.judge)) return;
   const order = { total: result.total, correct: result.correct };
   useFlow.setState({ order });
   const record = useHistory.getState().records.find((r) => r.id === f.walkId && r.deckId === s.deckId);

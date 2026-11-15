@@ -21,6 +21,13 @@ export interface JudgeTiming {
   briefInterstitial: boolean;
 }
 
+/**
+ * Whether a Judge run on a process deck (the short run's cell cycle) also asks what each step
+ * becomes and the order of the steps. Off, so that a Judge run stays the place questions alone
+ * ("5 of 5"); walked from the title, the same deck asks both. The links are drawn on the floor either way.
+ */
+export const JUDGE_ASKS_LINKS = false;
+
 /*
  * In every variant the screen between the two walks waits for its button, and every timed
  * stop (an image on the encode walk, the feedback after a recall answer) can be paused (P):
@@ -47,8 +54,8 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
     briefInterstitial: true,
   },
   /**
-   * `?judge=short`: the five stages of the cell cycle instead of the eight carpal bones, and
-   * every place is asked: on five places a spot check would save little. Sized to be clearly
+   * `?judge=short`: the five stages of the cell cycle, in the Workshop, instead of the eight carpal
+   * bones in the Domus, and every place is asked: on five places a spot check would save little. Sized to be clearly
    * shorter than the pitch run: a little less time per image, the feedback held a little less.
    */
   short: {
@@ -68,7 +75,7 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
  * for the pitch run's 18 and the short run's 15). Measured on the greybox theme, each case alone, with
  *   node scripts/smoke.mjs --only a --serial     default: 123 s
  *   node scripts/smoke.mjs --only p --serial     pitch:    77 s (a few seconds either way: the three spot-check places are random)
- *   node scripts/smoke.mjs --only i --serial     short:    63 s (five places studied, all five asked; about 20 s of it is the ten glides)
+ *   node scripts/smoke.mjs --only i --serial     short:    67 s (five Workshop stations studied, all five asked, no link questions; about 20 s of it is the ten glides)
  * The pitch and short labels are rounded up, so that the promise is kept with room to spare; the default
  * label is the run's length to the nearest half minute. Re-measure and update both the number
  * and the wording after changing anything above.
@@ -76,7 +83,7 @@ export const JUDGE_TIMING: Record<JudgeVariant, JudgeTiming> = {
 export const JUDGE_PROMISE: Record<JudgeVariant, { measuredSeconds: number; label: string }> = {
   default: { measuredSeconds: 123, label: 'Try it in 2 minutes' },
   pitch: { measuredSeconds: 77, label: 'Try it in 90 seconds' },
-  short: { measuredSeconds: 63, label: 'Try it in 70 seconds' },
+  short: { measuredSeconds: 67, label: 'Try it in 70 seconds' },
 };
 
 /**

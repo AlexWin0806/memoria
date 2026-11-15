@@ -48,7 +48,8 @@ const vite = await createServer({
 const load = (path) => vite.ssrLoadModule(path);
 
 try {
-  const { FIXTURE_DECKS, CONTROL_LIST, CARPALS_AS_LIST, JUDGE_DECK_ID } = await load('/src/ai/fixtures/index.ts');
+  const { FIXTURE_DECKS, CONTROL_LIST, CARPALS_AS_LIST, JUDGE_DECK_ID, UNLISTED_DECK_IDS } = await load('/src/ai/fixtures/index.ts');
+  const { getLayout } = await load('/src/layouts/index.ts');
   const { DOMUS_META } = await load('/src/layouts/domus/meta.ts');
   const { planPalace, planPalaceLocal, regenerateImago, isNoStrongerSuggestion, parseLine, designPalace, designPalaceLocal, extendPalace, extendPalaceLocal } = await load('/src/ai/architect.ts');
   const { parsePalaceId, specPlaces, isGeneratedId, MAX_ROOMS, ROOM_CAPACITY, MAX_PLACES } = await load('/src/layouts/spec.ts');
@@ -263,9 +264,11 @@ try {
   }
   if (!deckIds.has(JUDGE_DECK_ID)) fail('JUDGE_DECK_ID is not a registered fixture deck');
   const registered = FIXTURE_DECKS.map((d) => d.id).join();
-  if (registered !== 'fixture-carpals,fixture-cranial-nerves,fixture-mohs,fixture-spanish-kitchen,fixture-krebs,fixture-cell-cycle,fixture-spanish-tenses,fixture-krebs-cycle') {
-    fail(`the five Domus decks should come first, in their old order, then the cell cycle, then the two showcase decks: ${registered}`);
+  if (registered !== 'fixture-carpals,fixture-cranial-nerves,fixture-mohs,fixture-spanish-kitchen,fixture-krebs,fixture-cell-cycle,fixture-spanish-tenses') {
+    fail(`the five Domus decks should come first, in their old order, then the cell cycle, then the Spanish tenses: ${registered}`);
   }
+  // The citric acid cycle stays loadable for the comparison test (?compare) but is not listed among the palaces.
+  if ([...UNLISTED_DECK_IDS].join() !== 'fixture-krebs') fail(`only fixture-krebs should be unlisted: ${[...UNLISTED_DECK_IDS]}`);
   {
     // The two showcases of generated palaces: rooms from categories, links between places.
     const tenses = FIXTURE_DECKS.find((d) => d.id === 'fixture-spanish-tenses');
@@ -279,23 +282,25 @@ try {
     for (let person = 0; person < 5; person++) if (new Set([0, 5, 10].map((t) => tenses.items[t + person].imago.glyphs[1])).size !== 1) fail(`fixture-spanish-tenses: person ${person + 1} does not keep one glyph across the tenses`);
     if (tenses.focus !== 'facts') fail('fixture-spanish-tenses: focus should be facts');
 
-    const cycle = FIXTURE_DECKS.find((d) => d.id === 'fixture-krebs-cycle');
-    const krebsDeck = FIXTURE_DECKS.find((d) => d.id === 'fixture-krebs');
-    if (cycle.items.map((it) => `${it.term}|${it.meaning}`).join() !== krebsDeck.items.map((it) => `${it.term}|${it.meaning}`).join()) fail('fixture-krebs-cycle: terms and meanings should be those of fixture-krebs, in order');
-    // Eight steps do not fit one round room (five places), and two round rooms would read as two cycles:
-    // two workshop halls of four stations, the loop closed by the link from the last step back to the first.
-    const cycleSpec = parsePalaceId(cycle.layoutId);
-    const rooms = cycleSpec.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`).join();
-    if (cycleSpec.kit !== 'workshop' || rooms !== 'Citrate to succinyl-CoA:4:hall,Succinate to oxaloacetate:4:hall') fail(`fixture-krebs-cycle: expected two workshop halls of four, got ${cycleSpec.kit}: ${rooms}`);
-    if (cycle.items.map((it) => it.locusId).join() !== specPlaces(cycleSpec).map((pl) => pl.id).join()) fail('fixture-krebs-cycle: the items are not on the places of its palace, in order');
-    if (!cycle.links.some((l) => l.kind === 'becomes' && l.from === cycle.items.at(-1).id && l.to === cycle.items[0].id)) fail('fixture-krebs-cycle: the link from the last step back to the first is missing');
     if (parsePalaceId(tenses.layoutId).kit !== 'gothic') fail('fixture-spanish-tenses: should stay in the Gothic library');
-    const blocks = cycle.links.filter((l) => l.kind === 'blocks');
-    if (cycle.links.filter((l) => l.kind === 'becomes').length !== 8 || blocks.length < 1 || blocks.length > 2 || cycle.links.some((l) => !l.label)) fail('fixture-krebs-cycle: expected eight labelled "becomes" links and one or two labelled "blocks" links');
-    if (cycle.focus !== 'process') fail('fixture-krebs-cycle: focus should be process');
-    // Regulation is stated in an exact sentence (research 9.4): "X blocks Y" built from the kind would be false here.
-    const inhibition = blocks.find((l) => l.from === cycle.items[3].id && l.to === cycle.items[0].id);
-    if (inhibition?.note !== 'Succinyl-CoA inhibits citrate synthase, the enzyme that makes citrate.') fail(`fixture-krebs-cycle: the inhibition link should carry its exact sentence, got ${JSON.stringify(inhibition)}`);
+
+    // The cell cycle: a process in one five-station hall of the Workshop, the loop closed by the link from
+    // telophase back to interphase. Each image acts on its station, so the stations are checked by name.
+    const cycle = FIXTURE_DECKS.find((d) => d.id === 'fixture-cell-cycle');
+    const cycleSpec = parsePalaceId(cycle.layoutId);
+    const rooms = cycleSpec?.rooms.map((r) => `${r.name}:${r.places}:${r.shape ?? 'hall'}`).join();
+    if (cycleSpec?.kit !== 'workshop' || cycleSpec.seed !== undefined || rooms !== 'The cell cycle:5:hall') fail(`fixture-cell-cycle: expected one unseeded workshop hall of five, got ${cycleSpec?.kit}: ${rooms}`);
+    else {
+      if (cycle.items.map((it) => it.locusId).join() !== specPlaces(cycleSpec).map((pl) => pl.id).join()) fail('fixture-cell-cycle: the items are not on the places of its palace, in order');
+      const stations = getLayout(cycle.layoutId).loci.map((l) => l.name).join('|');
+      if (stations !== 'The Screw Press|The Grindstone|The Alembic Still|The Hopper and Chute|The Water Wheel') fail(`fixture-cell-cycle: the images act on stations that are not there: ${stations}`);
+    }
+    const terms = cycle.items.map((it) => it.term).join();
+    if (terms !== 'Interphase,Prophase,Metaphase,Anaphase,Telophase') fail(`fixture-cell-cycle: stages ${terms}`);
+    if (cycle.focus !== 'process') fail('fixture-cell-cycle: focus should be process');
+    const ids = cycle.items.map((it) => it.id);
+    const inOrder = cycle.links.length === 5 && cycle.links.every((l, n) => l.kind === 'becomes' && l.from === ids[n] && l.to === ids[(n + 1) % 5]);
+    if (!inOrder || cycle.links.some((l) => !l.label || l.label.split(' ').length > 4)) fail(`fixture-cell-cycle: expected five "becomes" links in order, closing the loop, each labelled in four words or fewer: ${JSON.stringify(cycle.links)}`);
   }
   // The comparison test swaps its two materials between the palace arm and the list arm.
   // That is only fair if a deck and its plain list are the same material (same terms, same
